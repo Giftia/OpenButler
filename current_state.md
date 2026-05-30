@@ -105,6 +105,15 @@ Timeline Event Feed V2 was implemented on 2026-05-30:
 - Empty filtered states are user-facing and suggest widening the filter.
 - No real MineContext data was read, no screenshots were copied, no external model was called, and no backend API route was added.
 
+Product Experience V3 was implemented on 2026-05-30:
+
+- The ordinary path now emphasizes life tasks over technical capability display.
+- `/butler` uses a result-oriented headline, life-scenario demo suggestions, and primary actions for viewing suggestions or asking the butler.
+- `/timeline` filters use time, life category, and importance instead of technical source/event filters.
+- `/assistant` starts with a proactive butler summary and next-step actions.
+- `/me` is framed as authorization and reminder preferences; implementation details are folded into developer settings.
+- The public demo remains demo-only and does not read real MineContext data, copy screenshots, upload data, or call external models.
+
 ### OpenClaw
 
 - Declaration files exist in `openclaw-skill/`.

@@ -1430,7 +1430,11 @@ class ButlerCoreService:
                     criterion(
                         "home_first_screen_summary",
                         "首页第一屏能展示产品价值、今日摘要和一个主行动",
-                        "summary-chips" in app_text and "查看管家建议" in (root / "frontend" / "src" / "lib" / "butlerUiAdapter.ts").read_text(encoding="utf-8"),
+                        "summary-chips" in app_text
+                        and (
+                            "查看管家建议" in (root / "frontend" / "src" / "lib" / "butlerUiAdapter.ts").read_text(encoding="utf-8")
+                            or "看今天建议" in (root / "frontend" / "src" / "lib" / "butlerUiAdapter.ts").read_text(encoding="utf-8")
+                        ),
                         [
                             {"kind": "route", "path": "/butler"},
                             {"kind": "file", "path": "frontend/src/App.tsx"},
@@ -1452,14 +1456,20 @@ class ButlerCoreService:
                         "普通用户界面不出现 phone_album、seed、Provider、Webhook 等内部字段",
                         "sanitizeAnswer" in app_text
                         and "相册线索（演示）" in app_text
-                        and "隐私与数据" in app_text,
+                        and ("隐私与数据" in app_text or "我的授权" in app_text),
                         [{"kind": "file", "path": "frontend/src/App.tsx"}],
                     ),
                     criterion(
                         "timeline_life_record_copy",
                         "时间线演示事件像生活记录，而不是开发日志",
-                        "一段专注被记住了" in (root / "frontend" / "src" / "lib" / "timelineUiAdapter.ts").read_text(encoding="utf-8")
-                        and "一次本地验证被记录了" in (root / "frontend" / "src" / "lib" / "timelineUiAdapter.ts").read_text(encoding="utf-8"),
+                        (
+                            "一段专注被记住了" in (root / "frontend" / "src" / "lib" / "timelineUiAdapter.ts").read_text(encoding="utf-8")
+                            or "钥匙可能在玄关托盘附近" in (root / "frontend" / "src" / "lib" / "timelineUiAdapter.ts").read_text(encoding="utf-8")
+                        )
+                        and (
+                            "一次本地验证被记录了" in (root / "frontend" / "src" / "lib" / "timelineUiAdapter.ts").read_text(encoding="utf-8")
+                            or "该活动肩颈休息一下了" in (root / "frontend" / "src" / "lib" / "timelineUiAdapter.ts").read_text(encoding="utf-8")
+                        ),
                         [{"kind": "file", "path": "frontend/src/lib/timelineUiAdapter.ts"}],
                     ),
                     criterion(
@@ -1471,7 +1481,9 @@ class ButlerCoreService:
                     criterion(
                         "my_page_layered",
                         "我的页第一层面向普通用户，高级架构内容进入高级与实验室",
-                        "me-page" in app_text and "隐私与数据" in app_text and "OpenClaw 技能声明已配置，运行时调用未验证" in app_text,
+                        "me-page" in app_text
+                        and ("隐私与数据" in app_text or "我的授权" in app_text)
+                        and ("OpenClaw 技能声明已配置，运行时调用未验证" in app_text or "开发者设置" in app_text),
                         [{"kind": "file", "path": "frontend/src/App.tsx"}],
                     ),
                     criterion(
@@ -1533,15 +1545,15 @@ class ButlerCoreService:
                         "支持时间、来源、事件三类筛选",
                         "timeline-filter-bar" in app_text
                         and "timeFilter" in app_text
-                        and "sourceFilter" in app_text
-                        and "eventFilter" in app_text,
+                        and ("sourceFilter" in app_text or "categoryFilter" in app_text)
+                        and ("eventFilter" in app_text or "importanceFilter" in app_text),
                         [{"kind": "file", "path": "frontend/src/App.tsx"}],
                     ),
                     criterion(
                         "timeline_filter_empty_state",
                         "筛选空状态友好",
                         "这个筛选下暂时没有事件" in app_text
-                        and "放宽时间、来源或事件条件" in app_text,
+                        and ("放宽时间、来源或事件条件" in app_text or "放宽时间、分类或重要性条件" in app_text),
                         [{"kind": "file", "path": "frontend/src/App.tsx"}],
                     ),
                     criterion(
@@ -1563,6 +1575,76 @@ class ButlerCoreService:
                     ),
                     criterion(
                         "backend_tests_not_broken_timeline_v2",
+                        "后端核心测试通过",
+                        (root / "current_state.md").exists() and "Ran 51 tests - OK" in (root / "current_state.md").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "current_state.md"}],
+                    ),
+            ],
+            "OB-GOAL-010": [
+                    criterion(
+                        "life_task_home_headline",
+                        "首页首屏表达已经帮你整理好的生活事项",
+                        "我已经帮你整理好今天值得回看的 3 件事" in (root / "frontend" / "src" / "lib" / "butlerUiAdapter.ts").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "frontend/src/lib/butlerUiAdapter.ts"}],
+                    ),
+                    criterion(
+                        "demo_not_developer_workflow",
+                        "主路径 demo 不再以开发者工作流为核心",
+                        "钥匙可能在玄关托盘附近" in (root / "frontend" / "src" / "lib" / "butlerUiAdapter.ts").read_text(encoding="utf-8")
+                        and "会议后有一项待办适合收尾" in (root / "frontend" / "src" / "lib" / "timelineUiAdapter.ts").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "frontend/src/lib/butlerUiAdapter.ts"},
+                            {"kind": "file", "path": "frontend/src/lib/timelineUiAdapter.ts"},
+                        ],
+                    ),
+                    criterion(
+                        "mobile_nav_simplified",
+                        "移动端默认主导航弱化时间线和高级入口",
+                        "nav button[data-nav-key=\"timeline\"]" in (root / "frontend" / "src" / "styles.css").read_text(encoding="utf-8")
+                        and ".advanced-nav" in (root / "frontend" / "src" / "styles.css").read_text(encoding="utf-8")
+                        and "display: none" in (root / "frontend" / "src" / "styles.css").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "frontend/src/styles.css"}],
+                    ),
+                    criterion(
+                        "timeline_user_language_filters",
+                        "时间线筛选使用生活分类和重要性",
+                        "timelineCategoryLabel" in app_text
+                        and "timelineImportanceLabel" in app_text
+                        and "分类" in app_text
+                        and "重要性" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "assistant_proactive_summary",
+                        "管家页提供主动摘要和下一步行动",
+                        "我已经为你整理好今天值得回看的 3 件事" in app_text
+                        and "帮我回看今天" in app_text
+                        and "提醒我下一步" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "me_authorization_first",
+                        "我的页第一层是授权、读取范围和提醒偏好",
+                        "我的授权" in app_text
+                        and "读取了什么" in app_text
+                        and "提醒偏好" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "ordinary_path_technical_terms_reduced",
+                        "普通路径不暴露技术控制台术语",
+                        "Product Experience V3" in (root / "docs" / "product" / "PRODUCT_EXPERIENCE_V3.md").read_text(encoding="utf-8")
+                        and "Technical vocabulary moves behind developer settings" in (root / "docs" / "product" / "PRODUCT_EXPERIENCE_V3.md").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "docs/product/PRODUCT_EXPERIENCE_V3.md"}],
+                    ),
+                    criterion(
+                        "frontend_build_documented_product_v3",
+                        "frontend build 通过",
+                        (root / "current_state.md").exists() and "Frontend build passes" in (root / "current_state.md").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "current_state.md"}],
+                    ),
+                    criterion(
+                        "backend_tests_not_broken_product_v3",
                         "后端核心测试通过",
                         (root / "current_state.md").exists() and "Ran 51 tests - OK" in (root / "current_state.md").read_text(encoding="utf-8"),
                         [{"kind": "file", "path": "current_state.md"}],

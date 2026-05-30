@@ -86,8 +86,8 @@ import {
 import {buildTodayHomeViewModel} from "./lib/butlerUiAdapter";
 import {
   groupTimelineByDate,
-  timelineEventLabel,
-  timelineSourceLabel,
+  timelineCategoryLabel,
+  timelineImportanceLabel,
   toTimelineMoment,
   type TimelineMoment
 } from "./lib/timelineUiAdapter";
@@ -111,7 +111,7 @@ type PageKey =
 const primaryNavItems: Array<{key: PageKey; label: string; icon: typeof Home}> = [
   {key: "butler", label: "今日", icon: Inbox},
   {key: "timeline", label: "时间线", icon: CalendarDays},
-  {key: "chat", label: "管家", icon: MessageSquareText},
+  {key: "chat", label: "问管家", icon: MessageSquareText},
   {key: "privacy", label: "我的", icon: ShieldCheck}
 ];
 
@@ -309,6 +309,7 @@ function App() {
             return (
               <button
                 key={item.key}
+                data-nav-key={item.key}
                 className={page === item.key ? "active" : ""}
                 onClick={() => {
                   setPage(item.key);
@@ -329,6 +330,7 @@ function App() {
                 return (
                   <button
                     key={item.key}
+                    data-nav-key={item.key}
                     className={page === item.key ? "active" : ""}
                     onClick={() => {
                       setPage(item.key);
@@ -736,13 +738,14 @@ function ButlerHome() {
           <p className="eyebrow">OpenButler 主动 AI 管家 · {view.demoMode ? "演示数据" : "本地数据"} · {privacyModeLabel("strict")}</p>
           <h1>{view.headline}</h1>
           <p className="hero-summary">{view.subheadline}</p>
-          <p>{view.demoMode ? "当前展示的是线上演示记录，用来说明 OpenButler 如何整理一天。" : "OpenButler 会把授权的本地线索整理成今日概览、提醒和可复核依据。"}</p>
+          <p>{view.demoMode ? "这是演示体验，用来展示它如何照看物品、待办和生活节律。" : "OpenButler 会把授权的本地线索整理成今日概览、提醒和可复核依据。"}</p>
           <div className="hero-actions">
-            <button className="primary" onClick={generate} disabled={busy}>
-              {busy ? <Loader2 className="spin" size={17} /> : <RefreshCw size={17} />}
+            <button className="primary" onClick={() => document.getElementById("today-suggestions")?.scrollIntoView({behavior: "smooth"})}>
+              <CheckCircle2 size={17} />
               <span>{view.primaryAction}</span>
             </button>
-            <button className="secondary" onClick={() => navigateTo("/timeline")}>查看时间线</button>
+            <button className="secondary" onClick={() => navigateTo("/chat")}>问管家</button>
+            <button className="ghost" onClick={() => navigateTo("/timeline")}>查看全部记录</button>
           </div>
           <div className="summary-chips">
             <span>{view.statusCards[0]?.value ?? "0 条"}信号</span>
@@ -754,7 +757,7 @@ function ButlerHome() {
         <div className="today-hero-status">
           <span className="privacy-chip">{view.demoMode ? "演示数据" : privacyModeLabel("strict")}</span>
           <strong>{view.summaryLine}</strong>
-          <span>{view.demoMode ? "这些内容只用于展示产品效果，不会读取你的真实本机活动。" : "今日已整理信号"}</span>
+          <span>{view.demoMode ? "演示内容不会读取你的真实数据。" : "今日已整理信号"}</span>
           <small>{view.dataQualityText}</small>
         </div>
       </section>
@@ -774,11 +777,11 @@ function ButlerHome() {
 
       <section className="today-focus-layout">
         <div className="today-main-column">
-          <section className="today-panel">
+          <section className="today-panel" id="today-suggestions">
             <div className="section-title">
               <div>
                 <h2>管家建议</h2>
-                <p>默认只展示最重要的 1-3 条，依据需要时再展开。</p>
+                <p>我先把最值得你处理的事放在这里，依据需要时再展开。</p>
               </div>
               <button className="ghost" onClick={() => navigateTo("/butler/inbox")}>查看全部</button>
             </div>
@@ -833,8 +836,8 @@ function ButlerHome() {
         </aside>
       </section>
 
-      <details className="advanced-lab-panel">
-        <summary>高级与实验室</summary>
+      <details className="advanced-lab-panel developer-only-panel">
+        <summary>开发者设置</summary>
         <div className="advanced-lab-grid">
           <button className="secondary" onClick={runDemoPath} disabled={demoBusy}>
             {demoBusy ? <Loader2 className="spin" size={17} /> : <CheckCircle2 size={17} />}
@@ -1563,29 +1566,21 @@ const timelineTimeFilters: Array<{value: TimelineTimeFilter; label: string}> = [
   {value: "all", label: "全部"},
 ];
 
-const timelineSourceFilters = [
+const timelineCategoryFilters = [
   "all",
-  "pc_activity",
-  "godview",
-  "phone_album",
-  "workstation_vision",
-  "butler_core",
-  "manual",
-  "system",
+  "work",
+  "objects",
+  "reminders",
+  "home",
+  "habits",
+  "automation",
 ];
 
-const timelineEventFilters = [
+const timelineImportanceFilters = [
   "all",
-  "focus_block",
-  "context_switch",
-  "insight",
-  "workflow_candidate",
-  "object_location",
-  "lighting_context",
-  "security_event",
-  "achievement",
-  "data_quality_notice",
-  "pc_activity",
+  "actionable",
+  "record_only",
+  "has_evidence",
 ];
 
 function isInTimeFilter(moment: TimelineMoment, filter: TimelineTimeFilter): boolean {
@@ -1608,18 +1603,26 @@ function isInTimeFilter(moment: TimelineMoment, filter: TimelineTimeFilter): boo
 function filterTimelineMoments(
   moments: TimelineMoment[],
   timeFilter: TimelineTimeFilter,
-  sourceFilter: string,
-  eventFilter: string
+  categoryFilter: string,
+  importanceFilter: string
 ) {
   return moments.filter((moment) => (
     isInTimeFilter(moment, timeFilter)
-    && (sourceFilter === "all" || moment.sourceKey === sourceFilter)
-    && (eventFilter === "all" || moment.eventKey === eventFilter || (eventFilter === "insight" && moment.eventKey === "daily_overview"))
+    && (categoryFilter === "all" || moment.categoryKey === categoryFilter)
+    && (importanceFilter === "all" || moment.importanceKey === importanceFilter || (importanceFilter === "has_evidence" && moment.evidenceAvailable))
   ));
 }
 
 function TimelineThumbnail({moment}: {moment: TimelineMoment}) {
   const thumb = moment.thumbnail;
+  const mark = {
+    objects: "钥",
+    reminders: "待",
+    habits: "休",
+    home: "家",
+    work: "事",
+    automation: "技",
+  }[moment.categoryKey] ?? moment.category.slice(0, 1);
   if (thumb.kind === "image" && thumb.url) {
     return (
       <figure className="event-thumb image-thumb">
@@ -1630,7 +1633,7 @@ function TimelineThumbnail({moment}: {moment: TimelineMoment}) {
   }
   return (
     <figure className={`event-thumb ${thumb.tone}`}>
-      <span>{thumb.kind === "placeholder" ? moment.category.slice(0, 1) : moment.sourceLabel.slice(0, 1)}</span>
+      <span>{mark}</span>
       <figcaption>{thumb.privacyLabel ?? "来源占位"}</figcaption>
     </figure>
   );
@@ -1640,8 +1643,8 @@ function UnifiedTimeline() {
   const [items, setItems] = useState<Array<Record<string, any>>>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [timeFilter, setTimeFilter] = useState<TimelineTimeFilter>("today");
-  const [sourceFilter, setSourceFilter] = useState("all");
-  const [eventFilter, setEventFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [importanceFilter, setImportanceFilter] = useState("all");
 
   async function refreshTimeline() {
     const result = await getButlerTimeline();
@@ -1653,9 +1656,9 @@ function UnifiedTimeline() {
   }, []);
 
   const moments = items.map(toTimelineMoment);
-  const filteredMoments = filterTimelineMoments(moments, timeFilter, sourceFilter, eventFilter);
+  const filteredMoments = filterTimelineMoments(moments, timeFilter, categoryFilter, importanceFilter);
   const groups = groupTimelineByDate(filteredMoments);
-  const activeFilterSummary = `${timelineTimeFilters.find((item) => item.value === timeFilter)?.label ?? "今天"} · ${timelineSourceLabel(sourceFilter)} · ${timelineEventLabel(eventFilter)}`;
+  const activeFilterSummary = `${timelineTimeFilters.find((item) => item.value === timeFilter)?.label ?? "今天"} · ${timelineCategoryLabel(categoryFilter)} · ${timelineImportanceLabel(importanceFilter)}`;
 
   return (
     <section className="life-timeline-page">
@@ -1663,7 +1666,7 @@ function UnifiedTimeline() {
         <div>
           <p className="eyebrow">全场景事件流</p>
           <h2>时间线</h2>
-          <p>OpenButler 会把已授权的本地线索整理成生活记录。每条记录都保留依据和边界说明。</p>
+          <p>这里按生活场景整理发生过的事。技术来源只在你展开依据时说明。</p>
         </div>
         <button className="secondary" onClick={refreshTimeline}>刷新</button>
       </div>
@@ -1675,15 +1678,15 @@ function UnifiedTimeline() {
           </select>
         </label>
         <label>
-          <span>来源</span>
-          <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}>
-            {timelineSourceFilters.map((item) => <option key={item} value={item}>{timelineSourceLabel(item)}</option>)}
+          <span>分类</span>
+          <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+            {timelineCategoryFilters.map((item) => <option key={item} value={item}>{timelineCategoryLabel(item)}</option>)}
           </select>
         </label>
         <label>
-          <span>事件</span>
-          <select value={eventFilter} onChange={(event) => setEventFilter(event.target.value)}>
-            {timelineEventFilters.map((item) => <option key={item} value={item}>{timelineEventLabel(item)}</option>)}
+          <span>重要性</span>
+          <select value={importanceFilter} onChange={(event) => setImportanceFilter(event.target.value)}>
+            {timelineImportanceFilters.map((item) => <option key={item} value={item}>{timelineImportanceLabel(item)}</option>)}
           </select>
         </label>
       </div>
@@ -1721,7 +1724,7 @@ function UnifiedTimeline() {
                           <small>依据来源：{moment.sourceLabel}</small>
                           <small>{moment.confidenceLabel}</small>
                           <small>{moment.thumbnail.privacyLabel ?? "未展示原始路径"}</small>
-                          <small>未上传数据，未复制本地截图</small>
+                          <small>这是本地线索整理，不代表远程网站或服务的实时状态。</small>
                         </div>
                       </div>
                     )}
@@ -1735,7 +1738,7 @@ function UnifiedTimeline() {
       ) : (
         <div className="friendly-empty">
           <strong>{items.length ? "这个筛选下暂时没有事件" : "时间线还没有记录"}</strong>
-          <span>{items.length ? "可以放宽时间、来源或事件条件，查看更完整的生活记录。" : "连接本地数据源后，这里会按时间整理工作、生活、提醒和自动化候选。"}</span>
+          <span>{items.length ? "可以放宽时间、分类或重要性条件，查看更完整的生活记录。" : "连接本地数据源后，这里会按时间整理工作、生活、提醒和自动化候选。"}</span>
         </div>
       )}
     </section>
@@ -2359,7 +2362,7 @@ function StatusItem({label, value}: {label: string; value: string}) {
 
 function Chat() {
   const [messages, setMessages] = useState<Array<{role: "user" | "butler"; text: string}>>([
-    {role: "butler", text: "我可以帮你查看今天有什么值得注意、回看时间线，或用演示线索展示物品回溯和光照建议。"}
+    {role: "butler", text: "我已经为你整理好今天值得回看的 3 件事，其中 1 件可能需要你决定。你可以让我回看今天，也可以让我提醒下一步。"}
   ]);
   const [text, setText] = useState("我的钥匙在哪");
   const [pending, setPending] = useState(false);
@@ -2391,14 +2394,23 @@ function Chat() {
 
   return (
     <section className="chat-layout">
+      <div className="butler-brief">
+        <span className="privacy-chip">演示体验</span>
+        <strong>我先帮你看过一遍今天。</strong>
+        <p>现在可以回看今日重点、确认下一步，或查看物品和生活节律的演示线索。</p>
+        <div className="hero-actions">
+          <button className="primary" onClick={() => send("帮我回看今天")}>帮我回看今天</button>
+          <button className="secondary" onClick={() => send("提醒我下一步")}>提醒我下一步</button>
+        </div>
+      </div>
       <div className="suggestions">
         {[
           "今天有什么值得注意？",
-          "查看今日时间线",
-          "哪些流程可以自动化？",
-          "我的钥匙在哪？（演示）",
-          "今天光照够吗？（演示）",
-          "本周成就总结（演示）"
+          "查看今日记录",
+          "哪些事适合自动提醒？",
+          "我的钥匙在哪？",
+          "今天适合休息一下吗？",
+          "帮我总结本周的小成就"
         ].map((item) => (
           <button className="secondary" key={item} onClick={() => send(item)}>{item}</button>
         ))}
@@ -2442,8 +2454,8 @@ function Privacy({
         <div className="section-title">
           <div>
             <p className="eyebrow">我的</p>
-            <h2>隐私与数据</h2>
-            <p>当前模式：{privacyModeLabel(mode)}。外部模型、云端 API 和外部回调默认关闭。</p>
+            <h2>我的授权</h2>
+            <p>你可以随时查看 OpenButler 读取了什么、没有读取什么，以及如何关闭或删除。</p>
           </div>
         </div>
         <div className="mode-toggle">
@@ -2458,32 +2470,32 @@ function Privacy({
             <span>禁止外部模型、云端 API 和外部回调。</span>
           </button>
         </div>
-        <p className="policy-note">当前有 {blocked} 个技能插件在完全本地模式下等待本地替代。</p>
+        <p className="policy-note">完全本地模式下，有 {blocked} 项联网能力已暂停，避免未经确认的数据外发。</p>
       </section>
 
       <section className="today-panel">
-        <div className="section-title"><h2>数据源</h2></div>
+        <div className="section-title"><h2>读取了什么</h2></div>
         <div className="status-grid compact-status">
-          <StatusItem label="电脑活动" value="演示已启用" />
-          <StatusItem label="时间线" value="已启用" />
+          <StatusItem label="今日记录" value="演示" />
+          <StatusItem label="管家提醒" value="演示" />
           <StatusItem label="相册线索" value="演示" />
-          <StatusItem label="工位观察" value="未启用" />
+          <StatusItem label="真实本机数据" value="未读取" />
         </div>
-        <p className="policy-note">线上 Demo 使用演示数据展示产品效果，不会读取你的真实本机活动。</p>
+        <p className="policy-note">线上 Demo 只使用演示内容展示产品效果，不会读取你的真实相册、电脑活动或本地截图。</p>
       </section>
 
       <section className="today-panel">
-        <div className="section-title"><h2>目标偏好</h2></div>
+        <div className="section-title"><h2>提醒偏好</h2></div>
         <div className="status-grid compact-status">
           <StatusItem label="每日概览" value="开启" />
           <StatusItem label="提醒频率" value="保守" />
-          <StatusItem label="自动化候选" value="开启" />
-          <StatusItem label="依据显示" value="点击后展开" />
+          <StatusItem label="生活建议" value="开启" />
+          <StatusItem label="依据说明" value="点击后展开" />
         </div>
       </section>
 
       <details className="advanced-lab-panel">
-        <summary>高级与实验室</summary>
+        <summary>开发者设置</summary>
         <div className="topology">
           <div className="topology-row"><ShieldCheck size={18} /><span>隐私策略详情：完全本地模式会拦截 Provider、Webhook 和外部模型。</span></div>
           <div className="topology-row"><Camera size={18} /><span>Capture Gateway（高级采集入口）</span></div>

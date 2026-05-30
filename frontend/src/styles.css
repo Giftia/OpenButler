@@ -1996,6 +1996,30 @@ h2 {
   gap: 18px;
 }
 
+.butler-brief {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid rgb(15 23 42 / 8%);
+  border-radius: 24px;
+  background:
+    linear-gradient(135deg, rgb(255 255 255 / 92%), rgb(236 253 245 / 74%));
+  box-shadow: 0 18px 48px rgb(15 23 42 / 8%);
+}
+
+.butler-brief strong {
+  color: #0f172a;
+  font-size: clamp(24px, 4vw, 36px);
+  line-height: 1.08;
+}
+
+.butler-brief p {
+  max-width: 720px;
+  margin: 0;
+  color: #475569;
+  line-height: 1.55;
+}
+
 .ghost {
   color: #0f172a;
   border-color: #cbd5e1;
@@ -2046,9 +2070,12 @@ h2 {
     height: 15px;
   }
 
+  nav button[data-nav-key="timeline"] {
+    display: none;
+  }
+
   .advanced-nav {
-    flex: 0 0 auto;
-    margin-top: 0;
+    display: none;
   }
 
   .advanced-nav summary {
@@ -2100,6 +2127,10 @@ h2 {
   .hero-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
+  }
+
+  .hero-actions .ghost {
+    grid-column: 1 / -1;
   }
 
   .today-focus-layout {

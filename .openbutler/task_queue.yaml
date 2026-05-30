@@ -383,4 +383,80 @@ tasks:
       - "docs/product/TIMELINE_FILTERS_V2.md documents time/source/event filters."
       - "docs/product/TIMELINE_MEDIA_PRIVACY.md documents thumbnail privacy rules."
 
+  - id: OB-TASK-100
+    title: "将首页改成生活任务优先的结果型首屏"
+    goal_id: OB-GOAL-010
+    priority: P0
+    status: done
+    done_when:
+      - "首屏主标题表达已整理好的生活事项"
+      - "首屏主行动为看今天建议和问管家"
+      - "PC 活跃和专注分钟不再是主价值"
+    evidence:
+      - "frontend/src/lib/butlerUiAdapter.ts rewrites demo headline and cards around three life items."
+      - "frontend/src/App.tsx hero CTAs now focus on suggestions and asking the butler."
+
+  - id: OB-TASK-101
+    title: "将线上 demo 从开发者工作流改为生活化样例"
+    goal_id: OB-GOAL-010
+    priority: P0
+    status: done
+    done_when:
+      - "钥匙/待办/休息等生活样例替代 coding block、Terminal、Productization docs"
+      - "演示状态诚实标识但不反复打断沉浸"
+      - "不读取真实 MineContext 数据"
+    evidence:
+      - "frontend/src/lib/userFacingLabels.ts maps existing demo payloads to life-task copy."
+      - "frontend/src/lib/timelineUiAdapter.ts maps demo events to objects, reminders, and habits."
+
+  - id: OB-TASK-102
+    title: "把时间线筛选改成用户语言"
+    goal_id: OB-GOAL-010
+    priority: P0
+    status: done
+    done_when:
+      - "保留时间筛选"
+      - "来源筛选替换为生活分类"
+      - "事件筛选替换为重要性"
+      - "技术来源只在展开依据里出现"
+    evidence:
+      - "UnifiedTimeline now exposes 时间 / 分类 / 重要性 filters."
+      - "timelineUiAdapter computes categoryKey and importanceKey in the ViewModel."
+
+  - id: OB-TASK-103
+    title: "让管家页变成主动摘要与下一步行动"
+    goal_id: OB-GOAL-010
+    priority: P0
+    status: done
+    done_when:
+      - "管家开场说明已整理今日重点"
+      - "提供帮我回看今天和提醒我下一步两个主行动"
+      - "快捷问题不反复显示演示字样"
+    evidence:
+      - "Chat adds a butler-brief panel and user-facing quick prompts."
+
+  - id: OB-TASK-104
+    title: "把我的页改成我的授权"
+    goal_id: OB-GOAL-010
+    priority: P0
+    status: done
+    done_when:
+      - "第一层展示读取了什么、没读取什么、提醒偏好"
+      - "技术拓扑进入开发者设置"
+      - "联网能力暂停使用普通话说明"
+    evidence:
+      - "/me copy now centers on 我的授权, 读取了什么, 提醒偏好, and developer settings."
+
+  - id: OB-TASK-105
+    title: "完成桌面端和移动端中立用户复评"
+    goal_id: OB-GOAL-010
+    priority: P0
+    status: in_progress
+    done_when:
+      - "桌面端 subagent 复评完成"
+      - "移动端 subagent 复评完成"
+      - "输出评分变化和剩余问题"
+    evidence:
+      - "Pending until post-deployment neutral review completes."
+
 blocked: []

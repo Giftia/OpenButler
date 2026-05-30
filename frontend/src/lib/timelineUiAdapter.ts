@@ -20,6 +20,8 @@ export type TimelineMoment = {
   valueTag: string;
   sourceLabel: string;
   sourceKey: string;
+  categoryKey: string;
+  importanceKey: string;
   eventKey: string;
   eventLabel: string;
   confidenceLabel: string;
@@ -45,10 +47,10 @@ function friendlyTitle(event: Record<string, any>): string {
   const type = String(event.event_type ?? "");
   if (isDemoLike(event)) {
     const title = String(event.title ?? "").toLowerCase();
-    if (title.includes("inbox")) return "一个提醒被整理出来";
-    if (title.includes("verification") || title.includes("terminal")) return "一次本地验证被记录了";
-    if (title.includes("coding") || title.includes("vscode")) return "一段专注被记住了";
-    if (title.includes("docs") || title.includes("chrome")) return "一次产品回看被记录了";
+    if (title.includes("inbox")) return "有一条管家提醒被整理出来";
+    if (title.includes("verification") || title.includes("terminal")) return "该活动肩颈休息一下了";
+    if (title.includes("coding") || title.includes("vscode")) return "钥匙可能在玄关托盘附近";
+    if (title.includes("docs") || title.includes("chrome")) return "会议后有一项待办适合收尾";
   }
   if (type === "focus_block") return "一段专注被记住了";
   if (type === "context_switch") return "有一段切换值得注意";
@@ -114,6 +116,24 @@ function eventKeyFor(event: Record<string, any>): string {
   return type || "pc_activity";
 }
 
+function categoryKeyFor(event: Record<string, any>, eventKey: string): string {
+  if (eventKey === "object_location") return "objects";
+  if (eventKey === "lighting_context" || eventKey === "security_event") return "home";
+  if (eventKey === "data_quality_notice") return "reminders";
+  if (eventKey === "achievement" || eventKey === "focus_block" || eventKey === "pc_activity") return "work";
+  if (eventKey === "workflow_candidate") return "automation";
+  if (eventKey === "context_switch") return "habits";
+  if (eventKey === "insight" || eventKey === "daily_overview") return "reminders";
+  return "reminders";
+}
+
+function importanceKeyFor(event: Record<string, any>, eventKey: string): string {
+  const hasEvidence = Array.isArray(event.evidence_refs) ? event.evidence_refs.length > 0 : Boolean(event.evidence_boundary);
+  if (["object_location", "workflow_candidate", "data_quality_notice", "insight", "daily_overview"].includes(eventKey)) return "actionable";
+  if (hasEvidence) return "has_evidence";
+  return "record_only";
+}
+
 export function timelineSourceLabel(key: string): string {
   return {
     all: "全部来源",
@@ -125,6 +145,27 @@ export function timelineSourceLabel(key: string): string {
     manual: "手动记录",
     system: "系统",
   }[key] ?? "本地记录";
+}
+
+export function timelineCategoryLabel(key: string): string {
+  return {
+    all: "全部",
+    work: "工作",
+    objects: "物品",
+    reminders: "提醒",
+    home: "家庭",
+    habits: "健康习惯",
+    automation: "自动化",
+  }[key] ?? "提醒";
+}
+
+export function timelineImportanceLabel(key: string): string {
+  return {
+    all: "全部",
+    actionable: "值得处理",
+    record_only: "仅记录",
+    has_evidence: "有依据",
+  }[key] ?? "全部";
 }
 
 export function timelineEventLabel(key: string): string {
@@ -217,6 +258,13 @@ export function toTimelineMoment(event: Record<string, any>): TimelineMoment {
   const title = friendlyTitle(event);
   const sourceKey = sourceKeyFor(event);
   const eventKey = eventKeyFor(event);
+  const categoryKey = demo ? (
+    String(event.title ?? "").toLowerCase().includes("coding") ? "objects"
+      : String(event.title ?? "").toLowerCase().includes("verification") ? "habits"
+        : String(event.title ?? "").toLowerCase().includes("docs") ? "reminders"
+          : "reminders"
+  ) : categoryKeyFor(event, eventKey);
+  const importanceKey = demo ? "actionable" : importanceKeyFor(event, eventKey);
   return {
     id: String(event.id ?? `${event.started_at}-${event.title}`),
     icon: iconFor(category),
@@ -231,6 +279,8 @@ export function toTimelineMoment(event: Record<string, any>): TimelineMoment {
     valueTag,
     sourceLabel: demo ? `${sourceLabel(event.source)} · 演示数据` : sourceLabel(event.source),
     sourceKey,
+    categoryKey,
+    importanceKey,
     eventKey,
     eventLabel: timelineEventLabel(eventKey),
     confidenceLabel: confidence > 0 ? `可信度 ${confidence}%` : "可信度待确认",
