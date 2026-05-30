@@ -120,6 +120,17 @@ Butler Inbox evidence browser smoke was completed on 2026-05-30 using a temporar
 - privacy counters: `external_model_used=false`, `minecontext_source_deleted=0`, `copied_screenshots=0`.
 - no real MineContext activity was read for this smoke; MineContext paths were pointed at nonexistent temporary locations.
 
+## Chinese Mojibake Audit
+
+Chinese mojibake risk audit was completed on 2026-05-30.
+
+- Audit report: `docs/dev/CHINESE_MOJIBAKE_AUDIT_2026-05-30.md`.
+- Scoped mojibake pattern scan found no matching repository text files.
+- Chinese source text is intentionally present in UI labels, docs, tests, plugins, and goal files.
+- Frontend runtime verification passed through `npm run smoke:butler-browser`.
+- No source file encoding conversion was performed.
+- Current likely risk source is terminal or PowerShell output rendering when UTF-8 is not explicit, not persistent source corruption.
+
 ## Not Run In This Governance Round
 
 - `npm run verify:productization` because it may write/update local artifacts under `data/`.

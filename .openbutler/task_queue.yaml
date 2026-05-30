@@ -99,14 +99,20 @@ tasks:
     title: "Audit and fix Chinese mojibake risk"
     goal_id: OB-GOAL-005
     priority: P1
-    status: ready
+    status: done
     done_when:
       - "files with mojibake risk identified"
       - "encoding source determined"
       - "frontend visual text verified"
       - "no accidental destructive encoding conversion"
+    evidence:
+      - "docs/dev/CHINESE_MOJIBAKE_AUDIT_2026-05-30.md records the audit."
+      - "Mojibake pattern scan found no matching repository text files in scoped source/docs/config files."
+      - "npm run build, npm run test:butler-browser-smoke-script, npm run test:inbox-evidence-panel, and npm run smoke:butler-browser all passed."
+      - "Browser smoke verified key Chinese UI text and Butler Inbox evidence detail rendering."
+      - "No bulk encoding conversion was performed."
     risks:
-      - "Blind encoding conversion may corrupt valid text"
+      - "Future PowerShell output can still render mojibake if text IO omits explicit UTF-8 encoding."
 
   - id: OB-TASK-057
     title: "Design unified PrivacyGuard without changing behavior"
