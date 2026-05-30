@@ -1753,3 +1753,160 @@ h2 {
     grid-template-columns: 1fr;
   }
 }
+
+/* Mobile UX Polish V2 overrides */
+.summary-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.summary-chips span,
+.moment-tags small {
+  border: 1px solid rgb(15 23 42 / 10%);
+  color: #0f172a;
+  background: #ffffff;
+  font-weight: 700;
+}
+
+.hero-summary {
+  color: #0f172a !important;
+  font-weight: 800;
+}
+
+.compact-home-stats {
+  display: none;
+}
+
+.me-page {
+  display: grid;
+  gap: 18px;
+}
+
+.ghost {
+  color: #0f172a;
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.secondary {
+  color: #0f172a;
+  border-color: #b6c3d1;
+  background: #ffffff;
+}
+
+.friendly-actions .ghost,
+.friendly-actions .secondary,
+.moment-body .ghost {
+  min-height: 44px;
+  padding-inline: 14px;
+}
+
+.friendly-actions .ghost:hover,
+.moment-body .ghost:hover,
+.section-title .ghost:hover {
+  border-color: #0f766e;
+  color: #0f766e;
+  background: #ecfdf5;
+}
+
+@media (max-width: 760px) {
+  .sidebar {
+    padding: 6px 10px;
+  }
+
+  nav {
+    gap: 6px;
+    padding: 0;
+  }
+
+  nav button {
+    min-height: 42px;
+    padding: 7px 10px;
+    border-radius: 999px;
+    font-size: 13px;
+    background: rgb(255 255 255 / 6%);
+  }
+
+  nav button svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  .advanced-nav {
+    flex: 0 0 auto;
+    margin-top: 0;
+  }
+
+  .advanced-nav summary {
+    min-height: 42px;
+    padding: 11px 10px;
+    border: 1px solid rgb(255 255 255 / 8%);
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+
+  .advanced-nav[open] {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    top: 54px;
+    z-index: 20;
+    padding: 8px;
+    border-radius: 18px;
+    background: #101820;
+    box-shadow: 0 18px 50px rgb(15 23 42 / 26%);
+  }
+
+  .today-hero {
+    padding: 18px;
+    gap: 12px;
+  }
+
+  .today-hero h1 {
+    max-width: 100%;
+    font-size: clamp(32px, 9.2vw, 38px);
+    line-height: 1.05;
+  }
+
+  .today-hero p {
+    font-size: 14px;
+    line-height: 1.45;
+  }
+
+  .today-hero-status {
+    display: none;
+  }
+
+  .summary-chips span {
+    padding: 7px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+  }
+
+  .hero-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .today-focus-layout {
+    gap: 14px;
+  }
+
+  .today-panel {
+    padding: 16px;
+  }
+
+  .friendly-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .friendly-actions button:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .me-page {
+    gap: 14px;
+  }
+}

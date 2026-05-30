@@ -87,6 +87,16 @@ Product-friendly UI V1 was implemented on 2026-05-30:
 - `/timeline` now renders unified timeline events as life-record moments grouped by date, with progressive evidence expansion.
 - Butler Inbox cards default to title/summary/actions and expand inline `evidence_refs` only when the user asks to view evidence.
 
+Mobile UX Polish V2 was implemented on 2026-05-30:
+
+- The mobile primary navigation is compact, so the first screen is not consumed by navigation cards.
+- `/butler` now prioritizes the value statement, today's summary, and one main action before secondary cards.
+- Demo-mode copy is user-facing Chinese and marked as demo data without exposing internal fields such as mock seeds or raw source names.
+- `/timeline` demo entries read as life-record moments instead of development logs.
+- Butler chat demo answers hide internal source fields and use user-facing evidence labels.
+- `/me` now shows privacy/data, data sources, and preference settings first; advanced architecture details are folded under `高级与实验室`.
+- No backend API contract was changed.
+
 ### OpenClaw
 
 - Declaration files exist in `openclaw-skill/`.

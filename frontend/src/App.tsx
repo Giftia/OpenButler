@@ -85,7 +85,7 @@ import {
 } from "./lib/api";
 import {buildTodayHomeViewModel} from "./lib/butlerUiAdapter";
 import {groupTimelineByDate, toTimelineMoment, type TimelineMoment} from "./lib/timelineUiAdapter";
-import {insightTypeLabel, privacyModeLabel, sourceLabel, statusLabel} from "./lib/userFacingLabels";
+import {insightTypeLabel, privacyModeLabel, sourceLabel, statusLabel, userFacingDemoText} from "./lib/userFacingLabels";
 import type {EventItem, PluginManifest, PrivacyMode} from "./types";
 
 type PageKey =
@@ -345,14 +345,14 @@ function App() {
       </aside>
 
       <main>
-        {page !== "butler" && <header className="topbar">
+        {!primaryNavItems.some((item) => item.key === page) && <header className="topbar">
           <div>
             <p className="eyebrow">个人/家庭多模态事件湖原型</p>
             <h1>{navItems.find((item) => item.key === page)?.label}</h1>
           </div>
           <button className="primary" onClick={handleSimulate} disabled={loading}>
             {loading ? <Loader2 className="spin" size={17} /> : <RefreshCw size={17} />}
-            <span>模拟事件</span>
+            <span>生成演示记录</span>
           </button>
         </header>}
         {error && <div className="error">API 连接失败：{error}</div>}
@@ -727,10 +727,10 @@ function ButlerHome() {
     <div className="today-page">
       <section className="today-hero">
         <div className="today-hero-copy">
-          <p className="eyebrow">OpenButler 主动 AI 管家</p>
-          <h1>{view.mode === "new_user" ? "先认识你的一天。" : "今天的生活正在被整理。"}</h1>
-          <p>{view.headline}</p>
-          <p>{view.subheadline}</p>
+          <p className="eyebrow">OpenButler 主动 AI 管家 · {view.demoMode ? "演示数据" : "本地数据"} · {privacyModeLabel("strict")}</p>
+          <h1>{view.headline}</h1>
+          <p className="hero-summary">{view.subheadline}</p>
+          <p>{view.demoMode ? "当前展示的是线上演示记录，用来说明 OpenButler 如何整理一天。" : "OpenButler 会把授权的本地线索整理成今日概览、提醒和可复核依据。"}</p>
           <div className="hero-actions">
             <button className="primary" onClick={generate} disabled={busy}>
               {busy ? <Loader2 className="spin" size={17} /> : <RefreshCw size={17} />}
@@ -738,11 +738,17 @@ function ButlerHome() {
             </button>
             <button className="secondary" onClick={() => navigateTo("/timeline")}>查看时间线</button>
           </div>
+          <div className="summary-chips">
+            <span>{view.statusCards[0]?.value ?? "0 条"}信号</span>
+            <span>{view.statusCards[1]?.value ?? "0 条"}提醒</span>
+            <span>{view.statusCards[2]?.value ?? "0 分钟"}专注</span>
+            <span>{view.demoMode ? "演示数据" : "完全本地"}</span>
+          </div>
         </div>
         <div className="today-hero-status">
-          <span className="privacy-chip">{privacyModeLabel("strict")}</span>
-          <strong>{view.statusCards[0]?.value ?? "0 条"}</strong>
-          <span>今日已整理信号</span>
+          <span className="privacy-chip">{view.demoMode ? "演示数据" : privacyModeLabel("strict")}</span>
+          <strong>{view.summaryLine}</strong>
+          <span>{view.demoMode ? "这些内容只用于展示产品效果，不会读取你的真实本机活动。" : "今日已整理信号"}</span>
           <small>{view.dataQualityText}</small>
         </div>
       </section>
@@ -756,7 +762,7 @@ function ButlerHome() {
         />
       )}
 
-      <section className="today-status-grid">
+      <section className="today-status-grid compact-home-stats">
         {view.statusCards.map((card) => <TodayStatusTile card={card} key={card.title} />)}
       </section>
 
@@ -1277,8 +1283,8 @@ function FriendlySuggestionCard({
       </div>
       <p>{suggestion.summary}</p>
       <div className="friendly-actions">
-        <button className="secondary" onClick={() => setExpanded(!expanded)}>
-          {expanded ? "收起依据" : "查看证据详情"}
+        <button className="secondary" aria-label="查看证据详情" onClick={() => setExpanded(!expanded)}>
+          {expanded ? "收起依据" : "查看依据"}
         </button>
         <button className="ghost" onClick={() => feedback("useful")}>有用</button>
         <button className="ghost" onClick={() => feedback("remind_later")}>稍后再说</button>
@@ -1371,18 +1377,19 @@ function InsightList({insights, onChanged}: {insights: Array<Record<string, any>
           <div className="friendly-card-head">
             <div>
               <span>{insightTypeLabel(insight.type)} · {statusLabel(insight.status)}</span>
-              <strong>{insight.title}</strong>
+              <strong>{userFacingDemoText(insight.title ?? insightTypeLabel(insight.type), insightTypeLabel(insight.type))}</strong>
             </div>
             <small>{Math.round(Number(insight.confidence ?? 0) * 100)}%</small>
           </div>
-          <p>{insight.summary}</p>
-          {expandedInsightId === String(insight.id) && insight.detail && <p>{insight.detail}</p>}
+          <p>{userFacingDemoText(insight.summary ?? "这是一条管家提醒。")}</p>
+          {expandedInsightId === String(insight.id) && insight.detail && <p>{userFacingDemoText(insight.detail)}</p>}
           <div className="friendly-actions">
             <button
               className="secondary evidence-toggle"
+              aria-label="查看证据详情"
               onClick={() => setExpandedInsightId(expandedInsightId === String(insight.id) ? null : String(insight.id))}
             >
-              {expandedInsightId === String(insight.id) ? "收起依据" : "查看证据详情"}
+              {expandedInsightId === String(insight.id) ? "收起依据" : "查看依据"}
             </button>
             <button className="ghost" onClick={() => feedback(String(insight.id), "useful")}>有用</button>
             <button className="ghost" onClick={() => feedback(String(insight.id), "inaccurate")}>不准确</button>
@@ -1416,7 +1423,7 @@ function InsightEvidenceDetails({insight}: {insight: Record<string, any>}) {
       </div>
       <div className="suggestion-box">
         <strong>边界说明</strong>
-        <span>{String(insight.evidence_boundary ?? "数据不足，无法判断。")}</span>
+        <span>{userFacingDemoText(insight.evidence_boundary ?? "数据不足，无法判断。")}</span>
       </div>
       <div className="suggestion-box">
         <strong>隐私说明</strong>
@@ -1427,7 +1434,7 @@ function InsightEvidenceDetails({insight}: {insight: Record<string, any>}) {
           {refs.map((ref: Record<string, any>, index: number) => (
             <div className="evidence-ref-row" key={`${String(ref.kind ?? "ref")}-${index}`}>
               <strong>{sourceLabel(ref.source ?? ref.kind ?? "本地依据")}</strong>
-              <span>{String(ref.id ?? ref.path ?? ref.source_event_id ?? ref.source_context_id ?? "本地依据引用")}</span>
+              <span>{String(ref.path ?? `本地依据 ${index + 1}`)}</span>
               {String(ref.kind ?? "").includes("screenshot") && <small>仅显示路径 · 未复制截图</small>}
             </div>
           ))}
@@ -2237,10 +2244,22 @@ function StatusItem({label, value}: {label: string; value: string}) {
 
 function Chat() {
   const [messages, setMessages] = useState<Array<{role: "user" | "butler"; text: string}>>([
-    {role: "butler", text: "我已接入本地事件湖原型。可以问：我的钥匙在哪、今天光照够吗、本周成就总结。"}
+    {role: "butler", text: "我可以帮你查看今天有什么值得注意、回看时间线，或用演示线索展示物品回溯和光照建议。"}
   ]);
   const [text, setText] = useState("我的钥匙在哪");
   const [pending, setPending] = useState(false);
+
+  function sanitizeAnswer(answer: string) {
+    return answer
+      .replace(/phone_album/g, "相册线索（演示）")
+      .replace(/seed/g, "演示线索")
+      .replace(/raw source/g, "原始依据")
+      .replace(/source_event_id/g, "依据编号")
+      .replace(/MineContext/g, "电脑活动")
+      .replace(/PC Activity/g, "电脑使用")
+      .replace(/mock/g, "演示")
+      .replace(/fixture/g, "演示");
+  }
 
   async function send(message = text) {
     if (!message.trim()) return;
@@ -2249,7 +2268,7 @@ function Chat() {
     setText("");
     try {
       const result = await askButler(message);
-      setMessages((items) => [...items, {role: "butler", text: result.answer}]);
+      setMessages((items) => [...items, {role: "butler", text: sanitizeAnswer(result.answer)}]);
     } finally {
       setPending(false);
     }
@@ -2258,7 +2277,14 @@ function Chat() {
   return (
     <section className="chat-layout">
       <div className="suggestions">
-        {["我的钥匙在哪", "今天光照够吗", "本周成就总结", "今天9点10分我做了什么", "我什么时候打开过小红书网站"].map((item) => (
+        {[
+          "今天有什么值得注意？",
+          "查看今日时间线",
+          "哪些流程可以自动化？",
+          "我的钥匙在哪？（演示）",
+          "今天光照够吗？（演示）",
+          "本周成就总结（演示）"
+        ].map((item) => (
           <button className="secondary" key={item} onClick={() => send(item)}>{item}</button>
         ))}
       </div>
@@ -2296,42 +2322,62 @@ function Privacy({
 }) {
   const blocked = plugins.filter((plugin) => !plugin.runtime.available).length;
   return (
-    <div className="page-grid">
-      <section className="wide-panel">
+    <div className="me-page">
+      <section className="today-panel">
         <div className="section-title">
-          <h2>Privacy Guard</h2>
-          <p>策略会拦截插件、模型 Provider、数据源和工具调用。</p>
+          <div>
+            <p className="eyebrow">我的</p>
+            <h2>隐私与数据</h2>
+            <p>当前模式：{privacyModeLabel(mode)}。外部模型、云端 API 和外部回调默认关闭。</p>
+          </div>
         </div>
         <div className="mode-toggle">
           <button className={mode === "basic" ? "selected" : ""} onClick={() => onChange("basic")}>
             <ShieldCheck size={20} />
             <strong>基础隐私</strong>
-            <span>允许授权云 API、外部 Webhook 和云模型。</span>
+            <span>适合你明确授权的联网服务。</span>
           </button>
           <button className={mode === "strict" ? "selected" : ""} onClick={() => onChange("strict")}>
             <CloudOff size={20} />
-            <strong>完全隐私</strong>
-            <span>禁止外部网络模型调用、云端 API 和外部 Webhook。</span>
+            <strong>完全本地</strong>
+            <span>禁止外部模型、云端 API 和外部回调。</span>
           </button>
         </div>
-        <p className="policy-note">当前有 {blocked} 个插件被 strict 策略拦截或等待本地替代。</p>
+        <p className="policy-note">当前有 {blocked} 个技能插件在完全本地模式下等待本地替代。</p>
       </section>
 
-      <section className="panel topology">
-        <div className="section-title"><h2>部署拓扑</h2></div>
-        <div className="topology-row"><Camera size={18} /><span>Capture Gateway</span></div>
-        <div className="topology-row"><BrainCircuit size={18} /><span>Preprocessor Runtime</span></div>
-        <div className="topology-row"><Database size={18} /><span>SQLite + Local Files</span></div>
-        <div className="topology-row"><Bot size={18} /><span>Butler Tools / OpenClaw Adapter</span></div>
+      <section className="today-panel">
+        <div className="section-title"><h2>数据源</h2></div>
+        <div className="status-grid compact-status">
+          <StatusItem label="电脑活动" value="演示已启用" />
+          <StatusItem label="时间线" value="已启用" />
+          <StatusItem label="相册线索" value="演示" />
+          <StatusItem label="工位观察" value="未启用" />
+        </div>
+        <p className="policy-note">线上 Demo 使用演示数据展示产品效果，不会读取你的真实本机活动。</p>
       </section>
 
-      <section className="panel topology">
-        <div className="section-title"><h2>后续预留</h2></div>
-        <div className="topology-row"><Database size={18} /><span>PostgreSQL + pgvector</span></div>
-        <div className="topology-row"><Database size={18} /><span>MinIO 原始对象存储</span></div>
-        <div className="topology-row"><Database size={18} /><span>DuckDB 分析视图</span></div>
-        <div className="topology-row"><BrainCircuit size={18} /><span>Ollama / LocalAI / 端侧模型</span></div>
+      <section className="today-panel">
+        <div className="section-title"><h2>目标偏好</h2></div>
+        <div className="status-grid compact-status">
+          <StatusItem label="每日概览" value="开启" />
+          <StatusItem label="提醒频率" value="保守" />
+          <StatusItem label="自动化候选" value="开启" />
+          <StatusItem label="依据显示" value="点击后展开" />
+        </div>
       </section>
+
+      <details className="advanced-lab-panel">
+        <summary>高级与实验室</summary>
+        <div className="topology">
+          <div className="topology-row"><ShieldCheck size={18} /><span>隐私策略详情：完全本地模式会拦截 Provider、Webhook 和外部模型。</span></div>
+          <div className="topology-row"><Camera size={18} /><span>Capture Gateway（高级采集入口）</span></div>
+          <div className="topology-row"><BrainCircuit size={18} /><span>Preprocessor Runtime（高级前处理）</span></div>
+          <div className="topology-row"><Database size={18} /><span>SQLite + Local Files（本地数据层）</span></div>
+          <div className="topology-row"><Bot size={18} /><span>OpenClaw 技能声明已配置，运行时调用未验证。</span></div>
+          <div className="topology-row"><Database size={18} /><span>后续预留：PostgreSQL + pgvector、MinIO、DuckDB。</span></div>
+        </div>
+      </details>
     </div>
   );
 }

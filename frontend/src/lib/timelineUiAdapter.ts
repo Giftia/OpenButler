@@ -1,4 +1,4 @@
-import {eventTypeLabel, sourceLabel} from "./userFacingLabels";
+import {eventTypeLabel, isDemoLike, sourceLabel, userFacingDemoText} from "./userFacingLabels";
 
 export type TimelineMoment = {
   id: string;
@@ -30,6 +30,13 @@ function formatTime(value: unknown): string {
 
 function friendlyTitle(event: Record<string, any>): string {
   const type = String(event.event_type ?? "");
+  if (isDemoLike(event)) {
+    const title = String(event.title ?? "").toLowerCase();
+    if (title.includes("inbox")) return "一个提醒被整理出来";
+    if (title.includes("verification") || title.includes("terminal")) return "一次本地验证被记录了";
+    if (title.includes("coding") || title.includes("vscode")) return "一段专注被记住了";
+    if (title.includes("docs") || title.includes("chrome")) return "一次产品回看被记录了";
+  }
   if (type === "focus_block") return "一段专注被记住了";
   if (type === "context_switch") return "有一段切换值得注意";
   if (type === "workflow_candidate") return "一个流程可能值得自动化";
@@ -69,6 +76,7 @@ export function toTimelineMoment(event: Record<string, any>): TimelineMoment {
   const confidence = Math.round(Number(event.confidence ?? 0) * 100);
   const refs = Array.isArray(event.evidence_refs) ? event.evidence_refs : [];
   const category = categoryFor(event);
+  const demo = isDemoLike(event);
   return {
     id: String(event.id ?? `${event.started_at}-${event.title}`),
     icon: iconFor(category),
@@ -76,12 +84,14 @@ export function toTimelineMoment(event: Record<string, any>): TimelineMoment {
     date: formatDate(event.started_at),
     time: formatTime(event.started_at),
     category,
-    summary: String(event.summary ?? "这条记录来自 OpenButler 已授权的本地时间线。"),
+    summary: demo
+      ? userFacingDemoText(event.title ?? event.summary)
+      : userFacingDemoText(event.summary ?? "这条记录来自 OpenButler 已授权的本地时间线。"),
     valueTag,
-    sourceLabel: sourceLabel(event.source),
+    sourceLabel: demo ? `${sourceLabel(event.source)} · 演示数据` : sourceLabel(event.source),
     confidenceLabel: confidence > 0 ? `可信度 ${confidence}%` : "可信度待确认",
     evidenceAvailable: refs.length > 0 || Boolean(event.evidence_boundary),
-    evidenceBoundary: String(event.evidence_boundary ?? "这条记录只代表本地线索，远程系统状态需要回源确认。"),
+    evidenceBoundary: userFacingDemoText(event.evidence_boundary ?? "这条记录只代表本地线索，远程系统状态需要回源确认。"),
     details: event,
   };
 }

@@ -5,7 +5,10 @@ export const sourceLabels: Record<string, string> = {
   butler_core: "管家整理",
   workstation_vision: "工位观察",
   manual: "手动记录",
-  seed: "示例记录",
+  seed: "演示数据",
+  rule_engine: "管家整理",
+  timeline_event: "时间线依据",
+  pc_activity_event: "电脑活动（演示）",
 };
 
 export const eventTypeLabels: Record<string, string> = {
@@ -68,4 +71,33 @@ export function statusLabel(value: unknown): string {
 
 export function privacyModeLabel(value: unknown): string {
   return value === "strict" ? "完全本地" : "基础隐私";
+}
+
+export function isDemoLike(value: unknown): boolean {
+  const text = JSON.stringify(value ?? "").toLowerCase();
+  return text.includes("demo")
+    || text.includes("vercel")
+    || text.includes("seed")
+    || text.includes("mock")
+    || text.includes("fixture")
+    || text.includes("vercel-demo");
+}
+
+export function userFacingDemoText(value: unknown, fallback = "这是一条演示记录，用来展示 OpenButler 如何整理本地线索。"): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return fallback;
+  const normalized = raw.toLowerCase();
+  if (normalized.includes("check openbutler inbox")) return "查看了管家提醒，并保留了可复核依据。";
+  if (normalized.includes("run local verification")) return "完成了一次本地验证，确认演示不会读取真实活动数据。";
+  if (normalized.includes("review productization docs")) return "回看了产品化说明，用来整理下一步体验优化。";
+  if (normalized.includes("openbutler coding block")) return "有一段较稳定的工作时间，被整理为专注片段。";
+  if (normalized.includes("demo-only pc activity") || normalized.includes("not real minecontext")) {
+    return fallback;
+  }
+  return raw
+    .replace(/MineContext/g, "电脑活动")
+    .replace(/PC 活动/g, "电脑活动")
+    .replace(/PC Activity/g, "电脑使用")
+    .replace(/evidence_refs/g, "依据")
+    .replace(/evidence_boundary/g, "边界说明");
 }

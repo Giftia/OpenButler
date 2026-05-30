@@ -1419,6 +1419,81 @@ class ButlerCoreService:
                         {"verification_command": "cd backend && python -m unittest discover -s app\\modules\\butler_core\\tests"},
                     ),
             ],
+            "OB-GOAL-008": [
+                    criterion(
+                        "mobile_nav_compact",
+                        "移动端首屏不再被大导航占据",
+                        "Mobile UX Polish V2 overrides" in (root / "frontend" / "src" / "styles.css").read_text(encoding="utf-8")
+                        and "min-height: 42px" in (root / "frontend" / "src" / "styles.css").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "frontend/src/styles.css"}],
+                    ),
+                    criterion(
+                        "home_first_screen_summary",
+                        "首页第一屏能展示产品价值、今日摘要和一个主行动",
+                        "summary-chips" in app_text and "查看管家建议" in (root / "frontend" / "src" / "lib" / "butlerUiAdapter.ts").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "route", "path": "/butler"},
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                            {"kind": "file", "path": "frontend/src/lib/butlerUiAdapter.ts"},
+                        ],
+                    ),
+                    criterion(
+                        "demo_copy_sanitized",
+                        "普通用户界面不出现英文 demo 文案",
+                        "userFacingDemoText" in (root / "frontend" / "src" / "lib" / "userFacingLabels.ts").read_text(encoding="utf-8")
+                        and "Demo Copy Guidelines" in (root / "docs" / "product" / "DEMO_COPY_GUIDELINES.md").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "frontend/src/lib/userFacingLabels.ts"},
+                            {"kind": "file", "path": "docs/product/DEMO_COPY_GUIDELINES.md"},
+                        ],
+                    ),
+                    criterion(
+                        "internal_fields_hidden",
+                        "普通用户界面不出现 phone_album、seed、Provider、Webhook 等内部字段",
+                        "sanitizeAnswer" in app_text
+                        and "相册线索（演示）" in app_text
+                        and "隐私与数据" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "timeline_life_record_copy",
+                        "时间线演示事件像生活记录，而不是开发日志",
+                        "一段专注被记住了" in (root / "frontend" / "src" / "lib" / "timelineUiAdapter.ts").read_text(encoding="utf-8")
+                        and "一次本地验证被记录了" in (root / "frontend" / "src" / "lib" / "timelineUiAdapter.ts").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "frontend/src/lib/timelineUiAdapter.ts"}],
+                    ),
+                    criterion(
+                        "chat_internal_fields_sanitized",
+                        "管家演示回答不泄露内部数据源字段",
+                        "sanitizeAnswer" in app_text and "source_event_id" in app_text and "依据编号" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "my_page_layered",
+                        "我的页第一层面向普通用户，高级架构内容进入高级与实验室",
+                        "me-page" in app_text and "隐私与数据" in app_text and "OpenClaw 技能声明已配置，运行时调用未验证" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "button_contrast_improved",
+                        "所有按钮可点击状态清晰",
+                        "friendly-actions .ghost" in (root / "frontend" / "src" / "styles.css").read_text(encoding="utf-8")
+                        and "min-height: 44px" in (root / "frontend" / "src" / "styles.css").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "frontend/src/styles.css"}],
+                    ),
+                    criterion(
+                        "frontend_build_documented_v2",
+                        "frontend build 通过",
+                        (root / "current_state.md").exists() and "Frontend build passes" in (root / "current_state.md").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "current_state.md"}],
+                    ),
+                    criterion(
+                        "backend_tests_not_broken_v2",
+                        "后端核心测试通过",
+                        (root / "current_state.md").exists() and "Ran 51 tests - OK" in (root / "current_state.md").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "current_state.md"}],
+                    ),
+            ],
         }
         objectives = []
         for declared in active_objectives:
