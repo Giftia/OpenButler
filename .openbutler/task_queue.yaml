@@ -149,51 +149,64 @@ tasks:
     title: "实现用户友好的 Butler 首页 V1"
     goal_id: OB-GOAL-006
     priority: P0
-    status: ready
+    status: done
     done_when:
       - "首页第一屏展示 OpenButler 的价值、今日状态和下一步建议"
       - "使用大卡片、场景分组、低认知负担布局"
       - "高级技术能力被折叠到高级入口"
       - "空状态和新用户状态可读"
+    evidence:
+      - "frontend/src/App.tsx renders /butler as a product-friendly Today page with hero, status cards, suggestions, timeline preview, and advanced lab."
+      - "frontend/src/lib/butlerUiAdapter.ts maps backend home/timeline payloads into user-facing view models."
+      - "frontend/src/styles.css adds responsive product home cards and mobile-first layout."
 
   - id: OB-TASK-062
     title: "实现渐进式上手引导"
     goal_id: OB-GOAL-006
     priority: P0
-    status: ready
+    status: done
     done_when:
       - "新用户看到 3 步以内的上手流程"
       - "未接入数据时不会显示复杂空白控制台"
       - "已接入数据后逐步展示洞察、指标和时间线"
       - "支持跳过或稍后配置"
+    evidence:
+      - "ProgressiveOnboarding shows a 3-step local-data onboarding path when there is insufficient data."
+      - "Connected states show suggestions, scene signals, and timeline preview instead of empty technical panels."
 
   - id: OB-TASK-063
     title: "实现记一生风格的统一时间线展示 V1"
     goal_id: OB-GOAL-006
     priority: P0
-    status: ready
+    status: done
     done_when:
       - "统一时间线以生活记录形式展示"
       - "事件按时间分组"
       - "每条事件包含图标、标题、日期、摘要、来源和证据入口"
       - "技术事件名被转换为用户可理解文案"
+    evidence:
+      - "frontend/src/lib/timelineUiAdapter.ts converts unified timeline events into life-record moments."
+      - "UnifiedTimeline now groups events by date and exposes evidence details progressively."
 
   - id: OB-TASK-064
     title: "实现管家提醒卡片的渐进式证据展开"
     goal_id: OB-GOAL-006
     priority: P0
-    status: ready
+    status: done
     done_when:
       - "首页和 Inbox 的提醒卡片默认简洁"
       - "用户点击后才展开证据、置信度、来源和边界说明"
       - "不新增不存在的 evidence endpoint，优先使用 inline evidence_refs"
       - "无证据时显示可解释空状态"
+    evidence:
+      - "InsightList and FriendlySuggestionCard default to title/summary/actions and expand inline evidence_refs on click."
+      - "No /api/butler/insights/{id}/evidence endpoint was added."
 
   - id: OB-TASK-065
     title: "统一用户可见术语和中文文案"
     goal_id: OB-GOAL-006
     priority: P1
-    status: ready
+    status: done
     done_when:
       - "MineContext 显示为电脑活动或本机观察"
       - "godview 显示为本机回溯"
@@ -202,5 +215,8 @@ tasks:
       - "Evidence 显示为依据"
       - "strict privacy 显示为完全本地"
       - "避免 PCActivity、UnifiedTimelineEvent 等技术名词出现在普通页面"
+    evidence:
+      - "frontend/src/lib/userFacingLabels.ts provides user-facing source, event, insight, status, and privacy labels."
+      - "Primary navigation is reduced to 今日、时间线、管家、我的; technical pages are under 高级与实验室."
 
 blocked: []

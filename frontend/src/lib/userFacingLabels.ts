@@ -1,0 +1,71 @@
+export const sourceLabels: Record<string, string> = {
+  minecontext: "电脑活动",
+  godview: "本机回溯",
+  pc_activity: "电脑使用",
+  butler_core: "管家整理",
+  workstation_vision: "工位观察",
+  manual: "手动记录",
+  seed: "示例记录",
+};
+
+export const eventTypeLabels: Record<string, string> = {
+  pc_activity: "电脑使用",
+  focus_block: "专注时段",
+  context_switch: "切换较多",
+  app_usage: "应用使用",
+  domain_usage: "网站使用",
+  workflow_candidate: "可自动化流程",
+  task_candidate: "待跟进事项",
+  break_candidate: "休息提示",
+  briefing: "管家简报",
+  manual_note: "手动记录",
+  data_quality_notice: "数据质量",
+  daily_overview: "今日概览",
+  achievement: "小成就",
+};
+
+export const insightTypeLabels: Record<string, string> = {
+  daily_overview: "今日概览",
+  focus_summary: "专注总结",
+  context_switch_warning: "节奏提醒",
+  workflow_candidate: "可自动化流程",
+  task_followup: "待跟进事项",
+  break_suggestion: "休息建议",
+  privacy_notice: "隐私提示",
+  data_quality_notice: "数据质量提示",
+  achievement: "小成就",
+};
+
+export const statusLabels: Record<string, string> = {
+  new: "新提醒",
+  seen: "已查看",
+  accepted: "已采纳",
+  dismissed: "已忽略",
+  snoozed: "稍后提醒",
+  resolved: "已处理",
+  marked_inaccurate: "已标记不准确",
+};
+
+export function sourceLabel(value: unknown): string {
+  const key = String(value ?? "").trim();
+  return sourceLabels[key] ?? (key ? "本地记录" : "未知来源");
+}
+
+export function eventTypeLabel(value: unknown): string {
+  const key = String(value ?? "").trim();
+  return eventTypeLabels[key] ?? "时间线事件";
+}
+
+export function insightTypeLabel(value: unknown): string {
+  const key = String(value ?? "").trim();
+  return insightTypeLabels[key] ?? "管家提醒";
+}
+
+export function statusLabel(value: unknown): string {
+  const key = String(value ?? "").trim();
+  return statusLabels[key] ?? "待查看";
+}
+
+export function privacyModeLabel(value: unknown): string {
+  return value === "strict" ? "完全本地" : "基础隐私";
+}

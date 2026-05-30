@@ -9,17 +9,16 @@ const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"))
 for (const snippet of [
   "expandedInsightId",
   "查看证据详情",
-  "收起证据详情",
+  "收起依据",
   "InsightEvidenceDetails",
   "evidence_refs",
-  "evidence_boundary",
-  "confidence",
-  "source",
-  "generated_by",
+  "边界说明",
+  "可信度",
+  "来源",
   "截图证据仅显示路径引用，不复制或读取内容",
-  "path only · no screenshot copy",
-  "暂无 evidence_refs",
-  "数据不足或该洞察没有可展开证据引用",
+  "仅显示路径 · 未复制截图",
+  "暂无可展开依据",
+  "数据不足或该提醒没有可展开依据引用",
 ]) {
   if (!app.includes(snippet)) {
     throw new Error(`Missing Butler Inbox evidence detail snippet: ${snippet}`);
@@ -42,4 +41,3 @@ if (packageJson.scripts["test:inbox-evidence-panel"] !== "node scripts/check-but
 }
 
 console.log(JSON.stringify({checked: "butler-inbox-evidence-panel", ok: true}, null, 2));
-

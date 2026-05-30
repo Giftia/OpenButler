@@ -1358,6 +1358,67 @@ class ButlerCoreService:
                         [{"kind": "api", "path": "GET /api/butler/mvp-report"}],
                     ),
             ],
+            "OB-GOAL-006": [
+                    criterion(
+                        "ten_second_value_expression",
+                        "用户打开首页后 10 秒内能理解 OpenButler 的核心价值",
+                        "today-hero" in app_text and "OpenButler 主动 AI 管家" in app_text,
+                        [
+                            {"kind": "route", "path": "/butler"},
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                        ],
+                    ),
+                    criterion(
+                        "home_not_technical_console",
+                        "首页不再堆叠大量技术模块",
+                        "advanced-lab-panel" in app_text and "高级与实验室" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                        {"note": "Technical controls remain available behind the advanced lab disclosure."},
+                    ),
+                    criterion(
+                        "ordinary_terms_hide_internal_names",
+                        "普通用户不需要理解 MineContext、PCActivity、UnifiedTimelineEvent 等术语",
+                        (root / "frontend" / "src" / "lib" / "userFacingLabels.ts").exists()
+                        and "电脑活动" in (root / "frontend" / "src" / "lib" / "userFacingLabels.ts").read_text(encoding="utf-8")
+                        and "时间线事件" in (root / "frontend" / "src" / "lib" / "userFacingLabels.ts").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "frontend/src/lib/userFacingLabels.ts"}],
+                    ),
+                    criterion(
+                        "progressive_onboarding_available",
+                        "提供渐进式上手流程",
+                        "ProgressiveOnboarding" in app_text and "3 步开始" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "overview_insights_timeline_evidence_visible",
+                        "今日概览、主动提醒、时间线、证据入口清晰可见",
+                        "管家建议" in app_text
+                        and "今日时间线预览" in app_text
+                        and "查看证据详情" in app_text
+                        and "边界说明" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "advanced_entry_preserved",
+                        "保留高级入口给开发者和 power user",
+                        "advancedNavItems" in app_text and "高级与实验室" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "frontend_build_documented",
+                        "前端 build 通过",
+                        (root / "current_state.md").exists() and "Frontend build passes" in (root / "current_state.md").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "current_state.md"}],
+                        {"verification_command": "cd frontend && npm run build"},
+                    ),
+                    criterion(
+                        "backend_tests_not_broken",
+                        "不破坏现有后端测试",
+                        (root / "current_state.md").exists() and "Ran 51 tests - OK" in (root / "current_state.md").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "current_state.md"}],
+                        {"verification_command": "cd backend && python -m unittest discover -s app\\modules\\butler_core\\tests"},
+                    ),
+            ],
         }
         objectives = []
         for declared in active_objectives:

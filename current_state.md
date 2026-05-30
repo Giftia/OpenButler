@@ -77,6 +77,16 @@ Current insight evidence contract:
 - Pages include `/butler`, `/butler/inbox`, `/metrics`, `/timeline`, `/goals`, `/pc-activity-context`, `/vision`, and `/`.
 - Frontend build passes.
 
+Product-friendly UI V1 was implemented on 2026-05-30:
+
+- `/butler` now opens a user-friendly Today page instead of a technical control console.
+- Primary navigation is reduced to `今日`, `时间线`, `管家`, and `我的`.
+- Technical and power-user pages remain available under `高级与实验室`.
+- The homepage uses a hero, today status cards, 1-3 prioritized butler suggestions, scene signal cards, and timeline preview.
+- New-user and insufficient-data states explain the next step instead of showing empty technical panels.
+- `/timeline` now renders unified timeline events as life-record moments grouped by date, with progressive evidence expansion.
+- Butler Inbox cards default to title/summary/actions and expand inline `evidence_refs` only when the user asks to view evidence.
+
 ### OpenClaw
 
 - Declaration files exist in `openclaw-skill/`.

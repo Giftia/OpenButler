@@ -83,6 +83,9 @@ import {
   updateWorkstationSettings,
   simulateEvents
 } from "./lib/api";
+import {buildTodayHomeViewModel} from "./lib/butlerUiAdapter";
+import {groupTimelineByDate, toTimelineMoment, type TimelineMoment} from "./lib/timelineUiAdapter";
+import {insightTypeLabel, privacyModeLabel, sourceLabel, statusLabel} from "./lib/userFacingLabels";
 import type {EventItem, PluginManifest, PrivacyMode} from "./types";
 
 type PageKey =
@@ -99,20 +102,42 @@ type PageKey =
   | "goals"
   | "privacy";
 
-const navItems: Array<{key: PageKey; label: string; icon: typeof Home}> = [
-  {key: "butler", label: "主动管家", icon: Inbox},
-  {key: "dashboard", label: "Dashboard", icon: Home},
-  {key: "ingest", label: "数据接入", icon: PlugZap},
-  {key: "plugins", label: "插件流水线", icon: BrainCircuit},
-  {key: "timeline", label: "统一时间线", icon: CalendarDays},
-  {key: "chat", label: "管家对话", icon: MessageSquareText},
-  {key: "workstation", label: "视觉感知", icon: Camera},
-  {key: "pcActivity", label: "PC 操作感知", icon: Database},
-  {key: "butlerInbox", label: "Butler Inbox", icon: ClipboardList},
-  {key: "metrics", label: "Metrics", icon: BrainCircuit},
-  {key: "goals", label: "Goals", icon: Target},
-  {key: "privacy", label: "隐私与部署", icon: ShieldCheck}
+const primaryNavItems: Array<{key: PageKey; label: string; icon: typeof Home}> = [
+  {key: "butler", label: "今日", icon: Inbox},
+  {key: "timeline", label: "时间线", icon: CalendarDays},
+  {key: "chat", label: "管家", icon: MessageSquareText},
+  {key: "privacy", label: "我的", icon: ShieldCheck}
 ];
+
+const advancedNavItems: Array<{key: PageKey; label: string; icon: typeof Home}> = [
+  {key: "dashboard", label: "原型看板", icon: Home},
+  {key: "pcActivity", label: "电脑活动", icon: Database},
+  {key: "workstation", label: "视觉感知", icon: Camera},
+  {key: "plugins", label: "技能插件", icon: BrainCircuit},
+  {key: "metrics", label: "今日量化", icon: BrainCircuit},
+  {key: "goals", label: "目标设置", icon: Target},
+  {key: "butlerInbox", label: "提醒收件箱", icon: ClipboardList},
+  {key: "ingest", label: "数据接入", icon: PlugZap}
+];
+
+const navItems = [...primaryNavItems, ...advancedNavItems];
+
+function routeForPage(key: PageKey) {
+  return {
+    butler: "/butler",
+    timeline: "/timeline",
+    chat: "/assistant",
+    privacy: "/me",
+    dashboard: "/dashboard",
+    pcActivity: "/pc-activity-context",
+    workstation: "/vision",
+    plugins: "/plugins",
+    metrics: "/metrics",
+    goals: "/goals",
+    butlerInbox: "/butler/inbox",
+    ingest: "/ingest"
+  }[key];
+}
 
 const sourceCatalog = [
   {name: "手机相册", icon: Smartphone, mode: "strict", description: "照片 EXIF、场景、物品、人物主体索引"},
@@ -149,22 +174,33 @@ function groupByStage(plugins: PluginManifest[]) {
 }
 
 function App() {
+  const currentPath = window.location.pathname;
   const [page, setPage] = useState<PageKey>(
-    window.location.pathname.includes("butler/inbox")
+    currentPath.includes("butler/inbox")
       ? "butlerInbox"
-      : window.location.pathname.includes("metrics")
+      : currentPath.includes("metrics")
         ? "metrics"
-        : window.location.pathname.includes("goals")
+        : currentPath.includes("goals")
           ? "goals"
-          : window.location.pathname.includes("pc-activity-context")
+          : currentPath.includes("pc-activity-context")
       ? "pcActivity"
-      : window.location.pathname.includes("vision")
+      : currentPath.includes("vision")
         ? "workstation"
-        : window.location.pathname.includes("timeline")
+        : currentPath.includes("timeline")
           ? "timeline"
-          : window.location.pathname.includes("butler")
+          : currentPath.includes("assistant") || currentPath.includes("butler/chat")
+            ? "chat"
+            : currentPath.includes("me") || currentPath.includes("settings") || currentPath.includes("privacy")
+              ? "privacy"
+              : currentPath.includes("plugins")
+                ? "plugins"
+                : currentPath.includes("ingest")
+                  ? "ingest"
+                  : currentPath.includes("dashboard")
+                    ? "dashboard"
+                    : currentPath.includes("butler")
             ? "butler"
-            : "dashboard"
+            : "butler"
   );
   const [events, setEvents] = useState<EventItem[]>([]);
   const [plugins, setPlugins] = useState<PluginManifest[]>([]);
@@ -262,7 +298,7 @@ function App() {
           </div>
         </div>
         <nav>
-          {navItems.map((item) => {
+          {primaryNavItems.map((item) => {
             const Icon = item.icon;
             return (
               <button
@@ -270,23 +306,7 @@ function App() {
                 className={page === item.key ? "active" : ""}
                 onClick={() => {
                   setPage(item.key);
-                  if (item.key === "workstation") {
-                    window.history.replaceState(null, "", "/vision");
-                  } else if (item.key === "pcActivity") {
-                    window.history.replaceState(null, "", "/pc-activity-context");
-                  } else if (item.key === "butler") {
-                    window.history.replaceState(null, "", "/butler");
-                  } else if (item.key === "butlerInbox") {
-                    window.history.replaceState(null, "", "/butler/inbox");
-                  } else if (item.key === "metrics") {
-                    window.history.replaceState(null, "", "/metrics");
-                  } else if (item.key === "timeline") {
-                    window.history.replaceState(null, "", "/timeline");
-                  } else if (item.key === "goals") {
-                    window.history.replaceState(null, "", "/goals");
-                  } else if (["vision", "pc-activity-context", "butler", "metrics", "timeline", "goals"].some((path) => window.location.pathname.includes(path))) {
-                    window.history.replaceState(null, "", "/");
-                  }
+                  window.history.replaceState(null, "", routeForPage(item.key));
                 }}
                 title={item.label}
               >
@@ -295,15 +315,37 @@ function App() {
               </button>
             );
           })}
+          <details className="advanced-nav">
+            <summary>高级与实验室</summary>
+            <div>
+              {advancedNavItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.key}
+                    className={page === item.key ? "active" : ""}
+                    onClick={() => {
+                      setPage(item.key);
+                      window.history.replaceState(null, "", routeForPage(item.key));
+                    }}
+                    title={item.label}
+                  >
+                    <Icon size={18} />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </details>
         </nav>
         <div className="mode-chip">
           {privacyMode === "strict" ? <CloudOff size={16} /> : <ShieldCheck size={16} />}
-          <span>{privacyMode === "strict" ? "完全隐私" : "基础隐私"}</span>
+          <span>{privacyModeLabel(privacyMode)}</span>
         </div>
       </aside>
 
       <main>
-        <header className="topbar">
+        {page !== "butler" && <header className="topbar">
           <div>
             <p className="eyebrow">个人/家庭多模态事件湖原型</p>
             <h1>{navItems.find((item) => item.key === page)?.label}</h1>
@@ -312,7 +354,7 @@ function App() {
             {loading ? <Loader2 className="spin" size={17} /> : <RefreshCw size={17} />}
             <span>模拟事件</span>
           </button>
-        </header>
+        </header>}
         {error && <div className="error">API 连接失败：{error}</div>}
         {CurrentPage}
       </main>
@@ -515,13 +557,15 @@ function ButlerHome() {
   const [importMessage, setImportMessage] = useState("");
   const [mvpActionBusy, setMvpActionBusy] = useState("");
   const [mvpActionMessage, setMvpActionMessage] = useState("");
+  const [timelineItems, setTimelineItems] = useState<Array<Record<string, any>>>([]);
 
   async function refreshHome() {
-    const [homeResult, readinessResult, reportResult, briefingResult] = await Promise.all([
+    const [homeResult, readinessResult, reportResult, briefingResult, timelineResult] = await Promise.all([
       getButlerHome(),
       getButlerReadiness(),
       getButlerMVPReport(),
-      getButlerBriefingsToday()
+      getButlerBriefingsToday(),
+      getButlerTimeline()
     ]);
     const harnessResult = await getButlerLatestHarnessRuns();
     const objectiveResult = await getButlerProductizationObjectiveStatus();
@@ -533,6 +577,7 @@ function ButlerHome() {
     setObjectiveStatus(objectiveResult);
     setDemoPack(demoPackResult);
     setBriefings(briefingResult.items);
+    setTimelineItems(timelineResult.items ?? []);
   }
 
   useEffect(() => {
@@ -676,6 +721,146 @@ function ButlerHome() {
   const metrics = home?.metrics ?? {};
   const insights = home?.insights ?? [];
   const dataInsufficient = Number(metrics.source_event_count ?? 0) === 0 || insights.some((item: Record<string, any>) => item.type === "data_quality_notice");
+  const view = buildTodayHomeViewModel(home, timelineItems);
+  const primarySuggestion = view.topSuggestions[0];
+  return (
+    <div className="today-page">
+      <section className="today-hero">
+        <div className="today-hero-copy">
+          <p className="eyebrow">OpenButler 主动 AI 管家</p>
+          <h1>{view.mode === "new_user" ? "先认识你的一天。" : "今天的生活正在被整理。"}</h1>
+          <p>{view.headline}</p>
+          <p>{view.subheadline}</p>
+          <div className="hero-actions">
+            <button className="primary" onClick={generate} disabled={busy}>
+              {busy ? <Loader2 className="spin" size={17} /> : <RefreshCw size={17} />}
+              <span>{view.primaryAction}</span>
+            </button>
+            <button className="secondary" onClick={() => navigateTo("/timeline")}>查看时间线</button>
+          </div>
+        </div>
+        <div className="today-hero-status">
+          <span className="privacy-chip">{privacyModeLabel("strict")}</span>
+          <strong>{view.statusCards[0]?.value ?? "0 条"}</strong>
+          <span>今日已整理信号</span>
+          <small>{view.dataQualityText}</small>
+        </div>
+      </section>
+
+      {view.mode === "new_user" && (
+        <ProgressiveOnboarding
+          onImport={importTodayForButler}
+          importBusy={importBusy}
+          importMessage={importMessage}
+          onOpenAdvanced={() => navigateTo("/pc-activity-context")}
+        />
+      )}
+
+      <section className="today-status-grid">
+        {view.statusCards.map((card) => <TodayStatusTile card={card} key={card.title} />)}
+      </section>
+
+      <section className="today-focus-layout">
+        <div className="today-main-column">
+          <section className="today-panel">
+            <div className="section-title">
+              <div>
+                <h2>管家建议</h2>
+                <p>默认只展示最重要的 1-3 条，依据需要时再展开。</p>
+              </div>
+              <button className="ghost" onClick={() => navigateTo("/butler/inbox")}>查看全部</button>
+            </div>
+            {view.topSuggestions.length ? (
+              <div className="friendly-suggestion-list">
+                {view.topSuggestions.map((suggestion) => (
+                  <FriendlySuggestionCard
+                    key={suggestion.id}
+                    suggestion={suggestion}
+                    onChanged={refreshHome}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="friendly-empty">
+                <strong>{dataInsufficient ? "还没有足够信号" : "暂时没有需要打扰你的事"}</strong>
+                <span>{dataInsufficient ? "OpenButler 不会用空数据编造结论。你可以先连接本机观察或查看高级入口。" : "已连接数据源，但目前没有高优先级提醒。"}</span>
+              </div>
+            )}
+          </section>
+
+          <section className="today-panel">
+            <div className="section-title">
+              <div>
+                <h2>今日时间线预览</h2>
+                <p>像生活记录一样保存重要片段，而不是展示技术日志。</p>
+              </div>
+              <button className="ghost" onClick={() => navigateTo("/timeline")}>完整时间线</button>
+            </div>
+            <LifeTimelinePreview items={view.timelinePreview} />
+          </section>
+        </div>
+
+        <aside className="today-side-column">
+          <section className="today-panel">
+            <div className="section-title"><h2>场景信号</h2></div>
+            <div className="scene-card-grid">
+              {view.sceneCards.map((card) => <SceneSignalCard card={card} key={card.title} />)}
+            </div>
+          </section>
+
+          <section className="today-panel">
+            <div className="section-title"><h2>下一步</h2></div>
+            <div className="next-action-card">
+              <strong>{primarySuggestion?.title ?? (dataInsufficient ? "先连接一个本地数据源" : "查看今天整理好的时间线")}</strong>
+              <span>{primarySuggestion?.summary ?? (dataInsufficient ? "连接电脑活动后，OpenButler 会开始整理今日概览和依据。" : "当前没有紧急提醒，可以从完整时间线继续回看。")}</span>
+              <button className="secondary" onClick={() => navigateTo(dataInsufficient ? "/pc-activity-context" : "/timeline")}>
+                {dataInsufficient ? "去连接" : "去查看"}
+              </button>
+            </div>
+          </section>
+        </aside>
+      </section>
+
+      <details className="advanced-lab-panel">
+        <summary>高级与实验室</summary>
+        <div className="advanced-lab-grid">
+          <button className="secondary" onClick={runDemoPath} disabled={demoBusy}>
+            {demoBusy ? <Loader2 className="spin" size={17} /> : <CheckCircle2 size={17} />}
+            <span>运行演示闭环</span>
+          </button>
+          <button className="secondary" onClick={resetDemoPath} disabled={resetBusy}>
+            {resetBusy ? <Loader2 className="spin" size={17} /> : <RefreshCw size={17} />}
+            <span>重置演示数据</span>
+          </button>
+          <button className="secondary" onClick={runDataInsufficientDrill} disabled={drillBusy}>
+            {drillBusy ? <Loader2 className="spin" size={17} /> : <CloudOff size={17} />}
+            <span>演练空数据路径</span>
+          </button>
+          <button className="secondary" onClick={() => navigateTo("/metrics")}>查看今日量化</button>
+          <button className="secondary" onClick={() => navigateTo("/goals")}>目标设置</button>
+          <button className="secondary" onClick={() => navigateTo("/plugins")}>技能插件</button>
+        </div>
+        {(demoMessage || drillMessage || mvpActionMessage) && (
+          <div className="suggestion-box">
+            <strong>实验室运行结果</strong>
+            {demoMessage && <span>{demoMessage}</span>}
+            {drillMessage && <span>{drillMessage}</span>}
+            {mvpActionMessage && <span>{mvpActionMessage}</span>}
+          </div>
+        )}
+        <div className="evidence">
+          <small>readiness {String(readiness?.status ?? "not_loaded")}</small>
+          <small>mvp {String(mvpReport?.status ?? "not_loaded")}</small>
+          <small>briefings {String(briefings.length)}</small>
+          <small>harness_runs {String(latestHarnessRuns.length)}</small>
+          <small>objectives {String((objectiveStatus?.objectives ?? []).length)}</small>
+          <small>demo_pack {String(demoPack?.status ?? "not_loaded")}</small>
+        </div>
+        <p className="policy-note">{home?.overview?.evidence_boundary ?? "今日概览只基于已授权的本地数据源，远程系统状态需要回源确认。"}</p>
+      </details>
+    </div>
+  );
+  /*
   return (
     <div className="workstation-page">
       <section className="wide-panel">
@@ -994,6 +1179,146 @@ function ButlerHome() {
       </section>
     </div>
   );
+  */
+}
+
+function TodayStatusTile({card}: {card: {title: string; value: string; description: string; tone: string}}) {
+  return (
+    <article className={`today-status-card tone-${card.tone}`}>
+      <span>{card.title}</span>
+      <strong>{card.value}</strong>
+      <small>{card.description}</small>
+    </article>
+  );
+}
+
+function SceneSignalCard({card}: {card: {title: string; value: string; description: string; tone: string}}) {
+  return (
+    <article className={`scene-card tone-${card.tone}`}>
+      <span>{card.title}</span>
+      <strong>{card.value}</strong>
+      <small>{card.description}</small>
+    </article>
+  );
+}
+
+function ProgressiveOnboarding({
+  onImport,
+  importBusy,
+  importMessage,
+  onOpenAdvanced
+}: {
+  onImport: () => void;
+  importBusy: boolean;
+  importMessage: string;
+  onOpenAdvanced: () => void;
+}) {
+  return (
+    <section className="onboarding-panel">
+      <div>
+        <p className="eyebrow">3 步开始</p>
+        <h2>先建立今天的第一条本地线索</h2>
+        <p>OpenButler 默认不会编造结论。连接本机观察后，它会整理时间线、生成今日概览，并把依据留给你复核。</p>
+      </div>
+      <div className="onboarding-steps">
+        <article><strong>1</strong><span>连接本机观察</span></article>
+        <article><strong>2</strong><span>生成今日概览</span></article>
+        <article><strong>3</strong><span>查看时间线与依据</span></article>
+      </div>
+      <div className="hero-actions">
+        <button className="primary" onClick={onImport} disabled={importBusy}>
+          {importBusy ? <Loader2 className="spin" size={17} /> : <Database size={17} />}
+          <span>连接电脑活动</span>
+        </button>
+        <button className="secondary" onClick={onOpenAdvanced}>稍后配置</button>
+      </div>
+      {importMessage && <small>{importMessage}</small>}
+    </section>
+  );
+}
+
+function FriendlySuggestionCard({
+  suggestion,
+  onChanged
+}: {
+  suggestion: {
+    id: string;
+    title: string;
+    summary: string;
+    status: string;
+    type: string;
+    confidence: number;
+    evidenceBoundary: string;
+    raw: Record<string, any>;
+  };
+  onChanged: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  async function feedback(type: string) {
+    if (type === "dismissed") {
+      await dismissInsight(suggestion.id);
+    } else if (type === "remind_later") {
+      await snoozeInsight(suggestion.id, 60);
+    } else {
+      await submitInsightFeedback(suggestion.id, type);
+    }
+    await onChanged();
+  }
+
+  return (
+    <article className="friendly-insight-card">
+      <div className="friendly-card-head">
+        <div>
+          <span>{suggestion.type} · {suggestion.status}</span>
+          <strong>{suggestion.title}</strong>
+        </div>
+        <small>{Math.round(suggestion.confidence * 100)}%</small>
+      </div>
+      <p>{suggestion.summary}</p>
+      <div className="friendly-actions">
+        <button className="secondary" onClick={() => setExpanded(!expanded)}>
+          {expanded ? "收起依据" : "查看证据详情"}
+        </button>
+        <button className="ghost" onClick={() => feedback("useful")}>有用</button>
+        <button className="ghost" onClick={() => feedback("remind_later")}>稍后再说</button>
+        <button className="ghost" onClick={() => feedback("inaccurate")}>不准确</button>
+      </div>
+      {expanded && <InsightEvidenceDetails insight={suggestion.raw} />}
+    </article>
+  );
+}
+
+function LifeTimelinePreview({items}: {items: TimelineMoment[]}) {
+  if (!items.length) {
+    return (
+      <div className="friendly-empty">
+        <strong>时间线还在等待第一条记录</strong>
+        <span>接入本地数据后，OpenButler 会把重要片段整理成可回看的生活记录。</span>
+      </div>
+    );
+  }
+  return (
+    <div className="life-timeline preview">
+      {items.slice(0, 5).map((item) => (
+        <article className="life-moment" key={item.id}>
+          <div className={`moment-icon ${item.icon}`}>{item.category.slice(0, 1)}</div>
+          <div className="moment-body">
+            <div className="moment-meta">
+              <span>{item.date} · {item.time}</span>
+              <span>{item.category}</span>
+            </div>
+            <strong>{item.title}</strong>
+            <p>{item.summary}</p>
+            <div className="moment-tags">
+              <small>{item.valueTag}</small>
+              <small>依据：{item.sourceLabel}</small>
+            </div>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
 }
 
 function ButlerInbox() {
@@ -1012,8 +1337,8 @@ function ButlerInbox() {
     <section className="wide-panel">
       <div className="section-title">
         <div>
-          <h2>Butler Inbox</h2>
-          <p>承载主动洞察、建议、提醒和复盘卡片。反馈会影响后续优先级。</p>
+          <h2>管家提醒</h2>
+          <p>这里收纳 OpenButler 主动整理出的提醒、建议和复盘卡片。你可以反馈它是否有用。</p>
         </div>
         <button className="secondary" onClick={refreshInbox}>刷新</button>
       </div>
@@ -1037,34 +1362,37 @@ function InsightList({insights, onChanged}: {insights: Array<Record<string, any>
   }
 
   if (!insights.length) {
-    return <div className="suggestion-box"><strong>暂无主动洞察</strong><span>数据不足时 OpenButler 不会编造结论。可以先导入 PC 活动或手动生成洞察。</span></div>;
+    return <div className="friendly-empty"><strong>暂无管家提醒</strong><span>数据不足时 OpenButler 不会编造结论。连接本地数据后会逐步出现提醒和依据。</span></div>;
   }
   return (
-    <div className="plugin-list">
+    <div className="friendly-suggestion-list">
       {insights.map((insight) => (
-        <article className="plugin insight-card" key={insight.id}>
-          <div>
-            <strong>{insight.title}</strong>
-            <span>{insight.type} · {insight.status} · 置信度 {Math.round(Number(insight.confidence ?? 0) * 100)}%</span>
+        <article className="friendly-insight-card" key={insight.id}>
+          <div className="friendly-card-head">
+            <div>
+              <span>{insightTypeLabel(insight.type)} · {statusLabel(insight.status)}</span>
+              <strong>{insight.title}</strong>
+            </div>
+            <small>{Math.round(Number(insight.confidence ?? 0) * 100)}%</small>
           </div>
           <p>{insight.summary}</p>
-          {insight.detail && <p>{insight.detail}</p>}
-          <div className="suggestion-box">
-            <strong>证据边界</strong>
-            <span>{insight.evidence_boundary}</span>
+          {expandedInsightId === String(insight.id) && insight.detail && <p>{insight.detail}</p>}
+          <div className="friendly-actions">
+            <button
+              className="secondary evidence-toggle"
+              onClick={() => setExpandedInsightId(expandedInsightId === String(insight.id) ? null : String(insight.id))}
+            >
+              {expandedInsightId === String(insight.id) ? "收起依据" : "查看证据详情"}
+            </button>
+            <button className="ghost" onClick={() => feedback(String(insight.id), "useful")}>有用</button>
+            <button className="ghost" onClick={() => feedback(String(insight.id), "inaccurate")}>不准确</button>
+            <button className="ghost" onClick={() => feedback(String(insight.id), "remind_later")}>稍后再说</button>
+            <button className="ghost" onClick={() => feedback(String(insight.id), "too_frequent")}>不再提醒类似内容</button>
           </div>
-          <button
-            className="secondary evidence-toggle"
-            onClick={() => setExpandedInsightId(expandedInsightId === String(insight.id) ? null : String(insight.id))}
-          >
-            {expandedInsightId === String(insight.id) ? "收起证据详情" : "查看证据详情"}
-          </button>
           {expandedInsightId === String(insight.id) && <InsightEvidenceDetails insight={insight} />}
-          <div className="actions-row">
-            <button className="secondary" onClick={() => feedback(String(insight.id), "useful")}>有用</button>
-            <button className="secondary" onClick={() => feedback(String(insight.id), "dismissed")}>忽略</button>
-            <button className="secondary" onClick={() => feedback(String(insight.id), "remind_later")}>稍后提醒</button>
-            <button className="secondary" onClick={() => feedback(String(insight.id), "inaccurate")}>不准确</button>
+          <div className="technical-card-fallback">
+            <strong>{insight.title}</strong>
+            <span>{insight.type} · {insight.status} · 置信度 {Math.round(Number(insight.confidence ?? 0) * 100)}%</span>
           </div>
         </article>
       ))}
@@ -1077,37 +1405,37 @@ function InsightEvidenceDetails({insight}: {insight: Record<string, any>}) {
   return (
     <div className="evidence-detail-panel">
       <div className="section-title">
-        <h2>证据详情</h2>
+        <h2>依据详情</h2>
         <p>只展示本地引用和边界说明；截图证据仅显示路径引用，不复制或读取内容。</p>
       </div>
       <div className="evidence">
-        <small>source {String(insight.generated_by ?? "rule_engine")}</small>
-        <small>type {String(insight.type ?? "unknown")}</small>
-        <small>status {String(insight.status ?? "unknown")}</small>
-        <small>confidence {Math.round(Number(insight.confidence ?? 0) * 100)}%</small>
+        <small>来源 {sourceLabel(insight.generated_by ?? "butler_core")}</small>
+        <small>类型 {insightTypeLabel(insight.type)}</small>
+        <small>状态 {statusLabel(insight.status)}</small>
+        <small>可信度 {Math.round(Number(insight.confidence ?? 0) * 100)}%</small>
       </div>
       <div className="suggestion-box">
-        <strong>evidence_boundary</strong>
+        <strong>边界说明</strong>
         <span>{String(insight.evidence_boundary ?? "数据不足，无法判断。")}</span>
       </div>
       <div className="suggestion-box">
-        <strong>privacy_notes</strong>
-        <span>未复制截图文件 · 未上传截图文件 · 未调用外部模型 · screenshot paths are shown as references only</span>
+        <strong>隐私说明</strong>
+        <span>未复制截图文件 · 未上传截图文件 · 未调用外部模型 · 截图只显示为本地路径引用</span>
       </div>
       {refs.length ? (
         <div className="evidence-ref-list">
           {refs.map((ref: Record<string, any>, index: number) => (
             <div className="evidence-ref-row" key={`${String(ref.kind ?? "ref")}-${index}`}>
-              <strong>{String(ref.kind ?? "evidence_ref")}</strong>
-              <span>{String(ref.id ?? ref.path ?? ref.source_event_id ?? ref.source_context_id ?? "本地证据引用")}</span>
-              {String(ref.kind ?? "").includes("screenshot") && <small>path only · no screenshot copy</small>}
+              <strong>{sourceLabel(ref.source ?? ref.kind ?? "本地依据")}</strong>
+              <span>{String(ref.id ?? ref.path ?? ref.source_event_id ?? ref.source_context_id ?? "本地依据引用")}</span>
+              {String(ref.kind ?? "").includes("screenshot") && <small>仅显示路径 · 未复制截图</small>}
             </div>
           ))}
         </div>
       ) : (
         <div className="suggestion-box">
-          <strong>暂无 evidence_refs</strong>
-          <span>数据不足或该洞察没有可展开证据引用；OpenButler 不会用缺失证据包装成确定结论。</span>
+          <strong>暂无可展开依据</strong>
+          <span>数据不足或该提醒没有可展开依据引用；OpenButler 不会用缺失依据包装成确定结论。</span>
         </div>
       )}
     </div>
@@ -1215,6 +1543,7 @@ function UsagePanel({title, items}: {title: string; items: Array<Record<string, 
 
 function UnifiedTimeline() {
   const [items, setItems] = useState<Array<Record<string, any>>>([]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   async function refreshTimeline() {
     const result = await getButlerTimeline();
@@ -1225,33 +1554,68 @@ function UnifiedTimeline() {
     refreshTimeline().catch(() => undefined);
   }, []);
 
+  const moments = items.map(toTimelineMoment);
+  const groups = groupTimelineByDate(moments);
+
   return (
-    <section className="wide-panel">
+    <section className="life-timeline-page">
       <div className="section-title">
         <div>
-          <h2>统一时间线</h2>
-          <p>当前先融合 PC Activity；未来可接入视觉、备忘录、日程和智能家居。</p>
+          <p className="eyebrow">被整理好的一天</p>
+          <h2>时间线</h2>
+          <p>OpenButler 会把已授权的本地线索整理成生活记录。每条记录都保留依据和边界说明。</p>
         </div>
         <button className="secondary" onClick={refreshTimeline}>刷新</button>
       </div>
-      <div className="event-list">
-        {items.map((event) => (
-          <article className="event-row" key={event.id}>
-            <div className="event-time">{formatTime(event.started_at)}</div>
-            <div className="event-body">
-              <strong>{event.title}</strong>
-              <span>{event.summary}</span>
-              <div className="evidence">
-                <small>{event.source}</small>
-                <small>{event.event_type}</small>
-                <small>置信度 {Math.round(Number(event.confidence ?? 0) * 100)}%</small>
-                <small>{event.evidence_level}</small>
-              </div>
-              <span>{event.evidence_boundary}</span>
-            </div>
-          </article>
-        ))}
-      </div>
+      {groups.length ? (
+        <div className="life-timeline">
+          {groups.map((group) => (
+            <section className="life-day-group" key={group.date}>
+              <h3>{group.date}</h3>
+              {group.items.map((moment) => (
+                <article className="life-moment" key={moment.id}>
+                  <div className={`moment-icon ${moment.icon}`}>{moment.category.slice(0, 1)}</div>
+                  <div className="moment-body">
+                    <div className="moment-meta">
+                      <span>{moment.time} · {moment.category}</span>
+                      <span>{moment.sourceLabel}</span>
+                    </div>
+                    <strong>{moment.title}</strong>
+                    <p>{moment.summary}</p>
+                    <div className="moment-tags">
+                      <small>{moment.valueTag}</small>
+                      <small>{moment.confidenceLabel}</small>
+                      <small>{moment.evidenceAvailable ? "可查看依据" : "依据不足"}</small>
+                    </div>
+                    <button
+                      className="ghost"
+                      onClick={() => setExpandedId(expandedId === moment.id ? null : moment.id)}
+                    >
+                      {expandedId === moment.id ? "收起" : "查看依据"}
+                    </button>
+                    {expandedId === moment.id && (
+                      <div className="moment-evidence">
+                        <strong>边界说明</strong>
+                        <span>{moment.evidenceBoundary}</span>
+                        <div className="evidence">
+                          <small>来源 {moment.sourceLabel}</small>
+                          <small>{moment.confidenceLabel}</small>
+                          <small>本地线索，不确认远程系统实时状态</small>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </section>
+          ))}
+        </div>
+      ) : (
+        <div className="friendly-empty">
+          <strong>时间线还没有记录</strong>
+          <span>连接本地数据源后，这里会按时间整理工作、生活、提醒和自动化候选。</span>
+        </div>
+      )}
     </section>
   );
 }
