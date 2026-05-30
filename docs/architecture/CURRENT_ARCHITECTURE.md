@@ -106,3 +106,5 @@ There is no single central `PrivacyGuard` class. Current privacy enforcement is 
 - Vision raw-frame strict handling in `backend/app/modules/workstation_vision/service.py`
 
 This is sufficient for the current tested prototype paths, but a unified Privacy Guard may be a future architecture task.
+
+Design note: `docs/architecture/PRIVACY_GUARD_DESIGN.md` maps the current distributed checks and proposes a future central guard interface. It is design-only; no central PrivacyGuard implementation exists yet.

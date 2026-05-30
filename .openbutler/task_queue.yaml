@@ -118,13 +118,18 @@ tasks:
     title: "Design unified PrivacyGuard without changing behavior"
     goal_id: OB-GOAL-005
     priority: P1
-    status: ready
+    status: done
     done_when:
       - "current distributed privacy checks are mapped"
       - "central guard interface is proposed"
       - "migration risks are documented"
       - "no business behavior is changed"
+    evidence:
+      - "docs/architecture/PRIVACY_GUARD_DESIGN.md maps current distributed privacy checks and proposes a future guard interface."
+      - "docs/architecture/decisions/0009-design-privacyguard-before-implementation.md records the design-before-implementation decision."
+      - "No backend behavior or API code was changed."
+      - "Existing pc_activity_context, butler_core, and workstation_vision tests passed after the design update."
     risks:
-      - "Premature implementation could break tested strict-mode paths"
+      - "Premature implementation could break tested strict-mode paths; future wiring must be incremental."
 
 blocked: []

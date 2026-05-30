@@ -131,6 +131,16 @@ Chinese mojibake risk audit was completed on 2026-05-30.
 - No source file encoding conversion was performed.
 - Current likely risk source is terminal or PowerShell output rendering when UTF-8 is not explicit, not persistent source corruption.
 
+## PrivacyGuard Design
+
+Unified PrivacyGuard design was completed on 2026-05-30 without behavior changes.
+
+- Design doc: `docs/architecture/PRIVACY_GUARD_DESIGN.md`.
+- ADR: `docs/architecture/decisions/0009-design-privacyguard-before-implementation.md`.
+- Current reality remains distributed privacy checks in `backend/app/main.py`, PC Activity Context, Butler Core, and Workstation Vision.
+- No central `PrivacyGuard` implementation exists yet.
+- Future implementation should be incremental and must preserve existing strict-mode tests and response fields.
+
 ## Not Run In This Governance Round
 
 - `npm run verify:productization` because it may write/update local artifacts under `data/`.

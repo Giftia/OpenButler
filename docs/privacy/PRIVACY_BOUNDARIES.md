@@ -2,6 +2,8 @@
 
 This document is the repository-level privacy boundary for OpenButler.
 
+Implementation note: privacy enforcement is currently distributed across backend modules. `docs/architecture/PRIVACY_GUARD_DESIGN.md` describes a future unified PrivacyGuard, but no central guard implementation exists yet.
+
 ## Strict Mode
 
 Strict mode forbids:
