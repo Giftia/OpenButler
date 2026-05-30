@@ -1,7 +1,7 @@
 product_goal:
   name: "OpenButler 主动全场景感知 AI 管家"
   mission: "让用户的生活更加清晰高效可量化"
-  current_stage: "Product-friendly UI V1"
+  current_stage: "Mobile UX Polish V2"
   north_star: "用户每天 60 秒内理解今天发生了什么、什么值得注意、下一步应该做什么"
 
 active_objectives:
@@ -73,6 +73,26 @@ active_objectives:
       - "保留高级入口给开发者和 power user"
       - "前端 build 通过"
       - "不破坏现有后端测试"
+
+  - id: OB-GOAL-008
+    title: "Mobile UX Polish V2：减少技术泄露，压缩首屏，强化演示闭环"
+    priority: P0
+    status: active
+    description: >
+      基于移动端线上 Demo 截图反馈，继续优化 OpenButler 普通用户体验。
+      本阶段聚焦移动端首屏压缩、演示内容去技术化、时间线中文生活化、
+      管家回答去内部字段、我的页分层和按钮可用性。
+    success_criteria:
+      - "移动端首屏不再被大导航占据"
+      - "首页第一屏能展示产品价值、今日摘要和一个主行动"
+      - "普通用户界面不出现英文 demo 文案"
+      - "普通用户界面不出现 phone_album、seed、Provider、Webhook 等内部字段"
+      - "时间线演示事件像生活记录，而不是开发日志"
+      - "管家演示回答不泄露内部数据源字段"
+      - "我的页第一层面向普通用户，高级架构内容进入高级与实验室"
+      - "所有按钮可点击状态清晰"
+      - "frontend build 通过"
+      - "后端核心测试通过"
 
 governance_objectives:
   - id: OB-GOAL-005

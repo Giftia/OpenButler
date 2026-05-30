@@ -26,6 +26,11 @@ OpenButler should keep technical names in code and developer docs, but ordinary 
 | plugin | 技能插件 |
 | Productization Harness | 产品化自检 |
 | readiness | 可用状态 |
+| Privacy Guard | 隐私与数据 |
+| Provider | 模型服务 / 高级：Provider |
+| Webhook | 外部回调 / 高级：Webhook |
+| mock / fixture / seed | 演示数据，不在普通 UI 显示 |
+| raw source | 内部原始信息，不在普通 UI 显示 |
 
 ## Rules
 
@@ -35,3 +40,4 @@ OpenButler should keep technical names in code and developer docs, but ordinary 
 - Use "电脑活动" when explaining the current main data source.
 - Use "完全本地" when explaining strict privacy.
 - Developer names can remain in advanced/lab pages when they are genuinely diagnostic.
+- Hosted demo records should use `演示数据` and natural Chinese event copy. Do not show English demo logs or internal source fields in ordinary pages.

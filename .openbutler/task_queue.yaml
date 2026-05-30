@@ -219,4 +219,70 @@ tasks:
       - "frontend/src/lib/userFacingLabels.ts provides user-facing source, event, insight, status, and privacy labels."
       - "Primary navigation is reduced to 今日、时间线、管家、我的; technical pages are under 高级与实验室."
 
+  - id: OB-TASK-080
+    title: "压缩移动端顶部导航和首页首屏"
+    goal_id: OB-GOAL-008
+    priority: P0
+    status: ready
+    done_when:
+      - "移动端顶部导航高度明显降低"
+      - "首屏可看到产品价值、今日摘要和主行动"
+      - "首页重复指标卡减少"
+      - "桌面布局不明显退化"
+
+  - id: OB-TASK-081
+    title: "清理演示数据中的技术文案和英文日志"
+    goal_id: OB-GOAL-008
+    priority: P0
+    status: ready
+    done_when:
+      - "时间线不显示 Check OpenButler Inbox、Run local verification 等英文开发文案"
+      - "不显示 Demo-only PC activity for Vercel product experience"
+      - "演示数据统一标识为演示数据"
+      - "演示内容用自然中文表达"
+
+  - id: OB-TASK-082
+    title: "优化管家问答演示回答，隐藏内部字段"
+    goal_id: OB-GOAL-008
+    priority: P0
+    status: ready
+    done_when:
+      - "管家回答不显示 phone_album、seed、raw source 等内部字段"
+      - "依据用用户语言表达，例如 相册线索（演示）/ 电脑活动（演示）"
+      - "回答保留证据边界，但不暴露内部实现"
+      - "快捷问题更贴合主动管家价值"
+
+  - id: OB-TASK-083
+    title: "重构我的页为普通设置优先，高级实验室折叠"
+    goal_id: OB-GOAL-008
+    priority: P0
+    status: ready
+    done_when:
+      - "我的页第一层展示隐私模式、数据源状态、演示模式、目标偏好"
+      - "Privacy Guard 改为 隐私与数据"
+      - "Provider、Webhook、Capture Gateway、Preprocessor Runtime、SQLite 等进入高级与实验室"
+      - "OpenClaw runtime 未验证时不显示为已连接"
+
+  - id: OB-TASK-084
+    title: "修正按钮可用性和低对比度问题"
+    goal_id: OB-GOAL-008
+    priority: P0
+    status: ready
+    done_when:
+      - "查看全部、查看依据、有用、稍后再说、不准确等按钮可读可点"
+      - "禁用按钮有明确原因或不显示"
+      - "主要按钮和次要按钮有清晰层级"
+      - "移动端触控区域足够大"
+
+  - id: OB-TASK-085
+    title: "补充 Mobile UX Polish V2 文档"
+    goal_id: OB-GOAL-008
+    priority: P1
+    status: ready
+    done_when:
+      - "记录本轮移动端截图反馈"
+      - "说明已清理哪些技术泄露"
+      - "说明普通用户路径和高级路径分层"
+      - "说明后续仍需真实用户测试"
+
 blocked: []
