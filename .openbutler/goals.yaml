@@ -1,7 +1,7 @@
 product_goal:
   name: "OpenButler 主动全场景感知 AI 管家"
   mission: "让用户的生活更加清晰高效可量化"
-  current_stage: "Git baseline and architecture reality alignment"
+  current_stage: "Product-friendly UI V1"
   north_star: "用户每天 60 秒内理解今天发生了什么、什么值得注意、下一步应该做什么"
 
 active_objectives:
@@ -55,6 +55,24 @@ active_objectives:
       - "strict 模式下不调用外部模型"
       - "默认不复制 MineContext 截图"
       - "不删除 MineContext 原始数据"
+
+  - id: OB-GOAL-006
+    title: "Product-friendly UI V1：降低理解成本，建立渐进式主动管家体验"
+    priority: P0
+    status: active
+    description: >
+      将 OpenButler 从技术控制台优化为用户友好的主动 AI 管家首页。
+      重点是第一屏价值表达、渐进式功能触发、统一时间线展示、
+      证据可复核和新用户引导。
+    success_criteria:
+      - "用户打开首页后 10 秒内能理解 OpenButler 的核心价值"
+      - "首页不再堆叠大量技术模块"
+      - "普通用户不需要理解 MineContext、PCActivity、UnifiedTimelineEvent 等术语"
+      - "提供渐进式上手流程"
+      - "今日概览、主动提醒、时间线、证据入口清晰可见"
+      - "保留高级入口给开发者和 power user"
+      - "前端 build 通过"
+      - "不破坏现有后端测试"
 
 governance_objectives:
   - id: OB-GOAL-005
