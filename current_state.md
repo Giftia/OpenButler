@@ -7,7 +7,7 @@ Updated: 2026-05-30
 - Git has been initialized for `C:\Users\admin\Desktop\git\OpenButler`.
 - Baseline commit: `b6fffb4 chore: establish OpenButler repository baseline`.
 - Architecture alignment branch: `chore/architecture-reality-alignment`.
-- Repository-local Git identity is configured as `OpenButler Local <openbutler-local@example.local>`.
+- Repository-local Git identity is configured as `Giftina Chen <admin@giftia.moe>`.
 
 ## Real Structure
 
@@ -37,7 +37,18 @@ There is no `apps/api` or `apps/web` structure. Future prompts must use `backend
 - API surface: `/api/pc-activity/minecontext/status`, query, search, import.
 - Default settings are strict, read-only, path-only for screenshots, no external model.
 
-Real local MineContext 7-day dry-run has not been run in this round because it reads user activity metadata and requires explicit confirmation.
+Real local MineContext 7-day dry-run was explicitly authorized and completed on 2026-05-30. Only aggregate counts were recorded:
+
+- dry-run only: true.
+- source events estimated: 157.
+- estimated new events: 95.
+- estimated duplicate events: 62.
+- OpenButler DB table counts unchanged.
+- MineContext source DB file metadata unchanged.
+- screenshots copied: false.
+- external model used: false.
+- external webhook used: false.
+- MineContext source mutated: false.
 
 ### PC Activity Context
 
@@ -98,7 +109,6 @@ OK
 
 ## Not Run In This Governance Round
 
-- Real MineContext 7-day dry-run preview.
 - Browser click smoke for Butler Inbox evidence detail.
 - `npm run verify:productization` because it may write/update local artifacts under `data/`.
 - OpenClaw runtime execution.

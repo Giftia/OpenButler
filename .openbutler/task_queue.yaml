@@ -58,7 +58,7 @@ tasks:
     title: "Run real MineContext 7-day dry-run preview with user confirmation"
     goal_id: OB-GOAL-004
     priority: P0
-    status: needs-human
+    status: done
     why: "Reads real local user activity metadata and should not run without explicit confirmation."
     done_when:
       - "dry-run only"
@@ -66,8 +66,14 @@ tasks:
       - "no screenshot copy"
       - "event count and duplicate count reported"
       - "privacy boundary verified"
+    evidence:
+      - "User explicitly authorized read-only real MineContext 7-day dry-run on 2026-05-30."
+      - "Entrypoint: ButlerCoreService.preview_pc_activity_import with dry_run=true, copy_screenshots=false, limit=5000."
+      - "Aggregate result only: source_events=157, estimated_new_events=95, estimated_duplicate_events=62."
+      - "OpenButler DB counts unchanged; MineContext source DB file metadata unchanged."
+      - "external_model_used=false; external_webhook_used=false; screenshots_copied=false; minecontext_source_mutated=false."
     risks:
-      - "May expose local activity metadata in command output"
+      - "Future reruns may expose local activity metadata in command output; keep output aggregated and redacted."
 
   - id: OB-TASK-055
     title: "Run Butler Inbox evidence detail browser smoke"
