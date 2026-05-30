@@ -1,0 +1,580 @@
+tasks:
+  - id: OB-TASK-001
+    title: "实现 UnifiedTimelineEvent 模型"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-002
+    done_when:
+      - "模型存在"
+      - "PCActivityEvent 转换测试通过"
+      - "证据边界保留"
+
+  - id: OB-TASK-002
+    title: "实现 /api/butler/home"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "返回今日概览"
+      - "返回关键指标"
+      - "返回洞察卡片"
+      - "无数据时返回 data_quality_notice"
+
+  - id: OB-TASK-003
+    title: "实现 Butler Inbox"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "洞察可查询"
+      - "洞察可 dismiss"
+      - "洞察可标记 inaccurate"
+      - "反馈可记录"
+
+  - id: OB-TASK-004
+    title: "补齐主动管家 API 合约测试"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "覆盖 /api/butler/home"
+      - "覆盖 timeline rebuild"
+      - "覆盖 metrics today"
+      - "覆盖 insight feedback"
+      - "覆盖 briefing generate"
+
+  - id: OB-TASK-005
+    title: "完善 Insight 反馈降噪规则"
+    priority: P1
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "dismiss 多次会降低同类优先级"
+      - "inaccurate 多次会抑制同类洞察"
+      - "规则有测试覆盖"
+
+  - id: OB-TASK-006
+    title: "为 /butler 页面增加数据不足空状态"
+    priority: P1
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "MineContext 无导入时不编造结论"
+      - "显示 data_quality_notice"
+      - "给出导入今日活动的操作入口"
+
+  - id: OB-TASK-007
+    title: "实现结构化 Butler 数据导出 API"
+    priority: P1
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "可导出 timeline"
+      - "可导出 metrics"
+      - "可导出 insights"
+      - "不包含 MineContext 原始截图内容"
+
+  - id: OB-TASK-008
+    title: "建立前端 smoke 测试"
+    priority: P1
+    status: done
+    goal_id: OB-GOAL-003
+    done_when:
+      - "/butler 可加载"
+      - "/butler/inbox 可加载"
+      - "/metrics 可加载"
+      - "/timeline 可加载"
+      - "/goals 可加载"
+
+  - id: OB-TASK-009
+    title: "为 OpenClaw proactive butler 工具补充响应示例"
+    priority: P2
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "tools.yaml 有请求/响应示例"
+      - "SKILL.md 明确必须保留证据边界"
+      - "文档说明数据不足时如何回答"
+
+  - id: OB-TASK-010
+    title: "梳理数据保留和删除 UI"
+    priority: P2
+    status: done
+    goal_id: OB-GOAL-003
+    done_when:
+      - "Butler 数据删除入口清晰"
+      - "说明不会删除 MineContext 原始数据"
+      - "删除操作有确认文案"
+
+  - id: OB-TASK-011
+    title: "让管家对话写入主动洞察反馈"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "用户说建议不准确时记录 insight feedback"
+      - "用户说以后少提醒时降低同类洞察优先级"
+      - "聊天回答保留证据边界"
+      - "无 active insight 时不编造反馈目标"
+
+  - id: OB-TASK-012
+    title: "补齐 /api/chat 主动管家合约测试"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "今天我主要做了什么走 Butler overview"
+      - "晚间复盘走 Butler briefing"
+      - "这个建议不准确会写入反馈"
+      - "数据不足时不编造今日结论"
+
+  - id: OB-TASK-013
+    title: "实现 Butler Core MVP readiness 自检"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "API 返回 Proactive Butler Core 关键闭环状态"
+      - "自检覆盖 timeline、metrics、insights、feedback、OpenClaw、strict mode"
+      - "数据不足时返回 data_insufficient"
+      - "自检不调用外部模型、不删除 MineContext 数据"
+
+  - id: OB-TASK-014
+    title: "在 /butler 展示 MVP readiness 自检"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "/butler 页面展示 readiness 总体状态"
+      - "页面展示 timeline、metrics、insights、feedback、OpenClaw、strict mode 检查项"
+      - "data_insufficient 状态有导入 PC 活动提示"
+      - "前端检查覆盖 readiness 面板"
+
+  - id: OB-TASK-015
+    title: "在 /butler 增加一键演示路径"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "按钮按顺序触发导入 PC Activity、重建 timeline、生成 insights、生成 evening briefing"
+      - "执行后刷新 readiness 面板"
+      - "MineContext 不可用时不编造数据"
+      - "前端检查覆盖演示路径"
+
+  - id: OB-TASK-016
+    title: "将一键演示路径下沉为后端编排 API"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "POST /api/butler/demo/run 编排导入、timeline rebuild、insight generation、briefing、readiness"
+      - "MineContext 导入失败时继续使用现有 OpenButler 数据且不编造活动"
+      - "返回 strict 隐私和证据边界字段"
+      - "前后端测试覆盖演示 API 路径"
+
+  - id: OB-TASK-017
+    title: "为主动管家演示闭环增加本地 smoke 命令"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "提供一条命令调用 /api/butler/demo/run"
+      - "smoke 命令校验 readiness、证据边界和 strict 隐私字段"
+      - "MineContext 不可用时 smoke 输出可解释失败或降级状态"
+      - "README 和测试文档说明本地演示方式"
+
+  - id: OB-TASK-018
+    title: "为主动管家演示增加安全重置闭环"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "POST /api/butler/demo/reset 只清理 Butler 派生数据"
+      - "PC Activity 事件和 MineContext 源数据被明确保留"
+      - "smoke 命令校验证据边界和 strict 隐私字段"
+      - "文档说明演示重置不会删除 MineContext 原始数据"
+
+  - id: OB-TASK-019
+    title: "在 /butler 接入安全重置演示数据入口"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "/butler 页面可调用 POST /api/butler/demo/reset"
+      - "UI 明确说明只清理 Butler 派生数据"
+      - "UI 明确说明不会删除 PC Activity、MineContext 数据库或截图文件"
+      - "前端检查覆盖重置按钮和保留范围文案"
+
+  - id: OB-TASK-020
+    title: "增加 /butler 演示按钮链路运行时 smoke"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "smoke 校验 /butler 运行演示和重置按钮绑定"
+      - "smoke 顺序调用 demo run、home、demo reset、readiness"
+      - "smoke 校验证据边界和 strict 隐私字段"
+      - "文档说明该 smoke 是轻量链路验证而非完整浏览器点击测试"
+
+  - id: OB-TASK-021
+    title: "增加主动管家 MVP 验收报告"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "GET /api/butler/mvp-report 汇总 readiness、MVP 链路和验收项"
+      - "报告校验证据边界、strict 隐私字段和 MineContext 源数据保留"
+      - "提供 smoke:butler-mvp-report 本地验收命令"
+      - "后端合约测试覆盖 ready 和 data_insufficient 两种报告状态"
+
+  - id: OB-TASK-022
+    title: "在 /butler 展示主动管家 MVP 验收报告"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "/butler 页面读取 GET /api/butler/mvp-report"
+      - "页面展示 MVP 链路、验收项、证据边界和 strict 隐私字段"
+      - "前端检查覆盖 MVP report 面板"
+      - "运行时 smoke 覆盖 MVP report 面板绑定"
+
+  - id: OB-TASK-023
+    title: "为 MVP 验收失败项增加下一步动作"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "MVP report 每个 acceptance check 返回 next_action"
+      - "data_insufficient 时返回导入 PC Activity、重建 timeline、生成指标等修复建议"
+      - "/butler 页面展示失败项可执行修复建议"
+      - "测试覆盖 ready 和 data_insufficient 的 next_action"
+
+  - id: OB-TASK-024
+    title: "为 MVP next_action 接入安全本地按钮"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "/butler 可执行安全的本地 next_action"
+      - "按钮仅调用白名单本地 API 或本地页面跳转"
+      - "不支持外部写入、外部模型、截图复制或 MineContext 源数据删除"
+      - "前端检查和运行时 smoke 覆盖 next_action 按钮绑定"
+
+  - id: OB-TASK-025
+    title: "新增只读数据不足恢复演练"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "GET /api/butler/demo/data-insufficient-drill 返回合成 data_insufficient 报告"
+      - "演练返回导入、重建、指标、洞察和简报的 next_action 指引"
+      - "演练为 dry_run，不修改数据，并保留 MineContext 源数据"
+      - "smoke 和合约测试覆盖隐私字段、证据边界和不删除行为"
+
+  - id: OB-TASK-026
+    title: "在 /butler 暴露只读数据不足恢复演练"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "/butler 页面可触发 GET /api/butler/demo/data-insufficient-drill"
+      - "UI 显示 dry_run、mutates_data、next_action 和证据边界"
+      - "UI 明确说明演练不会导入、重建、复制截图或删除 MineContext 源数据"
+      - "前端检查和运行时 smoke 覆盖演练按钮绑定"
+
+  - id: OB-TASK-027
+    title: "持久化最近一次 Productization Harness 摘要"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "MVP report 和 data-insufficient drill 会写入本地 harness run 摘要"
+      - "GET /api/butler/harness/runs/latest 返回每类最近一次摘要"
+      - "/butler 页面刷新后可展示最近 Harness 状态、失败项和隐私计数"
+      - "摘要不保存 MineContext 原始记录、截图内容或外部系统状态"
+
+  - id: OB-TASK-028
+    title: "将 Harness 摘要纳入导出和删除边界"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "GET /api/butler/export 包含 Productization Harness 摘要"
+      - "DELETE /api/butler/data 会删除 Productization Harness 摘要"
+      - "导出和删除均明确不包含或不触碰 MineContext 原始记录、截图内容和外部系统状态"
+      - "合约测试和文档覆盖导出、删除和隐私边界"
+
+  - id: OB-TASK-029
+    title: "增加 Productization active objectives 自检 API"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-003
+    done_when:
+      - "GET /api/butler/productization/objectives/status 映射 active objectives 到当前证据"
+      - "自检覆盖主动管家 MVP、统一时间线和产品化开发流程"
+      - "/butler 页面展示目标完成度自检摘要"
+      - "自检保留证据边界，不调用外部模型，不删除 MineContext 源数据"
+
+  - id: OB-TASK-030
+    title: "生成 Productization 一页演示包"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-003
+    done_when:
+      - "GET /api/butler/productization/demo-pack 汇总 readiness、MVP report、active objectives 和 Harness 摘要"
+      - "/butler 页面展示一页演示包状态、隐私计数和证据边界"
+      - "运行时 smoke 验证 demo pack schema、ready 状态和 strict 隐私字段"
+      - "演示包不调用外部模型、不复制截图、不删除 MineContext 源数据"
+
+  - id: OB-TASK-031
+    title: "为 Productization demo pack 增加独立 smoke 命令"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-003
+    done_when:
+      - "提供 npm run smoke:butler-demo-pack"
+      - "smoke 校验 demo pack schema、ready 状态、readiness、MVP report、active objectives 和 Harness 摘要"
+      - "smoke 校验证据边界、strict 隐私字段、截图不复制和 MineContext 源数据保留"
+      - "测试文档和本地开发文档说明 demo pack 验证方式"
+
+  - id: OB-TASK-032
+    title: "让 Productization active objectives 从 goals.yaml 动态读取"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-003
+    done_when:
+      - "GET /api/butler/productization/objectives/status 读取 .openbutler/goals.yaml 的 active_objectives"
+      - "响应返回 goals_source、priority、success_criteria 和 source_ref"
+      - "未知 active objective 会显示 needs_attention 而不是被静默忽略"
+      - "合约测试和 smoke 覆盖 goals.yaml 来源、证据边界和 strict 隐私字段"
+
+  - id: OB-TASK-033
+    title: "在 /butler 显示缺少 evidence mapper 的未来目标"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-003
+    done_when:
+      - "/butler 目标完成度自检卡片展示 priority、goals.yaml 来源和 success criteria"
+      - "当 active objective 缺少 evidence mapper 时 UI 显示明确的缺少 evidence mapper 提示"
+      - "合约测试覆盖未知 future objective 返回 needs_attention"
+      - "前端静态检查和 UI flow smoke 覆盖缺少 mapper 的展示逻辑"
+
+  - id: OB-TASK-034
+    title: "生成稳定的 Productization Harness JSON artifact"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-003
+    done_when:
+      - "提供 npm run artifact:butler-demo-pack"
+      - "artifact 写入 data/productization/productization-demo-pack.json"
+      - "artifact 包含 demo pack、证据边界和 strict 隐私计数"
+      - "artifact 明确不包含 MineContext 源记录、截图内容、raw godview output 或外部系统状态"
+
+  - id: OB-TASK-035
+    title: "增加 Productization Harness artifact 离线校验"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-003
+    done_when:
+      - "提供 npm run test:demo-pack-artifact-file"
+      - "离线校验 data/productization/productization-demo-pack.json 的 artifact schema 和 demo pack schema"
+      - "校验证据边界、ready/proven 状态和 active objective 结构"
+      - "校验 artifact 不包含 MineContext 源记录、截图内容、raw godview output、截图复制或外部模型调用"
+
+  - id: OB-TASK-036
+    title: "增加 Productization Harness 一键本地验收命令"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-003
+    done_when:
+      - "提供 npm run verify:productization"
+      - "聚合静态脚本检查、demo pack smoke、artifact 生成和离线 artifact 校验"
+      - "后端未运行时输出清晰错误"
+      - "验收命令保留 strict 隐私字段，不调用外部模型，不删除 MineContext 源数据"
+
+  - id: OB-TASK-037
+    title: "为 Productization Harness 增加浏览器级 /butler 验收"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-003
+    done_when:
+      - "提供浏览器级 smoke 或等价页面运行时验收"
+      - "覆盖 /butler Productization Harness、目标自检、一页演示包和数据不足演练"
+      - "校验 UI 可见证据边界和 strict 隐私字段"
+      - "不引入云端依赖或外部写入"
+
+  - id: OB-TASK-038
+    title: "建立 active objective evidence mapper 模板"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-003
+    done_when:
+      - "新增未来目标 evidence mapper 的开发模板"
+      - "文档说明如何为 goals.yaml 新目标添加 mapper"
+      - "未知目标继续显示 needs_attention"
+      - "测试覆盖模板约束和缺少 mapper 的提示"
+
+  - id: OB-TASK-039
+    title: "完善 Productization Harness 变更日志和演示记录"
+    priority: P1
+    status: done
+    goal_id: OB-GOAL-003
+    done_when:
+      - "新增或更新本地 changelog"
+      - "记录 Productization Harness 验收命令和 artifact 路径"
+      - "记录隐私边界和已知限制"
+      - "不包含 MineContext 原始记录或截图内容"
+
+  - id: OB-TASK-040
+    title: "为 Proactive Butler Core 增加最近 7 天指标趋势"
+    priority: P1
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "/api/butler/metrics 支持最近 7 天趋势"
+      - "/metrics 页面展示 PC 活跃、深度工作和上下文切换趋势"
+      - "数据不足时显示空状态"
+      - "证据边界和 strict 隐私字段保留"
+
+  - id: OB-TASK-041
+    title: "为 Butler Inbox 增加证据详情抽屉"
+    priority: P1
+    status: done
+    goal_id: OB-GOAL-001
+    done_when:
+      - "/butler/inbox 可展开查看 evidence_refs"
+      - "展示 evidence_boundary、confidence 和 source"
+      - "截图仍仅展示路径引用，不复制内容"
+      - "数据不足或证据缺失时有解释文案"
+
+  - id: OB-TASK-042
+    title: "生成 L1 active objectives 完成度审计报告"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-003
+    done_when:
+      - "逐项列出 active_objectives、success_criteria、证据来源和验证结果"
+      - "区分 proven、needs_attention、missing_evidence 和 out_of_scope"
+      - "报告保留 strict 隐私字段和 MineContext 源数据边界"
+      - "报告可由本地命令或 API 生成，并有测试覆盖"
+
+  - id: OB-L2-TASK-040
+    requested_id: OB-TASK-040
+    title: "执行 Proactive Butler Core L2 readiness audit"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-004
+    note: "OB-TASK-040 已被 L1 历史任务使用，本 L2 队列使用 OB-L2-TASK-* 避免 ID 冲突。"
+    done_when:
+      - "确认 L1 产物是否存在"
+      - "确认 /api/butler/home 或等价 API 是否存在"
+      - "确认 Butler Inbox 是否存在"
+      - "确认 UnifiedTimelineEvent 或等价模型是否存在"
+      - "确认 MineContext / godview 接入未被破坏"
+      - "确认测试命令可运行"
+      - "生成 docs/dev/L2_READINESS_AUDIT.md"
+
+  - id: OB-L2-TASK-041
+    requested_id: OB-TASK-041
+    title: "设计并实现真实 7 天历史导入 dry-run 策略"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-004
+    done_when:
+      - "支持导入最近 7 天 PC Activity / MineContext 活动的 dry-run"
+      - "dry-run 返回预计导入事件数、时间范围、来源、风险提示"
+      - "默认不写入数据库"
+      - "默认不复制截图"
+      - "strict 模式下不调用外部模型"
+      - "文档说明真实导入与 dry-run 的区别"
+
+  - id: OB-L2-TASK-042
+    requested_id: OB-TASK-042
+    title: "实现 7 天历史导入的幂等 upsert 与重复事件保护"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-004
+    done_when:
+      - "同一 source_event_id 重复导入不会重复创建事件"
+      - "无 source_event_id 时使用稳定 hash 去重"
+      - "重复导入有测试覆盖"
+      - "不会修改 MineContext 原始数据"
+
+  - id: OB-L2-TASK-043
+    requested_id: OB-TASK-043
+    title: "生成最近 7 天 Butler 指标摘要"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-004
+    done_when:
+      - "返回最近 7 天 PC 活跃时间"
+      - "返回深度工作趋势"
+      - "返回上下文切换趋势"
+      - "返回主要应用/网站/项目"
+      - "数据不足时返回 data_quality_notice"
+
+  - id: OB-L2-TASK-044
+    requested_id: OB-TASK-044
+    title: "实现 Butler Inbox insight 证据详情"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-004
+    note: "L1 已实现 /butler/inbox 可展开 evidence_refs、evidence_boundary、confidence/source 和截图路径仅引用。"
+    done_when:
+      - "每条 insight 可查看 evidence_refs"
+      - "证据详情显示来源、时间范围、置信度、证据等级、边界说明"
+      - "截图路径只显示路径或引用，不复制、不上传"
+      - "缺少证据时显示可解释空状态"
+
+  - id: OB-L2-TASK-045
+    requested_id: OB-TASK-045
+    title: "实现 Inbox 证据详情浏览器点击 smoke 测试"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-004
+    done_when:
+      - "可启动 Web 页面或使用现有前端测试环境"
+      - "测试能打开 Butler Inbox"
+      - "测试能点击 insight 证据详情"
+      - "测试能看到 evidence boundary"
+      - "测试失败时输出截图或可读错误"
+
+  - id: OB-L2-TASK-046
+    requested_id: OB-TASK-046
+    title: "实现 feedback-driven insight 降噪评估"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-004
+    done_when:
+      - "用户 dismiss / inaccurate / too_frequent 会影响同类 insight 优先级"
+      - "存在降噪评分函数或规则"
+      - "存在 mock feedback 测试"
+      - "存在评估报告或测试输出"
+      - "不会永久静默重要隐私/数据质量提醒"
+
+  - id: OB-L2-TASK-047
+    requested_id: OB-TASK-047
+    title: "补充 L2 strict 隐私回归测试"
+    priority: P0
+    status: done
+    goal_id: OB-GOAL-004
+    done_when:
+      - "strict 模式不调用外部模型"
+      - "默认不复制截图"
+      - "默认不发送外部 webhook"
+      - "导入不会删除 MineContext 原始数据"
+      - "证据详情不会泄露 raw_output"
+
+  - id: OB-L2-TASK-048
+    requested_id: OB-TASK-048
+    title: "生成最近 7 天 OpenButler 周期复盘 briefing"
+    priority: P1
+    status: done
+    goal_id: OB-GOAL-004
+
+  - id: OB-L2-TASK-049
+    requested_id: OB-TASK-049
+    title: "让 Goals 页面显示目标达成趋势"
+    priority: P1
+    status: done
+    goal_id: OB-GOAL-004

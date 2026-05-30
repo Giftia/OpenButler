@@ -1,0 +1,12 @@
+{
+  "id": "pc_activity_timeline",
+  "name": "PC 操作时间线聚合",
+  "stage": "timeline_processor",
+  "version": "0.1.0",
+  "input_schema": {"type": "object", "required": ["events"]},
+  "output_schema": {"type": "object", "required": ["timeline", "summary"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["event.read", "event.write"],
+  "prompt_template": "Merge MineContext-derived PC activity events into a local OpenButler timeline with source and confidence preserved."
+}

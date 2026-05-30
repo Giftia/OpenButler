@@ -1,0 +1,13 @@
+{
+  "id": "minecontext_godview_query_importer",
+  "name": "MineContext 上帝视角查询导入器",
+  "stage": "preprocessor",
+  "version": "0.1.0",
+  "input_schema": {"type": "object", "required": ["when", "window_minutes"]},
+  "output_schema": {"type": "object", "required": ["can_confirm", "summary", "evidence_boundary"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["minecontext.godview.read", "audit.write"],
+  "retention": {"raw_output": "discard_by_default", "screenshot": "path_only_by_default"},
+  "prompt_template": "Query local MineContext godview evidence and preserve confidence, activity ids, context ids, screenshot paths, and evidence boundaries."
+}

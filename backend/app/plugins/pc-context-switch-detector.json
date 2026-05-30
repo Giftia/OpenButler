@@ -1,0 +1,12 @@
+{
+  "id": "pc_context_switch_detector",
+  "name": "PC 上下文切换检测",
+  "stage": "timeline_processor",
+  "version": "0.1.0",
+  "input_schema": {"type": "object", "required": ["timeline_events"]},
+  "output_schema": {"type": "object", "required": ["context_switch_windows"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["event.read"],
+  "prompt_template": "Detect high context-switch windows without judging the user or confirming remote facts."
+}

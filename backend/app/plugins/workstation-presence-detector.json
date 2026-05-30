@@ -1,0 +1,13 @@
+{
+  "id": "workstation_presence_detector",
+  "name": "视觉在场检测",
+  "stage": "preprocessor",
+  "input_schema": {"type": "object", "required": ["frame_ref", "timestamp", "camera_id"]},
+  "output_schema": {"type": "object", "required": ["state", "confidence"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "edge", "vision": true, "local_only_supported": true},
+  "permissions": ["camera.frame.read", "event.write"],
+  "retention": {"raw_frame": "discard_by_default", "derived_event": "keep"},
+  "prompt_template": "Analyze whether a person is currently present at the workstation. Return structured JSON with state, confidence and evidence.",
+  "version": "0.1.0"
+}

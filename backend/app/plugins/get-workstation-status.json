@@ -1,0 +1,12 @@
+{
+  "id": "get_workstation_status",
+  "name": "获取当前视觉状态",
+  "stage": "butler_tool",
+  "input_schema": {"type": "object", "properties": {"user_id": {"type": "string"}}},
+  "output_schema": {"type": "object", "required": ["status", "evidence"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["event.read"],
+  "prompt_template": "Return current workstation presence, posture, observable work state and fatigue hints.",
+  "version": "0.1.0"
+}

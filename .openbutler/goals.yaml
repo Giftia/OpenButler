@@ -1,0 +1,67 @@
+product_goal:
+  name: "OpenButler 主动全场景感知 AI 管家"
+  mission: "让用户的生活更加清晰高效可量化"
+  current_stage: "Proactive Butler Core L2"
+  north_star: "用户每天 60 秒内理解今天发生了什么、什么值得注意、下一步应该做什么"
+
+active_objectives:
+  - id: OB-GOAL-001
+    title: "完成主动管家中枢 MVP"
+    priority: P0
+    success_criteria:
+      - "/butler 页面可用"
+      - "今日指标可生成"
+      - "主动洞察可生成"
+      - "用户反馈可记录"
+      - "strict 模式不调用外部模型"
+
+  - id: OB-GOAL-002
+    title: "把 MineContext PC 活动转化为统一时间线"
+    priority: P0
+    success_criteria:
+      - "PCActivityEvent 可转换为 UnifiedTimelineEvent"
+      - "支持 timeline rebuild"
+      - "保留证据边界"
+
+  - id: OB-GOAL-003
+    title: "建立可持续产品化开发流程"
+    priority: P0
+    success_criteria:
+      - "AGENTS.md 存在"
+      - "ROADMAP 存在"
+      - "Definition of Done 存在"
+      - "测试文档存在"
+      - "隐私边界文档存在"
+
+  - id: OB-GOAL-004
+    title: "Proactive Butler Core L2：真实历史、证据复核与反馈降噪"
+    priority: P0
+    status: active
+    description: >
+      将主动管家从 MVP 功能推进到可持续使用阶段。
+      本阶段聚焦真实 7 天历史导入、洞察证据详情可复核、
+      用户反馈驱动的 insight 降噪评估。
+    success_criteria:
+      - "支持 MineContext / PC Activity 最近 7 天历史导入的 dry-run 预览"
+      - "支持幂等导入，重复执行不会制造重复事件"
+      - "支持导入后生成 7 天指标摘要"
+      - "Butler Inbox 中每条 insight 可以打开证据详情"
+      - "证据详情 smoke 测试可验证点击链路"
+      - "用户 feedback 可影响 insight 评分或优先级"
+      - "存在 insight 降噪评估报告或测试"
+      - "strict 模式下不调用外部模型"
+      - "默认不复制 MineContext 截图"
+      - "不删除 MineContext 原始数据"
+
+constraints:
+  - "不接入新硬件"
+  - "不自动部署"
+  - "不自动合并"
+  - "不删除 MineContext 原始数据"
+  - "strict 模式下禁止外部模型"
+  - "不重写 MineContext / godview"
+  - "不自动调用外部模型"
+  - "不自动上传截图或原始 PC 活动"
+  - "不自动写入外部系统"
+  - "不做心理、医学、人格判断"
+  - "不把 MineContext 生成摘要当最终事实"

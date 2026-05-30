@@ -1,0 +1,12 @@
+{
+  "id": "get_today_butler_overview",
+  "name": "获取今日主动管家概览",
+  "stage": "butler_tool",
+  "version": "0.1.0",
+  "input_schema": {"type": "object"},
+  "output_schema": {"type": "object", "required": ["overview", "metrics", "insights"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["event.read", "metric.read", "insight.read"],
+  "prompt_template": "Return today's proactive butler overview with key metrics, active insights, suggested actions, and evidence boundaries."
+}

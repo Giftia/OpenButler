@@ -1,0 +1,10 @@
+.openbutler/
+.tmp/
+backend/data/
+data/
+frontend/dist/
+frontend/node_modules/
+**/__pycache__/
+**/*.pyc
+*.sqlite3
+*.db

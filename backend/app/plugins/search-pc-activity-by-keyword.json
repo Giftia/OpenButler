@@ -1,0 +1,12 @@
+{
+  "id": "search_pc_activity_by_keyword",
+  "name": "按关键词倒查 PC 操作",
+  "stage": "butler_tool",
+  "version": "0.1.0",
+  "input_schema": {"type": "object", "required": ["query"]},
+  "output_schema": {"type": "object", "required": ["items", "count"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["minecontext.godview.read", "audit.write"],
+  "prompt_template": "Search MineContext local evidence by keyword. Generic browser terms cannot confirm a target entity."
+}

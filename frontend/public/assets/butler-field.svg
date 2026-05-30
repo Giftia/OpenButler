@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" role="img" aria-label="OpenButler local timeline field">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1220"/>
+      <stop offset="0.46" stop-color="#123034"/>
+      <stop offset="1" stop-color="#172554"/>
+    </linearGradient>
+    <radialGradient id="pulse" cx="68%" cy="40%" r="46%">
+      <stop offset="0" stop-color="#a7f3d0" stop-opacity="0.58"/>
+      <stop offset="0.5" stop-color="#60a5fa" stop-opacity="0.24"/>
+      <stop offset="1" stop-color="#0f172a" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <rect width="1920" height="1080" fill="url(#pulse)"/>
+  <g opacity="0.28" fill="none" stroke="#dbeafe" stroke-width="1">
+    <path d="M120 760C340 610 512 650 694 510S1050 278 1286 368 1610 580 1790 436"/>
+    <path d="M80 860C320 740 530 782 760 630s444-296 696-198 266 220 408 164"/>
+    <path d="M170 246C350 328 518 304 710 210s384-92 570 42 330 152 520 66"/>
+  </g>
+  <g opacity="0.38">
+    <circle cx="398" cy="672" r="5" fill="#a7f3d0"/>
+    <circle cx="694" cy="510" r="6" fill="#bfdbfe"/>
+    <circle cx="1042" cy="342" r="7" fill="#67e8f9"/>
+    <circle cx="1332" cy="384" r="5" fill="#fef3c7"/>
+    <circle cx="1586" cy="554" r="6" fill="#a7f3d0"/>
+  </g>
+  <g filter="url(#soft)" opacity="0.24">
+    <rect x="1250" y="132" width="430" height="250" rx="46" fill="#22c55e"/>
+    <rect x="920" y="620" width="560" height="230" rx="46" fill="#3b82f6"/>
+  </g>
+</svg>

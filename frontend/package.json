@@ -1,0 +1,52 @@
+{
+  "name": "openbutler-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "smoke:routes": "node scripts/smoke-routes.mjs",
+    "smoke:butler-demo": "node scripts/smoke-butler-demo-api.mjs",
+    "smoke:butler-reset": "node scripts/smoke-butler-demo-reset.mjs",
+    "smoke:butler-ui-flow": "node scripts/smoke-butler-ui-flow.mjs",
+    "smoke:butler-mvp-report": "node scripts/smoke-butler-mvp-report.mjs",
+    "smoke:butler-demo-pack": "node scripts/smoke-butler-demo-pack.mjs",
+    "smoke:butler-browser": "node scripts/smoke-butler-browser.mjs",
+    "smoke:butler-l1-audit": "node scripts/smoke-butler-l1-audit.mjs",
+    "smoke:butler-data-insufficient-drill": "node scripts/smoke-butler-data-insufficient-drill.mjs",
+    "artifact:butler-demo-pack": "node scripts/write-butler-demo-pack-artifact.mjs",
+    "verify:productization": "node scripts/verify-productization.mjs",
+    "test:data-controls": "node scripts/check-butler-data-controls.mjs",
+    "test:readiness-panel": "node scripts/check-butler-readiness-panel.mjs",
+    "test:demo-path": "node scripts/check-butler-demo-path.mjs",
+    "test:demo-smoke-script": "node scripts/check-butler-demo-smoke-script.mjs",
+    "test:demo-reset-script": "node scripts/check-butler-demo-reset-script.mjs",
+    "test:butler-ui-flow-script": "node scripts/check-butler-ui-flow-script.mjs",
+    "test:mvp-report-script": "node scripts/check-butler-mvp-report-script.mjs",
+    "test:demo-pack-script": "node scripts/check-butler-demo-pack-script.mjs",
+    "test:butler-browser-smoke-script": "node scripts/check-butler-browser-smoke-script.mjs",
+    "test:l1-audit-script": "node scripts/check-butler-l1-audit-script.mjs",
+    "test:demo-pack-artifact-script": "node scripts/check-butler-demo-pack-artifact-script.mjs",
+    "test:demo-pack-artifact-file": "node scripts/check-butler-demo-pack-artifact-file.mjs",
+    "test:productization-records": "node scripts/check-productization-records.mjs",
+    "test:productization-verify-script": "node scripts/check-productization-verify-script.mjs",
+    "test:metrics-trend-panel": "node scripts/check-butler-metrics-trend-panel.mjs",
+    "test:inbox-evidence-panel": "node scripts/check-butler-inbox-evidence-panel.mjs",
+    "test:mvp-report-panel": "node scripts/check-butler-mvp-report-panel.mjs",
+    "test:data-insufficient-drill-script": "node scripts/check-butler-data-insufficient-drill-script.mjs"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3"
+  }
+}

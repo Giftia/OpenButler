@@ -1,0 +1,26 @@
+{
+  "id": "external-webhook-digest",
+  "name": "External Webhook Digest",
+  "stage": "butler_tool",
+  "input_schema": {
+    "type": "object",
+    "required": ["digest"],
+    "properties": {
+      "digest": {"type": "string"},
+      "webhook_url": {"type": "string"}
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["delivery_status"],
+    "properties": {
+      "delivery_status": {"type": "string"}
+    }
+  },
+  "privacy_level": "basic",
+  "model_requirements": {"provider": "cloud", "modalities": ["text"], "min_context": 4096},
+  "permissions": ["read_event_lake", "external_network", "external_webhook"],
+  "prompt_template": "Prepare a minimal privacy-filtered digest and send it to an authorized webhook.",
+  "version": "0.1.0"
+}
+

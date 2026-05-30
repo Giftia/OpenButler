@@ -1,0 +1,36 @@
+{
+  "id": "image-object-locator",
+  "name": "Image Object Locator",
+  "stage": "preprocessor",
+  "input_schema": {
+    "type": "object",
+    "required": ["image_uri"],
+    "properties": {
+      "image_uri": {"type": "string"},
+      "target_objects": {"type": "array", "items": {"type": "string"}}
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["objects"],
+    "properties": {
+      "objects": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "label": {"type": "string"},
+            "bbox": {"type": "array", "items": {"type": "number"}},
+            "confidence": {"type": "number"}
+          }
+        }
+      }
+    }
+  },
+  "privacy_level": "strict",
+  "model_requirements": {"provider": "local", "modalities": ["image"], "min_context": 2048},
+  "permissions": ["read_raw_object", "write_event_lake"],
+  "prompt_template": "Locate household objects in the image. Return labels, bounding boxes, room hints, and confidence only.",
+  "version": "0.1.0"
+}
+

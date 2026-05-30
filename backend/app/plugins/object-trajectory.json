@@ -1,0 +1,28 @@
+{
+  "id": "object-trajectory",
+  "name": "Object Trajectory Processor",
+  "stage": "timeline_processor",
+  "input_schema": {
+    "type": "object",
+    "required": ["object_label", "events"],
+    "properties": {
+      "object_label": {"type": "string"},
+      "events": {"type": "array"}
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["last_seen", "trajectory"],
+    "properties": {
+      "last_seen": {"type": "object"},
+      "trajectory": {"type": "array"},
+      "confidence": {"type": "number"}
+    }
+  },
+  "privacy_level": "strict",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "min_context": 4096},
+  "permissions": ["read_event_lake", "write_event_lake"],
+  "prompt_template": "Reconstruct the object's household trajectory from timestamped evidence. Keep every claim traceable.",
+  "version": "0.1.0"
+}
+

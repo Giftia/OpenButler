@@ -1,0 +1,12 @@
+{
+  "id": "submit_insight_feedback",
+  "name": "提交洞察反馈",
+  "stage": "butler_tool",
+  "version": "0.1.0",
+  "input_schema": {"type": "object", "required": ["insight_id", "feedback_type"]},
+  "output_schema": {"type": "object", "required": ["status"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["insight.write", "audit.write"],
+  "prompt_template": "Record user feedback for an insight so future proactive suggestions become less noisy."
+}

@@ -1,0 +1,12 @@
+{
+  "id": "get_today_workstation_summary",
+  "name": "获取今日视觉感知总结",
+  "stage": "butler_tool",
+  "input_schema": {"type": "object", "properties": {"user_id": {"type": "string"}}},
+  "output_schema": {"type": "object", "required": ["summary", "evidence"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["event.read", "summary.read"],
+  "prompt_template": "Answer actual workstation time, breaks, focus blocks and posture/fatigue counts with safe wording.",
+  "version": "0.1.0"
+}

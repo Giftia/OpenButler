@@ -1,0 +1,12 @@
+{
+  "id": "pc_workflow_pattern_detector",
+  "name": "PC 重复工作流候选检测",
+  "stage": "timeline_processor",
+  "version": "0.1.0",
+  "input_schema": {"type": "object", "required": ["events"]},
+  "output_schema": {"type": "object", "required": ["workflow_candidates"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["event.read"],
+  "prompt_template": "Find repeated local PC workflows and suggest packaging as OpenClaw skills or OpenButler tools."
+}

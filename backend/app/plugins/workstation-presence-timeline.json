@@ -1,0 +1,12 @@
+{
+  "id": "workstation_presence_timeline",
+  "name": "视觉在场时间线",
+  "stage": "timeline_processor",
+  "input_schema": {"type": "object", "required": ["events"]},
+  "output_schema": {"type": "object", "required": ["presence_sessions"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["event.read", "event.write"],
+  "prompt_template": "Debounce and merge workstation presence events into traceable sessions.",
+  "version": "0.1.0"
+}

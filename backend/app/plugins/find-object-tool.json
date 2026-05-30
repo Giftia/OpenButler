@@ -1,0 +1,27 @@
+{
+  "id": "find-object-tool",
+  "name": "Find Object Butler Tool",
+  "stage": "butler_tool",
+  "input_schema": {
+    "type": "object",
+    "required": ["object_label"],
+    "properties": {
+      "object_label": {"type": "string"},
+      "user_id": {"type": "string"}
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["answer", "evidence"],
+    "properties": {
+      "answer": {"type": "string"},
+      "evidence": {"type": "array"}
+    }
+  },
+  "privacy_level": "strict",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "min_context": 2048},
+  "permissions": ["read_event_lake"],
+  "prompt_template": "Answer where the requested object was last seen. Cite event ids and uncertainty.",
+  "version": "0.1.0"
+}
+

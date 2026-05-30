@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.vite/
+coverage/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Local databases / runtime data
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.sqlite-journal
+data/
+runtime/
+storage/
+uploads/
+media/
+screenshots/
+logs/
+*.log
+backend/data/*
+!backend/data/.gitkeep
+
+# MineContext / local user data
+MineContext/
+minecontext_data/
+minecontext_exports/
+minecontext_observation_pack.md
+*_observation_pack.md
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Temporary artifacts
+tmp/
+temp/
+.tmp/
+.cache/
+
+# Local deployment metadata
+.vercel/

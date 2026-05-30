@@ -1,0 +1,13 @@
+{
+  "id": "workstation_fatigue_signal_detector",
+  "name": "视觉疲劳可观察信号检测",
+  "stage": "preprocessor",
+  "input_schema": {"type": "object", "required": ["frame_ref", "timestamp", "camera_id"]},
+  "output_schema": {"type": "object", "required": ["severity", "reason_codes", "confidence"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "edge", "vision": true, "local_only_supported": true},
+  "permissions": ["camera.frame.read", "event.write"],
+  "retention": {"raw_frame": "discard_by_default", "derived_event": "keep"},
+  "prompt_template": "Detect low-risk observable fatigue signals only. Do not output medical or psychological diagnosis.",
+  "version": "0.1.0"
+}

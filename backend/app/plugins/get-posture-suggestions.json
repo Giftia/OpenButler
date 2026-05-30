@@ -1,0 +1,13 @@
+{
+  "id": "get_posture_suggestions",
+  "name": "获取姿态建议",
+  "stage": "butler_tool",
+  "input_schema": {"type": "object", "properties": {"user_id": {"type": "string"}}},
+  "output_schema": {"type": "object", "required": ["suggestions", "evidence"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["event.read"],
+  "prompt_template": "Give posture suggestions such as screen height and neck movement from local posture events.",
+  "version": "0.1.0"
+}
+

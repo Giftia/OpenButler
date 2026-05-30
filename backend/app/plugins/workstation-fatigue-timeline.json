@@ -1,0 +1,12 @@
+{
+  "id": "workstation_fatigue_timeline",
+  "name": "视觉疲劳提示时间线",
+  "stage": "timeline_processor",
+  "input_schema": {"type": "object", "required": ["events"]},
+  "output_schema": {"type": "object", "required": ["fatigue_periods"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["event.read", "event.write"],
+  "prompt_template": "Aggregate low-risk fatigue signals and generate non-medical rest suggestions.",
+  "version": "0.1.0"
+}

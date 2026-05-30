@@ -1,0 +1,27 @@
+{
+  "id": "achievement-summarizer",
+  "name": "Family Achievement Summarizer",
+  "stage": "timeline_processor",
+  "input_schema": {
+    "type": "object",
+    "required": ["events", "window"],
+    "properties": {
+      "events": {"type": "array"},
+      "window": {"type": "string"}
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["achievements"],
+    "properties": {
+      "achievements": {"type": "array"},
+      "summary": {"type": "string"}
+    }
+  },
+  "privacy_level": "basic",
+  "model_requirements": {"provider": "cloud", "modalities": ["text"], "min_context": 8192},
+  "permissions": ["read_event_lake", "cloud_api"],
+  "prompt_template": "Summarize meaningful small achievements from the week. Avoid sensitive details unless explicitly authorized.",
+  "version": "0.1.0"
+}
+

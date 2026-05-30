@@ -1,0 +1,12 @@
+{
+  "id": "explain_insight_evidence",
+  "name": "解释洞察证据",
+  "stage": "butler_tool",
+  "version": "0.1.0",
+  "input_schema": {"type": "object", "required": ["insight_id"]},
+  "output_schema": {"type": "object", "required": ["evidence_refs", "evidence_boundary"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["insight.read", "event.read"],
+  "prompt_template": "Explain the evidence source, confidence, and uncertainty boundary for an insight."
+}

@@ -1,0 +1,12 @@
+{
+  "id": "get_butler_briefing",
+  "name": "获取主动管家简报",
+  "stage": "butler_tool",
+  "version": "0.1.0",
+  "input_schema": {"type": "object", "properties": {"type": {"type": "string"}}},
+  "output_schema": {"type": "object", "required": ["title", "sections", "evidence_boundary"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["event.read", "briefing.write"],
+  "prompt_template": "Generate a morning, evening, or context recovery briefing from local timeline evidence."
+}

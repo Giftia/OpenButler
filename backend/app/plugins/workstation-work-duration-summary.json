@@ -1,0 +1,12 @@
+{
+  "id": "workstation_work_duration_summary",
+  "name": "视觉在场时长统计",
+  "stage": "timeline_processor",
+  "input_schema": {"type": "object", "required": ["events", "date"]},
+  "output_schema": {"type": "object", "required": ["metrics"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["event.read", "summary.write"],
+  "prompt_template": "Summarize actual workstation time, breaks, focus blocks, fatigue signals and posture warnings.",
+  "version": "0.1.0"
+}

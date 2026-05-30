@@ -1,0 +1,13 @@
+{
+  "id": "get_fatigue_suggestions",
+  "name": "获取疲劳休息建议",
+  "stage": "butler_tool",
+  "input_schema": {"type": "object", "properties": {"user_id": {"type": "string"}}},
+  "output_schema": {"type": "object", "required": ["suggestions", "evidence"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["event.read"],
+  "prompt_template": "Give non-medical fatigue suggestions from observable local events only.",
+  "version": "0.1.0"
+}
+

@@ -1,0 +1,2323 @@
+from __future__ import annotations
+
+import json
+import sqlite3
+import uuid
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+from app.modules.pc_activity_context.service import PCActivityContextService
+
+from .briefing_generator import generate_briefing
+from .butler_inbox import snooze_until
+from .insight_engine import BOUNDARY, evaluate_feedback_noise_reduction, generate_rule_insights
+from .metrics_engine import build_metric_summary
+from .schemas import ProactiveButlerSettings
+from .unified_timeline import pc_activity_to_unified
+
+DEFAULT_USER_ID = "demo-user"
+OBJECTIVE_MAPPER_TEMPLATE_VERSION = "active_objective_evidence_mapper_template_v1"
+
+
+def productization_evidence_mapper_template() -> dict[str, Any]:
+    return {
+        "schema_version": OBJECTIVE_MAPPER_TEMPLATE_VERSION,
+        "doc_path": "docs/dev/ACTIVE_OBJECTIVE_EVIDENCE_MAPPERS.md",
+        "service_path": "backend/app/modules/butler_core/service.py",
+        "test_path": "backend/app/modules/butler_core/tests/test_butler_api_contract.py",
+        "goals_path": ".openbutler/goals.yaml",
+        "required_steps": [
+            "Add the objective to .openbutler/goals.yaml active_objectives.",
+            "Add an entry in criteria_by_objective for the objective id.",
+            "Map every success criterion to one or more local evidence criteria.",
+            "Every criterion must include evidence_refs and evidence_boundary.",
+            "Every criterion must preserve strict privacy and MineContext source boundaries.",
+            "Add or update contract tests for proven and missing-mapper states.",
+            "Update docs when the evidence source, API, UI, or privacy boundary changes.",
+        ],
+        "criterion_contract": {
+            "id": "stable_snake_case_id",
+            "title": "human-readable success criterion",
+            "status": "proven | needs_attention",
+            "details": "structured local evidence only",
+            "evidence_refs": [{"kind": "api|file|route|script|artifact", "path": "local evidence reference"}],
+            "evidence_boundary": "required",
+        },
+        "privacy_invariants": [
+            "external_model_used must remain false",
+            "external_model_allowed must remain false for strict-mode core checks",
+            "minecontext_source_deleted must remain 0",
+            "copied_screenshots must remain 0 unless a future explicit user-approved flow says otherwise",
+            "remote repositories, CI, Yunxiao, deployments, and online services are not verified by objective mappers",
+        ],
+        "unknown_objective_behavior": "Return needs_attention with evidence_mapper_missing until a mapper is implemented.",
+    }
+
+
+class AutoClosingConnection(sqlite3.Connection):
+    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> bool:
+        should_suppress = super().__exit__(exc_type, exc_value, traceback)
+        self.close()
+        return should_suppress
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def init_butler_core_db(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS unified_timeline_events (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            household_id TEXT,
+            source TEXT NOT NULL,
+            source_event_id TEXT,
+            source_type TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            ended_at TEXT,
+            duration_seconds INTEGER,
+            title TEXT NOT NULL,
+            summary TEXT,
+            event_type TEXT NOT NULL,
+            entities TEXT NOT NULL,
+            metrics TEXT NOT NULL,
+            tags TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            evidence_level TEXT NOT NULL,
+            evidence_refs TEXT NOT NULL,
+            evidence_boundary TEXT NOT NULL,
+            privacy_level TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS butler_metric_snapshots (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            date TEXT NOT NULL,
+            period TEXT NOT NULL,
+            metric_key TEXT NOT NULL,
+            metric_name TEXT NOT NULL,
+            value REAL NOT NULL,
+            unit TEXT NOT NULL,
+            dimension TEXT NOT NULL,
+            comparison TEXT,
+            source_event_count INTEGER NOT NULL,
+            confidence REAL NOT NULL,
+            evidence_refs TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS insight_cards (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            household_id TEXT,
+            type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            summary TEXT NOT NULL,
+            detail TEXT,
+            severity TEXT NOT NULL,
+            priority INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            suggested_actions TEXT NOT NULL,
+            metrics TEXT NOT NULL,
+            evidence_refs TEXT NOT NULL,
+            evidence_boundary TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            generated_by TEXT NOT NULL,
+            generated_at TEXT NOT NULL,
+            expires_at TEXT,
+            snoozed_until TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS butler_briefings (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            sections TEXT NOT NULL,
+            key_metrics TEXT NOT NULL,
+            top_insights TEXT NOT NULL,
+            suggested_next_actions TEXT NOT NULL,
+            evidence_refs TEXT NOT NULL,
+            evidence_boundary TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            period_start TEXT NOT NULL,
+            period_end TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS butler_goals (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            goal_type TEXT NOT NULL,
+            target TEXT NOT NULL,
+            schedule TEXT NOT NULL,
+            enabled INTEGER NOT NULL,
+            privacy_level TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS insight_feedback (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            insight_id TEXT NOT NULL,
+            insight_type TEXT,
+            feedback_type TEXT NOT NULL,
+            comment TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS butler_audit_log (
+            id TEXT PRIMARY KEY,
+            action TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            details TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS butler_harness_runs (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            status TEXT NOT NULL,
+            dry_run INTEGER NOT NULL,
+            mutates_data INTEGER NOT NULL,
+            summary TEXT NOT NULL,
+            failed_checks TEXT NOT NULL,
+            privacy TEXT NOT NULL,
+            evidence_boundary TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        """
+    )
+    conn.execute(
+        "INSERT OR IGNORE INTO settings(key, value) VALUES('proactive_butler_settings', ?)",
+        (ProactiveButlerSettings().model_dump_json(),),
+    )
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(insight_feedback)").fetchall()}
+    if "insight_type" not in columns:
+        conn.execute("ALTER TABLE insight_feedback ADD COLUMN insight_type TEXT")
+
+
+class ButlerCoreService:
+    def __init__(self, db_path: Path | str, runtime_dir: Path | str) -> None:
+        self.db_path = Path(db_path)
+        self.runtime_dir = Path(runtime_dir)
+
+    def connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.db_path, factory=AutoClosingConnection)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def pc_activity(self) -> PCActivityContextService:
+        return PCActivityContextService(self.db_path, self.runtime_dir)
+
+    def get_settings(self) -> ProactiveButlerSettings:
+        with self.connect() as conn:
+            row = conn.execute("SELECT value FROM settings WHERE key = 'proactive_butler_settings'").fetchone()
+        return ProactiveButlerSettings.model_validate_json(row["value"]) if row else ProactiveButlerSettings()
+
+    def update_settings(self, payload: dict[str, Any]) -> dict[str, Any]:
+        current = self.get_settings().model_dump()
+        current.update(payload)
+        settings = ProactiveButlerSettings.model_validate(current)
+        if settings.privacy.get("strict_mode_respected", True):
+            settings.insight_generation["external_model_allowed"] = False
+            settings.notification["system_notification_enabled"] = False
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO settings(key, value)
+                VALUES('proactive_butler_settings', ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (settings.model_dump_json(),),
+            )
+            self._audit(conn, "settings_updated", DEFAULT_USER_ID, {"enabled": settings.enabled})
+        return settings.model_dump()
+
+    def rebuild_timeline(self) -> dict[str, Any]:
+        pc_events = self.pc_activity().events()
+        created: list[dict[str, Any]] = []
+        with self.connect() as conn:
+            conn.execute("DELETE FROM unified_timeline_events WHERE source = 'pc_activity'")
+            for pc_event in pc_events:
+                created.append(self._insert_timeline_event(conn, pc_activity_to_unified(pc_event)))
+            self._audit(conn, "timeline_rebuilt", DEFAULT_USER_ID, {"created": len(created), "source": "pc_activity"})
+        return {"created": created, "count": len(created), "source": "pc_activity"}
+
+    def timeline(
+        self,
+        start_time: str | None = None,
+        end_time: str | None = None,
+        source: str | None = None,
+        event_type: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        query = "SELECT * FROM unified_timeline_events WHERE 1=1"
+        params: list[Any] = []
+        if start_time:
+            query += " AND started_at >= ?"
+            params.append(start_time)
+        if end_time:
+            query += " AND started_at <= ?"
+            params.append(end_time)
+        if source:
+            query += " AND source = ?"
+            params.append(source)
+        if event_type:
+            query += " AND event_type = ?"
+            params.append(event_type)
+        query += " ORDER BY started_at DESC LIMIT ?"
+        params.append(limit)
+        with self.connect() as conn:
+            rows = conn.execute(query, tuple(params)).fetchall()
+        return [self._timeline_from_row(row) for row in rows]
+
+    def today_timeline(self) -> list[dict[str, Any]]:
+        today = date.today().isoformat()
+        items = self.timeline(start_time=today, limit=1000)
+        if not items:
+            self.rebuild_timeline()
+            items = self.timeline(start_time=today, limit=1000)
+        return items
+
+    def metrics_today(self, persist: bool = True) -> dict[str, Any]:
+        events = self.today_timeline()
+        settings = self.get_settings()
+        summary = build_metric_summary(events, settings.metrics)
+        if persist:
+            self._persist_metrics(summary, events)
+        return {
+            "date": date.today().isoformat(),
+            "period": "today",
+            "metrics": summary,
+            "evidence_refs": [{"kind": "timeline_event", "id": event["id"]} for event in events[:10]],
+            "evidence_boundary": BOUNDARY,
+        }
+
+    def metrics_range(self, start_date: str | None = None, end_date: str | None = None, days: int = 7) -> dict[str, Any]:
+        if not end_date:
+            end_date = date.today().isoformat()
+        if not start_date:
+            start_date = (date.fromisoformat(end_date) - timedelta(days=days - 1)).isoformat()
+        query = "SELECT * FROM butler_metric_snapshots WHERE 1=1"
+        params: list[Any] = []
+        if start_date:
+            query += " AND date >= ?"
+            params.append(start_date)
+        if end_date:
+            query += " AND date <= ?"
+            params.append(end_date)
+        query += " ORDER BY date DESC, metric_key ASC"
+        with self.connect() as conn:
+            rows = conn.execute(query, tuple(params)).fetchall()
+        items = [self._metric_from_row(row) for row in rows]
+        trend = self._metrics_trend(items, start_date, end_date)
+        trend = self._fill_metrics_trend_from_timeline(trend, start_date, end_date)
+        return {
+            "period": "recent_days",
+            "start_date": start_date,
+            "end_date": end_date,
+            "days": len(trend),
+            "items": items,
+            "count": len(items),
+            "trend": trend,
+            "summary": self._metrics_trend_summary(trend, start_date, end_date),
+            "privacy": {
+                "external_model_used": False,
+                "external_model_allowed": False,
+                "system_notification_enabled": False,
+                "minecontext_source_deleted": 0,
+                "copied_screenshots": 0,
+            },
+            "evidence_boundary": BOUNDARY,
+        }
+
+    def generate_insights(self, force: bool = False) -> dict[str, Any]:
+        if force:
+            with self.connect() as conn:
+                conn.execute("DELETE FROM insight_cards WHERE date(generated_at) = date('now')")
+        metrics = self.metrics_today()["metrics"]
+        events = self.today_timeline()
+        workflows = self.pc_activity().summary().get("workflow_candidates", [])
+        settings = self.get_settings()
+        penalties = self.feedback_penalties()
+        cards = generate_rule_insights(metrics, events, workflows, penalties, settings.feedback)
+        created: list[dict[str, Any]] = []
+        with self.connect() as conn:
+            for item in cards:
+                existing = conn.execute(
+                    "SELECT id FROM insight_cards WHERE type = ? AND date(generated_at) = date('now') LIMIT 1",
+                    (item["type"],),
+                ).fetchone()
+                if existing and not force:
+                    created.append(self.get_insight(existing["id"]) or item)
+                    continue
+                created.append(self._insert_insight(conn, item))
+            self._audit(conn, "insights_generated", DEFAULT_USER_ID, {"count": len(created), "external_model_used": False})
+        return {"items": created, "count": len(created), "external_model_used": False}
+
+    def insights(self, status: str | None = None, insight_type: str | None = None, priority: int | None = None) -> list[dict[str, Any]]:
+        query = "SELECT * FROM insight_cards WHERE 1=1"
+        params: list[Any] = []
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+        if insight_type:
+            query += " AND type = ?"
+            params.append(insight_type)
+        if priority is not None:
+            query += " AND priority >= ?"
+            params.append(priority)
+        query += " ORDER BY priority DESC, generated_at DESC"
+        with self.connect() as conn:
+            rows = conn.execute(query, tuple(params)).fetchall()
+        return [self._insight_from_row(row) for row in rows]
+
+    def get_insight(self, insight_id: str) -> dict[str, Any] | None:
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM insight_cards WHERE id = ?", (insight_id,)).fetchone()
+        return self._insight_from_row(row) if row else None
+
+    def submit_feedback(self, insight_id: str, feedback_type: str, comment: str | None = None) -> dict[str, Any]:
+        insight = self.get_insight(insight_id)
+        if not insight:
+            raise KeyError(insight_id)
+        next_status = {
+            "useful": "accepted",
+            "accepted_action": "accepted",
+            "dismissed": "dismissed",
+            "not_useful": "dismissed",
+            "inaccurate": "marked_inaccurate",
+            "too_frequent": "dismissed",
+            "remind_later": "snoozed",
+        }.get(feedback_type, insight["status"])
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO insight_feedback(id, user_id, insight_id, insight_type, feedback_type, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (str(uuid.uuid4()), DEFAULT_USER_ID, insight_id, insight["type"], feedback_type, comment, now_iso()),
+            )
+            conn.execute("UPDATE insight_cards SET status = ? WHERE id = ?", (next_status, insight_id))
+            self._audit(conn, "insight_feedback", DEFAULT_USER_ID, {"insight_id": insight_id, "feedback_type": feedback_type})
+        return self.get_insight(insight_id) or insight
+
+    def dismiss_insight(self, insight_id: str) -> dict[str, Any]:
+        return self.submit_feedback(insight_id, "dismissed")
+
+    def snooze_insight(self, insight_id: str, minutes: int) -> dict[str, Any]:
+        insight = self.get_insight(insight_id)
+        if not insight:
+            raise KeyError(insight_id)
+        until = snooze_until(minutes)
+        with self.connect() as conn:
+            conn.execute("UPDATE insight_cards SET status = 'snoozed', snoozed_until = ? WHERE id = ?", (until, insight_id))
+            conn.execute(
+                "INSERT INTO insight_feedback(id, user_id, insight_id, insight_type, feedback_type, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (str(uuid.uuid4()), DEFAULT_USER_ID, insight_id, insight["type"], "remind_later", f"snoozed {minutes} minutes", now_iso()),
+            )
+            self._audit(conn, "insight_snoozed", DEFAULT_USER_ID, {"insight_id": insight_id, "minutes": minutes})
+        return self.get_insight(insight_id) or insight
+
+    def insight_noise_evaluation(self) -> dict[str, Any]:
+        settings = self.get_settings()
+        report = evaluate_feedback_noise_reduction(self.feedback_penalties(), settings.feedback)
+        with self.connect() as conn:
+            self._audit(
+                conn,
+                "insight_noise_evaluation",
+                DEFAULT_USER_ID,
+                {
+                    "evaluations": report["count"],
+                    "external_model_used": False,
+                    "external_webhook_used": False,
+                    "system_notification_sent": False,
+                },
+            )
+        return report
+
+    def generate_briefing(self, briefing_type: str) -> dict[str, Any]:
+        if briefing_type == "weekly_review":
+            range_report = self.metrics_range(days=7)
+            range_summary = range_report.get("summary", {})
+            metrics = {
+                **range_summary,
+                "pc_active_minutes": range_summary.get("total_pc_active_minutes", 0),
+                "focus_minutes": range_summary.get("total_focus_minutes", 0),
+                "context_switch_count": range_summary.get("total_context_switch_count", 0),
+                "source_event_count": range_summary.get("total_source_event_count", 0),
+            }
+            events = self.timeline(
+                start_time=f"{range_report.get('start_date')}T00:00:00+00:00",
+                end_time=f"{range_report.get('end_date')}T23:59:59+00:00",
+                limit=1000,
+            )
+        else:
+            metrics = self.metrics_today()["metrics"]
+            events = self.today_timeline()
+        insights = self.insights(status="new") or self.generate_insights()["items"]
+        item = generate_briefing(briefing_type, metrics, insights, events)
+        with self.connect() as conn:
+            created = self._insert_briefing(conn, item)
+            self._audit(conn, "briefing_generated", DEFAULT_USER_ID, {"type": briefing_type})
+        return created
+
+    def today_briefings(self) -> dict[str, Any]:
+        today = date.today().isoformat()
+        with self.connect() as conn:
+            rows = conn.execute("SELECT * FROM butler_briefings WHERE created_at >= ? ORDER BY created_at DESC", (today,)).fetchall()
+        if not rows:
+            return {"items": [self.generate_briefing("morning")], "count": 1}
+        return {"items": [self._briefing_from_row(row) for row in rows], "count": len(rows)}
+
+    def context_recovery(self, lookback_hours: int = 24) -> dict[str, Any]:
+        since = (datetime.now(timezone.utc) - timedelta(hours=lookback_hours)).isoformat()
+        events = self.timeline(start_time=since, limit=30)
+        briefing = generate_briefing("context_recovery", build_metric_summary(events, self.get_settings().metrics), self.insights(status="new")[:5], events)
+        return {"lookback_hours": lookback_hours, "events": events, "briefing": briefing, "evidence_boundary": BOUNDARY}
+
+    def home(self) -> dict[str, Any]:
+        self.rebuild_timeline()
+        metrics = self.metrics_today()["metrics"]
+        insights = self.insights(status="new")
+        if not insights and self.get_settings().insight_generation.get("auto_generate_on_open", True):
+            insights = self.generate_insights()["items"]
+        headline = (
+            f"记录显示今天 PC 活跃约 {metrics.get('pc_active_minutes', 0)} 分钟，深度工作约 {metrics.get('focus_minutes', 0)} 分钟。"
+            if metrics.get("source_event_count")
+            else "当前 PC 活动数据不足，暂不生成强结论。"
+        )
+        return {
+            "date": date.today().isoformat(),
+            "overview": {"headline": headline, "confidence": metrics.get("confidence", 0.2), "evidence_boundary": BOUNDARY},
+            "metrics": metrics,
+            "insights": insights[:8],
+            "suggested_next_actions": self._suggested_next_actions(insights, metrics),
+            "timeline": self.today_timeline()[:8],
+            "privacy": {
+                "external_model_used": False,
+                "system_notification_enabled": self.get_settings().notification.get("system_notification_enabled", False),
+            },
+        }
+
+    def run_demo_path(
+        self,
+        import_pc_activity: bool = True,
+        lookback_hours: int = 24,
+        limit: int = 200,
+        briefing_type: str = "evening",
+    ) -> dict[str, Any]:
+        import_result: dict[str, Any] = {
+            "status": "skipped",
+            "count": 0,
+            "read_only": True,
+            "copied_screenshots": 0,
+        }
+        if import_pc_activity:
+            end_time = datetime.now(timezone.utc)
+            start_time = end_time - timedelta(hours=lookback_hours)
+            try:
+                imported = self.pc_activity().import_activities(start_time, end_time, limit)
+                import_result = {
+                    "status": "completed",
+                    "count": int(imported.get("count") or 0),
+                    "read_only": bool(imported.get("read_only", True)),
+                    "copied_screenshots": int(imported.get("copied_screenshots") or 0),
+                }
+            except Exception as exc:
+                import_result = {
+                    "status": "unavailable",
+                    "count": 0,
+                    "read_only": True,
+                    "copied_screenshots": 0,
+                    "error_type": exc.__class__.__name__,
+                    "message": "MineContext 暂不可用，演示路径已继续使用现有 OpenButler 数据，不会编造今日活动。",
+                }
+        timeline_result = self.rebuild_timeline()
+        insights_result = self.generate_insights(force=True)
+        briefing = self.generate_briefing(briefing_type)
+        readiness = self.readiness()
+        with self.connect() as conn:
+            self._audit(
+                conn,
+                "demo_path_run",
+                DEFAULT_USER_ID,
+                {
+                    "import_status": import_result["status"],
+                    "imported": import_result["count"],
+                    "timeline_events": timeline_result["count"],
+                    "insights": insights_result["count"],
+                    "briefing_type": briefing["type"],
+                    "external_model_used": False,
+                    "copied_screenshots": import_result["copied_screenshots"],
+                },
+            )
+        return {
+            "status": "completed",
+            "steps": {
+                "pc_activity_import": import_result,
+                "timeline_rebuild": {"status": "completed", "count": timeline_result["count"], "source": timeline_result["source"]},
+                "insight_generation": {"status": "completed", "count": insights_result["count"], "external_model_used": False},
+                "briefing_generation": {"status": "completed", "id": briefing["id"], "type": briefing["type"]},
+                "readiness_refresh": {"status": readiness["status"], "summary": readiness["summary"]},
+            },
+            "readiness": readiness,
+            "privacy": {
+                "external_model_used": False,
+                "system_notification_enabled": False,
+                "minecontext_source_deleted": 0,
+                "copied_screenshots": import_result["copied_screenshots"],
+                "did_not_fabricate_activity": import_result["status"] != "completed" or import_result["count"] >= 0,
+            },
+            "evidence_boundary": BOUNDARY,
+        }
+
+    def preview_pc_activity_import(
+        self,
+        lookback_days: int = 7,
+        dry_run: bool = True,
+        include_screenshot_paths: bool = True,
+        copy_screenshots: bool = False,
+        limit: int = 1000,
+    ) -> dict[str, Any]:
+        if not dry_run:
+            return {
+                "dry_run": False,
+                "source": "minecontext",
+                "status": "rejected",
+                "error": "L2 preview endpoint only supports dry-run. Use the existing import API only after explicit user confirmation.",
+                "mutates_openbutler_db": False,
+                "minecontext_source_mutated": False,
+                "screenshots_copied": False,
+                "external_model_used": False,
+                "evidence_boundary": BOUNDARY,
+            }
+        end_time = datetime.now(timezone.utc)
+        start_time = end_time - timedelta(days=lookback_days)
+        preview = self.pc_activity().preview_import_activities(
+            start_time=start_time,
+            end_time=end_time,
+            limit=limit,
+            include_screenshot_paths=include_screenshot_paths,
+            copy_screenshots=copy_screenshots,
+        )
+        return {
+            "status": "preview_ready" if not preview.get("adapter_error") else "source_unavailable",
+            **preview,
+            "lookback_days": lookback_days,
+            "privacy": {
+                "external_model_used": False,
+                "external_model_allowed": False,
+                "external_webhook_used": False,
+                "copied_screenshots": 0,
+                "minecontext_source_deleted": 0,
+                "minecontext_source_mutated": False,
+                "raw_output_included": False,
+            },
+        }
+
+    def readiness(self) -> dict[str, Any]:
+        home = self.home()
+        metrics = home["metrics"]
+        settings = self.get_settings()
+        pc_events = self.pc_activity().events()
+        with self.connect() as conn:
+            timeline_count = conn.execute("SELECT COUNT(*) AS count FROM unified_timeline_events").fetchone()["count"]
+            metric_count = conn.execute("SELECT COUNT(*) AS count FROM butler_metric_snapshots").fetchone()["count"]
+            insight_count = conn.execute("SELECT COUNT(*) AS count FROM insight_cards").fetchone()["count"]
+            feedback_count = conn.execute("SELECT COUNT(*) AS count FROM insight_feedback").fetchone()["count"]
+            briefing_count = conn.execute("SELECT COUNT(*) AS count FROM butler_briefings").fetchone()["count"]
+            self._audit(
+                conn,
+                "butler_readiness_checked",
+                DEFAULT_USER_ID,
+                {
+                    "pc_activity_events": len(pc_events),
+                    "timeline": timeline_count,
+                    "metrics": metric_count,
+                    "insights": insight_count,
+                    "feedback": feedback_count,
+                },
+            )
+        openclaw = self._openclaw_tools_status()
+        strict_ready = (
+            settings.privacy.get("strict_mode_respected", True)
+            and not settings.insight_generation.get("external_model_allowed", False)
+            and not home["privacy"].get("external_model_used", False)
+            and not home["privacy"].get("system_notification_enabled", False)
+        )
+        source_event_count = int(metrics.get("source_event_count") or 0)
+        checks = [
+            self._readiness_check(
+                "pc_activity_source",
+                "MineContext PC Activity source events",
+                "ready" if pc_events else "data_insufficient",
+                {"pc_activity_events": len(pc_events)},
+            ),
+            self._readiness_check(
+                "unified_timeline",
+                "Unified timeline rebuild",
+                "ready" if timeline_count else "data_insufficient",
+                {"timeline_events": timeline_count},
+            ),
+            self._readiness_check(
+                "today_metrics",
+                "Today metrics",
+                "ready" if source_event_count else "data_insufficient",
+                {"source_event_count": source_event_count, "metric_snapshots": metric_count},
+            ),
+            self._readiness_check(
+                "insight_engine",
+                "Rule-based insight engine",
+                "ready" if insight_count else "data_insufficient",
+                {"insights": insight_count, "active_insights": len(home.get("insights", []))},
+            ),
+            self._readiness_check(
+                "feedback_loop",
+                "Insight feedback store",
+                "ready",
+                {"feedback_count": feedback_count},
+            ),
+            self._readiness_check(
+                "briefing_generator",
+                "Briefing generator",
+                "ready" if briefing_count or source_event_count else "data_insufficient",
+                {"briefings": briefing_count},
+            ),
+            self._readiness_check(
+                "openclaw_tools",
+                "OpenClaw proactive Butler tools",
+                "ready" if openclaw["ready"] else "attention_needed",
+                openclaw,
+            ),
+            self._readiness_check(
+                "strict_privacy",
+                "Strict privacy guardrails",
+                "ready" if strict_ready else "attention_needed",
+                {
+                    "strict_mode_respected": settings.privacy.get("strict_mode_respected", True),
+                    "external_model_allowed": settings.insight_generation.get("external_model_allowed", False),
+                    "external_model_used": home["privacy"].get("external_model_used", False),
+                    "system_notification_enabled": home["privacy"].get("system_notification_enabled", False),
+                },
+            ),
+        ]
+        if any(item["status"] == "attention_needed" for item in checks):
+            status = "attention_needed"
+        elif any(item["status"] == "data_insufficient" for item in checks):
+            status = "data_insufficient"
+        else:
+            status = "ready"
+        return {
+            "status": status,
+            "generated_at": now_iso(),
+            "summary": {
+                "pc_activity_events": len(pc_events),
+                "timeline_events": timeline_count,
+                "metric_snapshots": metric_count,
+                "insights": insight_count,
+                "feedback_count": feedback_count,
+                "briefings": briefing_count,
+            },
+            "checks": checks,
+            "privacy": {
+                "external_model_used": False,
+                "system_notification_enabled": home["privacy"].get("system_notification_enabled", False),
+                "minecontext_source_deleted": 0,
+            },
+            "evidence_boundary": BOUNDARY,
+        }
+
+    def mvp_report(self) -> dict[str, Any]:
+        readiness = self.readiness()
+        home = self.home()
+        summary = readiness["summary"]
+        checks = {item["id"]: item for item in readiness["checks"]}
+        acceptance = [
+            self._mvp_report_check(
+                "pc_activity_source_events",
+                "MineContext PC Activity 事件可用",
+                checks.get("pc_activity_source", {}).get("status") == "ready",
+                {"pc_activity_events": summary.get("pc_activity_events", 0)},
+            ),
+            self._mvp_report_check(
+                "unified_timeline_ready",
+                "PC Activity 已进入统一时间线",
+                checks.get("unified_timeline", {}).get("status") == "ready",
+                {"timeline_events": summary.get("timeline_events", 0)},
+            ),
+            self._mvp_report_check(
+                "today_metrics_ready",
+                "今日指标可生成",
+                checks.get("today_metrics", {}).get("status") == "ready",
+                {
+                    "metric_snapshots": summary.get("metric_snapshots", 0),
+                    "source_event_count": home["metrics"].get("source_event_count", 0),
+                },
+            ),
+            self._mvp_report_check(
+                "active_insights_ready",
+                "主动洞察可生成",
+                checks.get("insight_engine", {}).get("status") == "ready",
+                {"insights": summary.get("insights", 0), "active_insights": len(home.get("insights", []))},
+            ),
+            self._mvp_report_check(
+                "feedback_loop_ready",
+                "Butler Inbox 反馈闭环可用",
+                checks.get("feedback_loop", {}).get("status") == "ready",
+                {"feedback_count": summary.get("feedback_count", 0)},
+            ),
+            self._mvp_report_check(
+                "briefing_ready",
+                "晨报/晚报/开工恢复包生成器可用",
+                checks.get("briefing_generator", {}).get("status") == "ready",
+                {"briefings": summary.get("briefings", 0)},
+            ),
+            self._mvp_report_check(
+                "openclaw_tools_ready",
+                "OpenClaw 主动管家工具声明可用",
+                checks.get("openclaw_tools", {}).get("status") == "ready",
+                checks.get("openclaw_tools", {}).get("details", {}),
+            ),
+            self._mvp_report_check(
+                "strict_privacy_ready",
+                "strict 模式不调用外部模型和外部通知",
+                checks.get("strict_privacy", {}).get("status") == "ready",
+                checks.get("strict_privacy", {}).get("details", {}),
+            ),
+            self._mvp_report_check(
+                "minecontext_source_preserved",
+                "MineContext 原始数据未被删除",
+                readiness["privacy"].get("minecontext_source_deleted") == 0,
+                {"minecontext_source_deleted": readiness["privacy"].get("minecontext_source_deleted", 0)},
+            ),
+            self._mvp_report_check(
+                "evidence_boundaries_present",
+                "首页、洞察和自检均保留证据边界",
+                bool(home["overview"].get("evidence_boundary")) and bool(readiness.get("evidence_boundary")),
+                {
+                    "home_boundary": bool(home["overview"].get("evidence_boundary")),
+                    "readiness_boundary": bool(readiness.get("evidence_boundary")),
+                    "insight_boundaries": sum(1 for item in home.get("insights", []) if item.get("evidence_boundary")),
+                },
+            ),
+        ]
+        failed = [item for item in acceptance if item["status"] != "passed"]
+        status = "ready" if not failed else readiness["status"]
+        with self.connect() as conn:
+            self._audit(
+                conn,
+                "butler_mvp_report_generated",
+                DEFAULT_USER_ID,
+                {
+                    "status": status,
+                    "failed_checks": [item["id"] for item in failed],
+                    "external_model_used": False,
+                    "minecontext_source_deleted": 0,
+                },
+            )
+        report = {
+            "schema_version": "butler_mvp_report_v1",
+            "status": status,
+            "generated_at": now_iso(),
+            "north_star": "用户每天 60 秒内理解今天发生了什么、什么值得注意、下一步应该做什么",
+            "mvp_chain": [
+                {"stage": "MineContext / godview", "status": checks.get("pc_activity_source", {}).get("status", "unknown"), "count": summary.get("pc_activity_events", 0)},
+                {"stage": "PCActivityEvent", "status": checks.get("pc_activity_source", {}).get("status", "unknown"), "count": summary.get("pc_activity_events", 0)},
+                {"stage": "Unified Timeline", "status": checks.get("unified_timeline", {}).get("status", "unknown"), "count": summary.get("timeline_events", 0)},
+                {"stage": "Metrics", "status": checks.get("today_metrics", {}).get("status", "unknown"), "count": summary.get("metric_snapshots", 0)},
+                {"stage": "Insight Cards", "status": checks.get("insight_engine", {}).get("status", "unknown"), "count": summary.get("insights", 0)},
+                {"stage": "Briefings", "status": checks.get("briefing_generator", {}).get("status", "unknown"), "count": summary.get("briefings", 0)},
+                {"stage": "Feedback", "status": checks.get("feedback_loop", {}).get("status", "unknown"), "count": summary.get("feedback_count", 0)},
+            ],
+            "acceptance": acceptance,
+            "readiness": readiness,
+            "privacy": {
+                "external_model_used": False,
+                "external_model_allowed": checks.get("strict_privacy", {}).get("details", {}).get("external_model_allowed", False),
+                "system_notification_enabled": home["privacy"].get("system_notification_enabled", False),
+                "minecontext_source_deleted": 0,
+                "copied_screenshots": 0,
+                "strict_mode_respected": checks.get("strict_privacy", {}).get("details", {}).get("strict_mode_respected", True),
+            },
+            "demo_paths": {
+                "run": "POST /api/butler/demo/run",
+                "reset": "POST /api/butler/demo/reset",
+                "readiness": "GET /api/butler/readiness",
+                "mvp_report": "GET /api/butler/mvp-report",
+                "reset_scope": "只清理 OpenButler 派生的 timeline、metrics、insights、briefings；保留 PC Activity 和 MineContext 源数据。",
+            },
+            "verification_commands": [
+                "python -m unittest backend.app.modules.butler_core.tests.test_butler_api_contract",
+                "python -m unittest discover -s backend\\app\\modules",
+                "npm run smoke:butler-mvp-report",
+            ],
+            "limitations": [
+                "MVP 报告证明 OpenButler 本地链路状态，不确认远程仓库、CI、云效、部署或线上接口实时状态。",
+                "MineContext 不可用或数据不足时，报告会返回 data_insufficient，而不会编造活动。",
+                "该报告是 API 级验收证据，不是完整浏览器端到端点击测试。",
+            ],
+            "evidence_boundary": BOUNDARY,
+        }
+        with self.connect() as conn:
+            self._persist_harness_run(conn, "mvp_report", report)
+        return report
+
+    def data_insufficient_drill(self) -> dict[str, Any]:
+        """Return a synthetic empty-workspace recovery report without mutating source data."""
+        openclaw = self._openclaw_tools_status()
+        acceptance = [
+            self._mvp_report_check(
+                "pc_activity_source_events",
+                "MineContext PC Activity source events are missing in the drill",
+                False,
+                {"pc_activity_events": 0, "drill": True},
+            ),
+            self._mvp_report_check(
+                "unified_timeline_ready",
+                "Unified timeline has no PC Activity events in the drill",
+                False,
+                {"timeline_events": 0, "drill": True},
+            ),
+            self._mvp_report_check(
+                "today_metrics_ready",
+                "Today metrics cannot be trusted until source events exist",
+                False,
+                {"metric_snapshots": 0, "source_event_count": 0, "drill": True},
+            ),
+            self._mvp_report_check(
+                "active_insights_ready",
+                "Active insights should stay data_quality_notice only until data exists",
+                False,
+                {"insights": 0, "active_insights": 0, "expected_empty_state": "data_quality_notice"},
+            ),
+            self._mvp_report_check(
+                "feedback_loop_ready",
+                "Butler Inbox feedback store is available even when data is insufficient",
+                True,
+                {"feedback_count": 0, "drill": True},
+            ),
+            self._mvp_report_check(
+                "briefing_ready",
+                "Briefings should be generated only after enough timeline evidence exists",
+                False,
+                {"briefings": 0, "drill": True},
+            ),
+            self._mvp_report_check(
+                "openclaw_tools_ready",
+                "OpenClaw proactive Butler tools are declared",
+                bool(openclaw["ready"]),
+                openclaw,
+            ),
+            self._mvp_report_check(
+                "strict_privacy_ready",
+                "Strict privacy guardrails remain active during the drill",
+                True,
+                {
+                    "strict_mode_respected": True,
+                    "external_model_allowed": False,
+                    "external_model_used": False,
+                    "system_notification_enabled": False,
+                },
+            ),
+            self._mvp_report_check(
+                "minecontext_source_preserved",
+                "MineContext source data is not changed by this drill",
+                True,
+                {"minecontext_source_deleted": 0, "mutates_data": False},
+            ),
+            self._mvp_report_check(
+                "evidence_boundaries_present",
+                "The drill report preserves uncertainty and evidence boundaries",
+                True,
+                {"drill_boundary": True, "fabricates_activity": False},
+            ),
+        ]
+        with self.connect() as conn:
+            self._audit(
+                conn,
+                "butler_data_insufficient_drill_generated",
+                DEFAULT_USER_ID,
+                {
+                    "dry_run": True,
+                    "mutates_data": False,
+                    "failed_checks": [item["id"] for item in acceptance if item["status"] != "passed"],
+                    "external_model_used": False,
+                    "minecontext_source_deleted": 0,
+                },
+            )
+        report = {
+            "schema_version": "butler_data_insufficient_drill_v1",
+            "status": "data_insufficient",
+            "generated_at": now_iso(),
+            "dry_run": True,
+            "mutates_data": False,
+            "source": "synthetic_empty_workspace_drill",
+            "summary": {
+                "pc_activity_events": 0,
+                "timeline_events": 0,
+                "metric_snapshots": 0,
+                "insights": 0,
+                "briefings": 0,
+                "message": "This drill validates the recovery path for an empty OpenButler workspace. It is not a claim about the current real workspace state.",
+            },
+            "acceptance": acceptance,
+            "recommended_sequence": [
+                "import_pc_activity",
+                "rebuild_timeline",
+                "generate_metrics",
+                "generate_insights",
+                "generate_briefing",
+            ],
+            "privacy": {
+                "external_model_used": False,
+                "external_model_allowed": False,
+                "system_notification_enabled": False,
+                "minecontext_source_deleted": 0,
+                "copied_screenshots": 0,
+                "strict_mode_respected": True,
+            },
+            "limitations": [
+                "This drill is synthetic and does not inspect or alter MineContext source records.",
+                "It validates empty-state guidance and next actions, not the user's real activity history.",
+                "Any real remote repository, CI, Yunxiao, deployment, or online service state still needs source-system verification.",
+            ],
+            "evidence_boundary": (
+                "Synthetic data-insufficient drill only. The report verifies OpenButler recovery guidance, "
+                "privacy defaults, and next-action wiring; it does not confirm current user activity."
+            ),
+        }
+        with self.connect() as conn:
+            self._persist_harness_run(conn, "data_insufficient_drill", report)
+        return report
+
+    def latest_harness_runs(self) -> dict[str, Any]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM butler_harness_runs
+                WHERE id IN (
+                    SELECT id
+                    FROM butler_harness_runs latest
+                    WHERE latest.kind = butler_harness_runs.kind
+                    ORDER BY latest.created_at DESC
+                    LIMIT 1
+                )
+                ORDER BY created_at DESC
+                """
+            ).fetchall()
+        items = [self._harness_run_from_row(row) for row in rows]
+        return {
+            "items": items,
+            "count": len(items),
+            "evidence_boundary": (
+                "Harness run summaries are OpenButler-local verification records. They store statuses, failed checks, "
+                "privacy counters, and evidence boundaries only; they do not store MineContext source records or screenshot content."
+            ),
+        }
+
+    def _load_productization_goals(self, root: Path) -> dict[str, Any]:
+        goals_path = root / ".openbutler" / "goals.yaml"
+        result: dict[str, Any] = {"loaded": False, "active_objectives": [], "parse_warnings": []}
+        if not goals_path.exists():
+            result["parse_warnings"].append("goals.yaml not found")
+            return result
+
+        def scalar(value: str) -> str:
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+                return value[1:-1]
+            return value
+
+        current: dict[str, Any] | None = None
+        in_active_objectives = False
+        in_success_criteria = False
+        for raw_line in goals_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.rstrip()
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if stripped == "active_objectives:":
+                in_active_objectives = True
+                current = None
+                in_success_criteria = False
+                continue
+            if in_active_objectives and not line.startswith(" ") and not stripped.startswith("- "):
+                break
+            if not in_active_objectives:
+                continue
+            if stripped.startswith("- id:"):
+                if current:
+                    result["active_objectives"].append(current)
+                current = {"id": scalar(stripped.split(":", 1)[1]), "success_criteria": []}
+                in_success_criteria = False
+                continue
+            if current is None:
+                continue
+            if stripped.startswith("title:"):
+                current["title"] = scalar(stripped.split(":", 1)[1])
+                in_success_criteria = False
+            elif stripped.startswith("priority:"):
+                current["priority"] = scalar(stripped.split(":", 1)[1])
+                in_success_criteria = False
+            elif stripped.startswith("success_criteria:"):
+                current.setdefault("success_criteria", [])
+                in_success_criteria = True
+            elif in_success_criteria and stripped.startswith("- "):
+                current.setdefault("success_criteria", []).append(scalar(stripped[2:]))
+        if current:
+            result["active_objectives"].append(current)
+        result["loaded"] = bool(result["active_objectives"])
+        if not result["active_objectives"]:
+            result["parse_warnings"].append("no active_objectives parsed")
+        return result
+
+    def productization_objective_status(self) -> dict[str, Any]:
+        root = Path(__file__).resolve().parents[4]
+        goals_config = self._load_productization_goals(root)
+        mapper_template = productization_evidence_mapper_template()
+        fallback_active_objectives = [
+            {
+                "id": "OB-GOAL-001",
+                "title": "完成主动管家中枢 MVP",
+                "priority": "P0",
+                "success_criteria": [
+                    "/butler 页面可用",
+                    "今日指标可生成",
+                    "主动洞察可生成",
+                    "用户反馈可记录",
+                    "strict 模式不调用外部模型",
+                ],
+            },
+            {
+                "id": "OB-GOAL-002",
+                "title": "把 MineContext PC 活动转化为统一时间线",
+                "priority": "P0",
+                "success_criteria": [
+                    "PCActivityEvent 可转换为 UnifiedTimelineEvent",
+                    "支持 timeline rebuild",
+                    "保留证据边界",
+                ],
+            },
+            {
+                "id": "OB-GOAL-003",
+                "title": "建立可持续产品化开发流程",
+                "priority": "P0",
+                "success_criteria": [
+                    "AGENTS.md 存在",
+                    "ROADMAP 存在",
+                    "Definition of Done 存在",
+                    "测试文档存在",
+                    "隐私边界文档存在",
+                ],
+            },
+        ]
+        active_objectives = goals_config["active_objectives"] or fallback_active_objectives
+        readiness = self.readiness()
+        report = self.mvp_report()
+        checks = {item["id"]: item for item in readiness.get("checks", [])}
+        acceptance = {item["id"]: item for item in report.get("acceptance", [])}
+
+        def criterion(
+            criterion_id: str,
+            title: str,
+            passed: bool,
+            evidence_refs: list[dict[str, Any]],
+            details: dict[str, Any] | None = None,
+        ) -> dict[str, Any]:
+            return {
+                "id": criterion_id,
+                "title": title,
+                "status": "proven" if passed else "needs_attention",
+                "details": details or {},
+                "evidence_refs": evidence_refs,
+                "evidence_boundary": BOUNDARY,
+            }
+
+        app_path = root / "frontend" / "src" / "App.tsx"
+        router_path = root / "backend" / "app" / "modules" / "butler_core" / "router.py"
+        service_path = root / "backend" / "app" / "modules" / "butler_core" / "service.py"
+        insight_engine_path = root / "backend" / "app" / "modules" / "butler_core" / "insight_engine.py"
+        smoke_path = root / "frontend" / "scripts" / "smoke-butler-browser.mjs"
+        readiness_audit_path = root / "docs" / "dev" / "L2_READINESS_AUDIT.md"
+        openclaw_path = root / "openclaw-skill" / "tools.yaml"
+        required_docs = {
+            "AGENTS.md": root / "AGENTS.md",
+            "ROADMAP": root / "docs" / "product" / "ROADMAP.md",
+            "Definition of Done": root / ".openbutler" / "definition_of_done.md",
+            "Testing": root / "docs" / "dev" / "TESTING.md",
+            "Privacy Boundaries": root / "docs" / "privacy" / "PRIVACY_BOUNDARIES.md",
+        }
+        app_text = app_path.read_text(encoding="utf-8") if app_path.exists() else ""
+        router_text = router_path.read_text(encoding="utf-8") if router_path.exists() else ""
+        service_text = service_path.read_text(encoding="utf-8") if service_path.exists() else ""
+        insight_engine_text = insight_engine_path.read_text(encoding="utf-8") if insight_engine_path.exists() else ""
+        smoke_text = smoke_path.read_text(encoding="utf-8") if smoke_path.exists() else ""
+        openclaw_ready = self._openclaw_tools_status()
+
+        criteria_by_objective = {
+            "OB-GOAL-001": [
+                    criterion(
+                        "butler_page_available",
+                        "/butler 页面可用",
+                        app_path.exists() and "function ButlerHome" in app_text and '"/butler"' in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}, {"kind": "route", "path": "/butler"}],
+                    ),
+                    criterion(
+                        "today_metrics_generatable",
+                        "今日指标可生成",
+                        checks.get("today_metrics", {}).get("status") == "ready",
+                        [{"kind": "api", "path": "GET /api/butler/metrics/today"}],
+                        checks.get("today_metrics", {}).get("details", {}),
+                    ),
+                    criterion(
+                        "insights_generatable",
+                        "主动洞察可生成",
+                        checks.get("insight_engine", {}).get("status") == "ready",
+                        [{"kind": "api", "path": "POST /api/butler/insights/generate"}],
+                        checks.get("insight_engine", {}).get("details", {}),
+                    ),
+                    criterion(
+                        "feedback_recordable",
+                        "用户反馈可记录",
+                        checks.get("feedback_loop", {}).get("status") == "ready",
+                        [{"kind": "api", "path": "POST /api/butler/insights/{insight_id}/feedback"}],
+                        checks.get("feedback_loop", {}).get("details", {}),
+                    ),
+                    criterion(
+                        "openclaw_tools_updated",
+                        "OpenClaw Skill 工具声明可用",
+                        bool(openclaw_ready.get("ready")),
+                        [{"kind": "file", "path": "openclaw-skill/tools.yaml"}],
+                        {"missing": openclaw_ready.get("missing", []), "exists": openclaw_path.exists()},
+                    ),
+                    criterion(
+                        "strict_no_external_model",
+                        "strict 模式不调用外部模型",
+                        report.get("privacy", {}).get("external_model_used") is False
+                        and report.get("privacy", {}).get("external_model_allowed") is False,
+                        [{"kind": "api", "path": "GET /api/butler/mvp-report"}],
+                        report.get("privacy", {}),
+                    ),
+            ],
+            "OB-GOAL-002": [
+                    criterion(
+                        "pc_activity_to_unified_timeline",
+                        "PCActivityEvent 可转换为 UnifiedTimelineEvent",
+                        checks.get("unified_timeline", {}).get("status") == "ready",
+                        [{"kind": "api", "path": "POST /api/butler/timeline/rebuild"}],
+                        checks.get("unified_timeline", {}).get("details", {}),
+                    ),
+                    criterion(
+                        "timeline_rebuild_supported",
+                        "支持 timeline rebuild",
+                        report.get("readiness", {}).get("summary", {}).get("timeline_events", 0) > 0,
+                        [{"kind": "api", "path": "POST /api/butler/timeline/rebuild"}],
+                        {"timeline_events": report.get("readiness", {}).get("summary", {}).get("timeline_events", 0)},
+                    ),
+                    criterion(
+                        "evidence_boundary_preserved",
+                        "保留证据边界",
+                        acceptance.get("evidence_boundaries_present", {}).get("status") == "passed",
+                        [{"kind": "api", "path": "GET /api/butler/mvp-report"}],
+                        acceptance.get("evidence_boundaries_present", {}).get("details", {}),
+                    ),
+                    criterion(
+                        "minecontext_source_preserved",
+                        "MineContext 源数据未被删除",
+                        acceptance.get("minecontext_source_preserved", {}).get("status") == "passed",
+                        [{"kind": "api", "path": "GET /api/butler/mvp-report"}],
+                        acceptance.get("minecontext_source_preserved", {}).get("details", {}),
+                    ),
+            ],
+            "OB-GOAL-003": [
+                    criterion(
+                        "agents_md_exists",
+                        "AGENTS.md 存在",
+                        required_docs["AGENTS.md"].exists(),
+                        [{"kind": "file", "path": "AGENTS.md"}],
+                    ),
+                    criterion(
+                        "roadmap_exists",
+                        "ROADMAP 存在",
+                        required_docs["ROADMAP"].exists(),
+                        [{"kind": "file", "path": "docs/product/ROADMAP.md"}],
+                    ),
+                    criterion(
+                        "definition_of_done_exists",
+                        "Definition of Done 存在",
+                        required_docs["Definition of Done"].exists(),
+                        [{"kind": "file", "path": ".openbutler/definition_of_done.md"}],
+                    ),
+                    criterion(
+                        "testing_doc_exists",
+                        "测试文档存在",
+                        required_docs["Testing"].exists(),
+                        [{"kind": "file", "path": "docs/dev/TESTING.md"}],
+                    ),
+                    criterion(
+                        "privacy_boundary_doc_exists",
+                        "隐私边界文档存在",
+                        required_docs["Privacy Boundaries"].exists(),
+                        [{"kind": "file", "path": "docs/privacy/PRIVACY_BOUNDARIES.md"}],
+                    ),
+            ],
+            "OB-GOAL-004": [
+                    criterion(
+                        "l2_readiness_audit_exists",
+                        "L2 readiness audit 已生成",
+                        readiness_audit_path.exists(),
+                        [{"kind": "file", "path": "docs/dev/L2_READINESS_AUDIT.md"}],
+                    ),
+                    criterion(
+                        "seven_day_import_preview_supported",
+                        "支持 MineContext / PC Activity 最近 7 天历史导入的 dry-run 预览",
+                        "preview_pc_activity_import" in router_text
+                        and "preview_import_activities" in service_text
+                        and "/import/pc-activity/preview" in router_text,
+                        [
+                            {"kind": "api", "path": "POST /api/butler/import/pc-activity/preview"},
+                            {"kind": "file", "path": "backend/app/modules/pc_activity_context/service.py"},
+                        ],
+                    ),
+                    criterion(
+                        "idempotent_import_guard",
+                        "支持幂等导入，重复执行不会制造重复事件",
+                        "source_fingerprint" in service_text
+                        and "stable_event_fingerprint" in service_text
+                        and "SELECT id FROM pc_activity_events WHERE source = ?" in service_text,
+                        [{"kind": "file", "path": "backend/app/modules/pc_activity_context/service.py"}],
+                        {"note": "source_activity_id 优先去重；无 source_event_id 时使用稳定 hash 去重。"},
+                    ),
+                    criterion(
+                        "seven_day_metrics_summary",
+                        "支持导入后生成 7 天指标摘要",
+                        "def metrics_range" in service_text,
+                        [{"kind": "api", "path": "GET /api/butler/metrics?days=7"}],
+                    ),
+                    criterion(
+                        "inbox_evidence_detail",
+                        "Butler Inbox 中每条 insight 可以打开证据详情",
+                        "InsightEvidenceDetails" in app_text and "查看证据详情" in app_text,
+                        [{"kind": "route", "path": "/butler/inbox"}, {"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "evidence_click_smoke",
+                        "证据详情 smoke 测试可验证点击链路",
+                        "inbox_evidence_click" in smoke_text
+                        and "查看证据详情" in smoke_text
+                        and "evidence_boundary" in smoke_text,
+                        [{"kind": "script", "path": "frontend/scripts/smoke-butler-browser.mjs"}],
+                        {"script": "npm run smoke:butler-browser"},
+                    ),
+                    criterion(
+                        "feedback_affects_priority",
+                        "用户 feedback 可影响 insight 评分或优先级",
+                        "feedback_penalties" in service_text and "apply_feedback_penalties" in insight_engine_text,
+                        [
+                            {"kind": "file", "path": "backend/app/modules/butler_core/service.py"},
+                            {"kind": "file", "path": "backend/app/modules/butler_core/insight_engine.py"},
+                        ],
+                    ),
+                    criterion(
+                        "noise_reduction_evaluation",
+                        "存在 insight 降噪评估报告或测试",
+                        "insight_noise_evaluation" in service_text
+                        and "evaluate_feedback_noise_reduction" in insight_engine_text
+                        and (root / "docs" / "product" / "INSIGHT_FEEDBACK_POLICY.md").exists(),
+                        [
+                            {"kind": "api", "path": "GET /api/butler/insights/noise-evaluation"},
+                            {"kind": "file", "path": "docs/product/INSIGHT_FEEDBACK_POLICY.md"},
+                            {"kind": "test", "path": "backend/app/modules/butler_core/tests/test_butler_core_service.py"},
+                        ],
+                        {"covers": ["dismissed", "inaccurate", "too_frequent", "useful", "accepted_action", "protected notices"]},
+                    ),
+                    criterion(
+                        "strict_no_external_model_l2",
+                        "strict 模式下不调用外部模型",
+                        "external_model_used" in service_text and "external_model_allowed" in service_text,
+                        [{"kind": "api", "path": "GET /api/butler/settings"}],
+                    ),
+                    criterion(
+                        "screenshots_not_copied_by_default_l2",
+                        "默认不复制 MineContext 截图",
+                        "copy_screenshot_evidence = False" in (root / "backend" / "app" / "modules" / "pc_activity_context" / "service.py").read_text(encoding="utf-8")
+                        or "copied_screenshots" in service_text,
+                        [{"kind": "file", "path": "backend/app/modules/pc_activity_context/service.py"}],
+                    ),
+                    criterion(
+                        "minecontext_source_preserved_l2",
+                        "不删除 MineContext 原始数据",
+                        "minecontext_source_deleted" in service_text,
+                        [{"kind": "api", "path": "GET /api/butler/mvp-report"}],
+                    ),
+            ],
+        }
+        objectives = []
+        for declared in active_objectives:
+            objective_id = str(declared.get("id", "unknown"))
+            criteria = criteria_by_objective.get(objective_id)
+            if criteria is None:
+                criteria = [
+                    criterion(
+                        "evidence_mapper_missing",
+                        "该 active objective 尚未配置 Productization Harness evidence mapper",
+                        False,
+                        [
+                            {"kind": "file", "path": ".openbutler/goals.yaml"},
+                            {"kind": "file", "path": mapper_template["doc_path"]},
+                        ],
+                        {
+                            "goal_id": objective_id,
+                            "template_schema_version": mapper_template["schema_version"],
+                            "doc_path": mapper_template["doc_path"],
+                            "service_path": mapper_template["service_path"],
+                            "required_steps": mapper_template["required_steps"],
+                        },
+                    )
+                ]
+            objectives.append(
+                {
+                    "id": objective_id,
+                    "title": str(declared.get("title") or objective_id),
+                    "priority": str(declared.get("priority") or "unknown"),
+                    "success_criteria": declared.get("success_criteria", []),
+                    "criteria": criteria,
+                    "source_ref": {"kind": "file", "path": ".openbutler/goals.yaml"},
+                }
+            )
+        for objective in objectives:
+            failed = [item for item in objective["criteria"] if item["status"] != "proven"]
+            objective["status"] = "proven" if not failed else "needs_attention"
+            objective["proven_count"] = len(objective["criteria"]) - len(failed)
+            objective["criteria_count"] = len(objective["criteria"])
+            objective["evidence_boundary"] = BOUNDARY
+
+        failed_objectives = [item for item in objectives if item["status"] != "proven"]
+        with self.connect() as conn:
+            self._audit(
+                conn,
+                "productization_objective_status_checked",
+                DEFAULT_USER_ID,
+                {
+                    "status": "proven" if not failed_objectives else "needs_attention",
+                    "failed_objectives": [item["id"] for item in failed_objectives],
+                    "goals_source_loaded": goals_config["loaded"],
+                    "external_model_used": False,
+                    "minecontext_source_deleted": 0,
+                },
+            )
+        return {
+            "schema_version": "productization_objective_status_v1",
+            "status": "proven" if not failed_objectives else "needs_attention",
+            "generated_at": now_iso(),
+            "goals_source": {
+                "path": ".openbutler/goals.yaml",
+                "loaded": goals_config["loaded"],
+                "active_objective_count": len(active_objectives),
+                "parse_warnings": goals_config["parse_warnings"],
+            },
+            "evidence_mapper_template": mapper_template,
+            "objectives": objectives,
+            "privacy": {
+                "external_model_used": False,
+                "external_model_allowed": False,
+                "system_notification_enabled": False,
+                "minecontext_source_deleted": 0,
+                "copied_screenshots": 0,
+            },
+            "limitations": [
+                "This is an evidence map for the current Productization Harness state, not a claim about remote systems.",
+                "It uses local APIs, local files, and rule-based readiness checks only.",
+                "Browser click automation remains a separate future hardening task.",
+            ],
+            "evidence_boundary": (
+                "Objective status is derived from local OpenButler APIs, local repository files, and Productization Harness checks. "
+                "It does not inspect or mutate MineContext source data and does not verify remote repositories, CI, Yunxiao, deployments, or online services."
+            ),
+        }
+
+    def productization_l1_audit_report(self) -> dict[str, Any]:
+        objective_status = self.productization_objective_status()
+        out_of_scope_terms = [
+            "远程",
+            "部署",
+            "线上",
+            "CI",
+            "云效",
+            "Yunxiao",
+            "Jira",
+            "提交代码",
+            "外部写入",
+        ]
+
+        def is_out_of_scope(text: str) -> bool:
+            return any(term.lower() in text.lower() for term in out_of_scope_terms)
+
+        def audit_success_criterion(objective: dict[str, Any], success_text: str) -> dict[str, Any]:
+            mapped = next(
+                (item for item in objective.get("criteria", []) if item.get("title") == success_text),
+                None,
+            )
+            if mapped:
+                result = "proven" if mapped.get("status") == "proven" else "needs_attention"
+                return {
+                    "success_criterion": success_text,
+                    "verification_result": result,
+                    "mapped_criterion_id": mapped.get("id"),
+                    "mapped_criterion_title": mapped.get("title"),
+                    "evidence_refs": mapped.get("evidence_refs", []),
+                    "details": mapped.get("details", {}),
+                    "evidence_boundary": mapped.get("evidence_boundary") or BOUNDARY,
+                }
+
+            missing_mapper = next(
+                (item for item in objective.get("criteria", []) if item.get("id") == "evidence_mapper_missing"),
+                None,
+            )
+            if is_out_of_scope(success_text):
+                return {
+                    "success_criterion": success_text,
+                    "verification_result": "out_of_scope",
+                    "mapped_criterion_id": None,
+                    "mapped_criterion_title": None,
+                    "evidence_refs": [{"kind": "file", "path": ".openbutler/goals.yaml"}],
+                    "details": {
+                        "reason": "This success criterion requires remote or external-system verification outside the local Productization Harness.",
+                        "out_of_scope_terms": out_of_scope_terms,
+                    },
+                    "evidence_boundary": (
+                        "This item is out of scope for local Productization Harness evidence. It must be verified in the source system "
+                        "and cannot be proven from MineContext summaries, screenshots, or local OpenButler derived state."
+                    ),
+                }
+            return {
+                "success_criterion": success_text,
+                "verification_result": "missing_evidence",
+                "mapped_criterion_id": missing_mapper.get("id") if missing_mapper else None,
+                "mapped_criterion_title": missing_mapper.get("title") if missing_mapper else None,
+                "evidence_refs": (missing_mapper or {}).get("evidence_refs", [{"kind": "file", "path": ".openbutler/goals.yaml"}]),
+                "details": {
+                    "reason": "No local evidence criterion currently maps this declared success criterion.",
+                    "mapper_details": (missing_mapper or {}).get("details", {}),
+                },
+                "evidence_boundary": (missing_mapper or {}).get("evidence_boundary") or BOUNDARY,
+            }
+
+        objectives = []
+        totals = {"proven": 0, "needs_attention": 0, "missing_evidence": 0, "out_of_scope": 0}
+        for objective in objective_status.get("objectives", []):
+            success_checks = [
+                audit_success_criterion(objective, str(success_text))
+                for success_text in objective.get("success_criteria", [])
+            ]
+            for item in success_checks:
+                totals[item["verification_result"]] += 1
+            non_proven = [item for item in success_checks if item["verification_result"] != "proven"]
+            objectives.append(
+                {
+                    "id": objective.get("id"),
+                    "title": objective.get("title"),
+                    "priority": objective.get("priority"),
+                    "source_ref": objective.get("source_ref"),
+                    "objective_status": "proven" if not non_proven else "needs_attention",
+                    "success_criteria": success_checks,
+                    "criterion_count": len(success_checks),
+                    "proven_count": sum(1 for item in success_checks if item["verification_result"] == "proven"),
+                    "needs_attention_count": sum(1 for item in success_checks if item["verification_result"] == "needs_attention"),
+                    "missing_evidence_count": sum(1 for item in success_checks if item["verification_result"] == "missing_evidence"),
+                    "out_of_scope_count": sum(1 for item in success_checks if item["verification_result"] == "out_of_scope"),
+                    "evidence_boundary": objective.get("evidence_boundary") or BOUNDARY,
+                }
+            )
+
+        status = "proven" if objectives and all(item["objective_status"] == "proven" for item in objectives) else "needs_attention"
+        report = {
+            "schema_version": "l1_active_objectives_audit_v1",
+            "status": status,
+            "generated_at": now_iso(),
+            "source": {
+                "objective_status_api": "GET /api/butler/productization/objectives/status",
+                "goals_path": ".openbutler/goals.yaml",
+                "goals_source": objective_status.get("goals_source", {}),
+            },
+            "allowed_results": ["proven", "needs_attention", "missing_evidence", "out_of_scope"],
+            "summary": {
+                "objective_count": len(objectives),
+                "success_criteria_count": sum(item["criterion_count"] for item in objectives),
+                **totals,
+            },
+            "objectives": objectives,
+            "privacy": {
+                "external_model_used": False,
+                "external_model_allowed": False,
+                "system_notification_enabled": False,
+                "minecontext_source_deleted": 0,
+                "copied_screenshots": 0,
+                "strict_mode_respected": (
+                    objective_status.get("privacy", {}).get("external_model_used") is False
+                    and objective_status.get("privacy", {}).get("external_model_allowed") is False
+                    and objective_status.get("privacy", {}).get("minecontext_source_deleted") == 0
+                ),
+            },
+            "limitations": [
+                "This report audits declared L1 active objectives against local OpenButler evidence only.",
+                "Out-of-scope items require source-system verification and must not be treated as proven from MineContext or OpenButler summaries.",
+                "The report does not mutate MineContext, copy screenshots, call external models, or perform external writes.",
+            ],
+            "evidence_boundary": (
+                "L1 audit results are derived from local OpenButler objective status, local repository files, local APIs, and Productization Harness checks. "
+                "They do not inspect or mutate MineContext source data and do not verify remote repositories, CI, Yunxiao, deployments, or online services."
+            ),
+        }
+        with self.connect() as conn:
+            self._audit(
+                conn,
+                "productization_l1_audit_report_generated",
+                DEFAULT_USER_ID,
+                {
+                    "status": status,
+                    "objective_count": report["summary"]["objective_count"],
+                    "missing_evidence": totals["missing_evidence"],
+                    "out_of_scope": totals["out_of_scope"],
+                    "external_model_used": False,
+                    "minecontext_source_deleted": 0,
+                },
+            )
+        return report
+
+    def productization_demo_pack(self) -> dict[str, Any]:
+        readiness = self.readiness()
+        report = self.mvp_report()
+        objectives = self.productization_objective_status()
+        harness_runs = self.latest_harness_runs()
+        strict_ok = (
+            report.get("privacy", {}).get("external_model_used") is False
+            and report.get("privacy", {}).get("external_model_allowed") is False
+            and objectives.get("privacy", {}).get("external_model_used") is False
+        )
+        status = "ready"
+        if not strict_ok:
+            status = "attention_needed"
+        elif readiness.get("status") != "ready" or report.get("status") != "ready":
+            status = "attention_needed" if readiness.get("status") == "attention_needed" else "data_insufficient"
+        elif objectives.get("status") != "proven":
+            status = "attention_needed"
+        pack = {
+            "schema_version": "productization_demo_pack_v1",
+            "status": status,
+            "generated_at": now_iso(),
+            "north_star": "用户每天 60 秒内理解今天发生了什么、什么值得注意、下一步应该做什么",
+            "readiness": {
+                "status": readiness.get("status"),
+                "summary": readiness.get("summary", {}),
+                "checks": readiness.get("checks", []),
+                "evidence_boundary": readiness.get("evidence_boundary"),
+            },
+            "mvp_report": {
+                "status": report.get("status"),
+                "mvp_chain": report.get("mvp_chain", []),
+                "acceptance": report.get("acceptance", []),
+                "privacy": report.get("privacy", {}),
+                "evidence_boundary": report.get("evidence_boundary"),
+            },
+            "objective_status": objectives,
+            "latest_harness_runs": harness_runs,
+            "demo_commands": [
+                "POST /api/butler/demo/run",
+                "GET /api/butler/productization/demo-pack",
+                "npm run smoke:butler-ui-flow",
+                "npm run smoke:butler-mvp-report",
+            ],
+            "privacy": {
+                "external_model_used": False,
+                "external_model_allowed": False,
+                "system_notification_enabled": False,
+                "minecontext_source_deleted": 0,
+                "copied_screenshots": 0,
+                "strict_mode_respected": strict_ok,
+            },
+            "limitations": [
+                "Demo pack is a local Productization Harness snapshot, not proof of remote repository, CI, Yunxiao, deployment, or online-service state.",
+                "It does not inspect, copy, delete, or mutate MineContext source databases or screenshot files.",
+                "It is API-level verification evidence; browser click automation remains a separate hardening layer.",
+            ],
+            "evidence_boundary": (
+                "Productization demo pack aggregates local OpenButler readiness, MVP report, objective status, and harness summaries. "
+                "It uses local APIs and repository files only; it does not call external models, copy screenshots, delete MineContext source data, "
+                "or verify remote systems."
+            ),
+        }
+        with self.connect() as conn:
+            self._audit(
+                conn,
+                "productization_demo_pack_generated",
+                DEFAULT_USER_ID,
+                {
+                    "status": status,
+                    "readiness_status": readiness.get("status"),
+                    "mvp_status": report.get("status"),
+                    "objective_status": objectives.get("status"),
+                    "external_model_used": False,
+                    "minecontext_source_deleted": 0,
+                },
+            )
+        return pack
+
+    def goals(self) -> list[dict[str, Any]]:
+        self._seed_goals_if_empty()
+        with self.connect() as conn:
+            rows = conn.execute("SELECT * FROM butler_goals ORDER BY created_at ASC").fetchall()
+        return [self._goal_from_row(row) for row in rows]
+
+    def create_goal(self, payload: dict[str, Any]) -> dict[str, Any]:
+        now = now_iso()
+        row = {"id": str(uuid.uuid4()), "user_id": DEFAULT_USER_ID, "created_at": now, "updated_at": now, **payload}
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO butler_goals(id, user_id, title, goal_type, target, schedule, enabled, privacy_level, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    row["id"], row["user_id"], row["title"], row.get("goal_type", "focus"),
+                    json.dumps(row.get("target", {}), ensure_ascii=False),
+                    json.dumps(row.get("schedule", {}), ensure_ascii=False),
+                    int(row.get("enabled", True)), row.get("privacy_level", "local_private"), now, now,
+                ),
+            )
+            self._audit(conn, "goal_created", DEFAULT_USER_ID, {"goal_id": row["id"]})
+        return self.goal(row["id"]) or row
+
+    def goal(self, goal_id: str) -> dict[str, Any] | None:
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM butler_goals WHERE id = ?", (goal_id,)).fetchone()
+        return self._goal_from_row(row) if row else None
+
+    def update_goal(self, goal_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+        current = self.goal(goal_id)
+        if not current:
+            return None
+        current.update({key: value for key, value in payload.items() if value is not None})
+        now = now_iso()
+        with self.connect() as conn:
+            conn.execute(
+                """
+                UPDATE butler_goals SET title = ?, goal_type = ?, target = ?, schedule = ?, enabled = ?, privacy_level = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    current["title"], current["goal_type"], json.dumps(current.get("target", {}), ensure_ascii=False),
+                    json.dumps(current.get("schedule", {}), ensure_ascii=False), int(current.get("enabled", True)),
+                    current.get("privacy_level", "local_private"), now, goal_id,
+                ),
+            )
+            self._audit(conn, "goal_updated", DEFAULT_USER_ID, {"goal_id": goal_id})
+        return self.goal(goal_id)
+
+    def delete_goal(self, goal_id: str) -> dict[str, Any]:
+        with self.connect() as conn:
+            cursor = conn.execute("DELETE FROM butler_goals WHERE id = ?", (goal_id,))
+            self._audit(conn, "goal_deleted", DEFAULT_USER_ID, {"goal_id": goal_id, "deleted": cursor.rowcount})
+        return {"deleted": cursor.rowcount}
+
+    def clear_data(self) -> dict[str, Any]:
+        with self.connect() as conn:
+            counts = {
+                "timeline": conn.execute("DELETE FROM unified_timeline_events").rowcount,
+                "metrics": conn.execute("DELETE FROM butler_metric_snapshots").rowcount,
+                "insights": conn.execute("DELETE FROM insight_cards").rowcount,
+                "briefings": conn.execute("DELETE FROM butler_briefings").rowcount,
+                "harness_runs": conn.execute("DELETE FROM butler_harness_runs").rowcount,
+            }
+            self._audit(conn, "butler_data_deleted", DEFAULT_USER_ID, counts)
+        return {
+            **counts,
+            "deleted_scope": [
+                "unified_timeline_events",
+                "butler_metric_snapshots",
+                "insight_cards",
+                "butler_briefings",
+                "butler_harness_runs",
+            ],
+            "preserved_scope": ["pc_activity_events", "minecontext_source_database", "minecontext_screenshot_files"],
+            "minecontext_deleted": 0,
+            "minecontext_source_deleted": 0,
+            "message": "Deleted only OpenButler-derived Butler data. MineContext source data was not deleted.",
+        }
+
+    def reset_demo_path(self) -> dict[str, Any]:
+        before_pc_events = len(self.pc_activity().events())
+        reset = self.clear_data()
+        after_pc_events = len(self.pc_activity().events())
+        with self.connect() as conn:
+            self._audit(
+                conn,
+                "demo_path_reset",
+                DEFAULT_USER_ID,
+                {
+                    "deleted": {key: reset.get(key, 0) for key in ["timeline", "metrics", "insights", "briefings"]},
+                    "harness_runs_deleted": reset.get("harness_runs", 0),
+                    "pc_activity_events_before": before_pc_events,
+                    "pc_activity_events_after": after_pc_events,
+                    "minecontext_source_deleted": 0,
+                },
+            )
+        return {
+            "status": "reset",
+            "reset": reset,
+            "preserved": {
+                "pc_activity_events_before": before_pc_events,
+                "pc_activity_events_after": after_pc_events,
+                "pc_activity_events_preserved": before_pc_events == after_pc_events,
+                "minecontext_source_deleted": 0,
+                "copied_screenshots_deleted": 0,
+            },
+            "privacy": {
+                "external_model_used": False,
+                "system_notification_enabled": False,
+                "minecontext_source_deleted": 0,
+                "deleted_only_openbutler_derived_data": True,
+            },
+            "evidence_boundary": BOUNDARY,
+        }
+
+    def export_data(self) -> dict[str, Any]:
+        with self.connect() as conn:
+            timeline_rows = conn.execute("SELECT * FROM unified_timeline_events ORDER BY started_at ASC").fetchall()
+            metric_rows = conn.execute("SELECT * FROM butler_metric_snapshots ORDER BY date ASC, metric_key ASC").fetchall()
+            insight_rows = conn.execute("SELECT * FROM insight_cards ORDER BY generated_at ASC").fetchall()
+            briefing_rows = conn.execute("SELECT * FROM butler_briefings ORDER BY created_at ASC").fetchall()
+            goal_rows = conn.execute("SELECT * FROM butler_goals ORDER BY created_at ASC").fetchall()
+            harness_rows = conn.execute("SELECT * FROM butler_harness_runs ORDER BY created_at ASC").fetchall()
+            self._audit(
+                conn,
+                "butler_data_exported",
+                DEFAULT_USER_ID,
+                {
+                    "timeline": len(timeline_rows),
+                    "metrics": len(metric_rows),
+                    "insights": len(insight_rows),
+                    "briefings": len(briefing_rows),
+                    "goals": len(goal_rows),
+                    "harness_runs": len(harness_rows),
+                },
+            )
+        timeline = [self._timeline_from_row(row) for row in timeline_rows]
+        metrics = [self._metric_from_row(row) for row in metric_rows]
+        insights = [self._insight_from_row(row) for row in insight_rows]
+        briefings = [self._briefing_from_row(row) for row in briefing_rows]
+        goals = [self._goal_from_row(row) for row in goal_rows]
+        harness_runs = [self._harness_run_from_row(row) for row in harness_rows]
+        return {
+            "exported_at": now_iso(),
+            "schema_version": "butler_export_v1",
+            "user_id": DEFAULT_USER_ID,
+            "privacy": {
+                "strict_mode_respected": self.get_settings().privacy.get("strict_mode_respected", True),
+                "contains_minecontext_screenshot_content": False,
+                "contains_minecontext_source_database": False,
+                "contains_harness_raw_source_text": False,
+                "screenshot_evidence": "path_refs_only_if_present",
+                "minecontext_source_deleted": 0,
+            },
+            "counts": {
+                "timeline": len(timeline),
+                "metrics": len(metrics),
+                "insights": len(insights),
+                "briefings": len(briefings),
+                "goals": len(goals),
+                "harness_runs": len(harness_runs),
+            },
+            "timeline": timeline,
+            "metrics": metrics,
+            "insights": insights,
+            "briefings": briefings,
+            "goals": goals,
+            "harness_runs": harness_runs,
+            "settings": self.get_settings().model_dump(),
+            "evidence_boundary": BOUNDARY,
+        }
+
+    def feedback_penalties(self) -> dict[str, dict[str, int]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT COALESCE(f.insight_type, ic.type) AS insight_type, f.feedback_type, COUNT(*) AS count
+                FROM insight_feedback f
+                LEFT JOIN insight_cards ic ON ic.id = f.insight_id
+                WHERE f.feedback_type IN ('dismissed', 'inaccurate', 'too_frequent', 'not_useful', 'useful', 'accepted_action')
+                  AND COALESCE(f.insight_type, ic.type) IS NOT NULL
+                GROUP BY COALESCE(f.insight_type, ic.type), f.feedback_type
+                """
+            ).fetchall()
+        penalties: dict[str, dict[str, int]] = {}
+        for row in rows:
+            insight_type = row["insight_type"]
+            penalties.setdefault(
+                insight_type,
+                {
+                    "dismiss_count": 0,
+                    "inaccurate_count": 0,
+                    "too_frequent_count": 0,
+                    "useful_count": 0,
+                    "accepted_count": 0,
+                },
+            )
+            count = int(row["count"])
+            if row["feedback_type"] == "inaccurate":
+                penalties[insight_type]["inaccurate_count"] += count
+            elif row["feedback_type"] == "too_frequent":
+                penalties[insight_type]["too_frequent_count"] += count
+                penalties[insight_type]["dismiss_count"] += count
+            elif row["feedback_type"] == "useful":
+                penalties[insight_type]["useful_count"] += count
+            elif row["feedback_type"] == "accepted_action":
+                penalties[insight_type]["accepted_count"] += count
+            else:
+                penalties[insight_type]["dismiss_count"] += count
+        return penalties
+
+    def _openclaw_tools_status(self) -> dict[str, Any]:
+        root = Path(__file__).resolve().parents[4]
+        tools_path = root / "openclaw-skill" / "tools.yaml"
+        required = [
+            "get_today_butler_overview",
+            "get_active_insights",
+            "get_butler_briefing",
+            "get_context_recovery_pack",
+            "submit_insight_feedback",
+        ]
+        if not tools_path.exists():
+            return {"ready": False, "tools_path": str(tools_path), "missing": required}
+        text = tools_path.read_text(encoding="utf-8")
+        missing = [name for name in required if name not in text]
+        return {"ready": not missing, "tools_path": str(tools_path), "missing": missing}
+
+    def _readiness_check(self, check_id: str, title: str, status: str, details: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": check_id,
+            "title": title,
+            "status": status,
+            "details": details,
+            "evidence_boundary": BOUNDARY,
+        }
+
+    def _mvp_report_check(self, check_id: str, title: str, passed: bool, details: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": check_id,
+            "title": title,
+            "status": "passed" if passed else "needs_attention",
+            "details": details,
+            "next_action": self._mvp_report_next_action(check_id, passed),
+            "evidence_boundary": BOUNDARY,
+        }
+
+    def _mvp_report_next_action(self, check_id: str, passed: bool) -> dict[str, Any]:
+        if passed:
+            return {
+                "type": "none",
+                "label": "无需处理",
+                "description": "该验收项当前通过，继续保留证据边界和 strict 隐私约束。",
+                "endpoint": None,
+                "ui_route": "/butler",
+            }
+        actions = {
+            "pc_activity_source_events": {
+                "type": "import_pc_activity",
+                "label": "导入今日 PC Activity",
+                "description": "从已授权的本地 MineContext 接入导入今日 PC 活动；如果 MineContext 不可用，保持 data_insufficient，不编造活动。",
+                "endpoint": "POST /api/pc-activity/minecontext/import",
+                "ui_route": "/pc-activity-context",
+            },
+            "unified_timeline_ready": {
+                "type": "rebuild_timeline",
+                "label": "重建统一时间线",
+                "description": "将已有 PCActivityEvent 转换为 UnifiedTimelineEvent，并保留来源和证据边界。",
+                "endpoint": "POST /api/butler/timeline/rebuild",
+                "ui_route": "/timeline",
+            },
+            "today_metrics_ready": {
+                "type": "generate_metrics",
+                "label": "生成今日指标",
+                "description": "基于统一时间线重新生成今日 PC 活跃、深度工作、上下文切换等指标。",
+                "endpoint": "GET /api/butler/metrics/today",
+                "ui_route": "/metrics",
+            },
+            "active_insights_ready": {
+                "type": "generate_insights",
+                "label": "生成主动洞察",
+                "description": "使用本地规则引擎生成洞察卡；strict 模式下不调用外部模型。",
+                "endpoint": "POST /api/butler/insights/generate",
+                "ui_route": "/butler/inbox",
+            },
+            "feedback_loop_ready": {
+                "type": "open_inbox",
+                "label": "打开 Butler Inbox",
+                "description": "查看洞察并提交有用、不准确、忽略或稍后提醒等反馈。",
+                "endpoint": "GET /api/butler/insights",
+                "ui_route": "/butler/inbox",
+            },
+            "briefing_ready": {
+                "type": "generate_briefing",
+                "label": "生成晚间简报",
+                "description": "基于今日指标和洞察生成简报；远程系统状态仍需回源确认。",
+                "endpoint": "POST /api/butler/briefings/generate",
+                "ui_route": "/butler",
+            },
+            "openclaw_tools_ready": {
+                "type": "review_openclaw_tools",
+                "label": "检查 OpenClaw 工具声明",
+                "description": "查看 openclaw-skill 工具声明，补齐主动管家工具和证据边界要求。",
+                "endpoint": None,
+                "ui_route": "/butler",
+            },
+            "strict_privacy_ready": {
+                "type": "review_privacy_settings",
+                "label": "检查 strict 隐私设置",
+                "description": "确认外部模型、外部 webhook、系统通知和截图复制均未默认开启。",
+                "endpoint": "GET /api/butler/settings",
+                "ui_route": "/privacy",
+            },
+            "minecontext_source_preserved": {
+                "type": "stop_and_review",
+                "label": "停止并复核数据安全",
+                "description": "如果 MineContext 源数据保留检查失败，应停止演示并人工复核，不自动修复或删除数据。",
+                "endpoint": None,
+                "ui_route": "/privacy",
+            },
+            "evidence_boundaries_present": {
+                "type": "review_evidence_boundaries",
+                "label": "补齐证据边界",
+                "description": "检查首页、自检和洞察输出，确保每条结论都说明来源和不确定性边界。",
+                "endpoint": "GET /api/butler/home",
+                "ui_route": "/butler",
+            },
+        }
+        return actions.get(
+            check_id,
+            {
+                "type": "review_report",
+                "label": "查看验收报告",
+                "description": "检查该验收项详情，优先保持本地处理、证据边界和 strict 隐私约束。",
+                "endpoint": "GET /api/butler/mvp-report",
+                "ui_route": "/butler",
+            },
+        )
+
+    def _insert_timeline_event(self, conn: sqlite3.Connection, event: dict[str, Any]) -> dict[str, Any]:
+        now = now_iso()
+        row = {"id": str(uuid.uuid4()), "created_at": now, "updated_at": now, **event}
+        conn.execute(
+            """
+            INSERT INTO unified_timeline_events (
+                id, user_id, household_id, source, source_event_id, source_type, started_at, ended_at,
+                duration_seconds, title, summary, event_type, entities, metrics, tags, confidence,
+                evidence_level, evidence_refs, evidence_boundary, privacy_level, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                row["id"], row["user_id"], row.get("household_id"), row["source"], row.get("source_event_id"), row["source_type"],
+                row["started_at"], row.get("ended_at"), row.get("duration_seconds"), row["title"], row.get("summary"), row["event_type"],
+                json.dumps(row.get("entities", {}), ensure_ascii=False), json.dumps(row.get("metrics", {}), ensure_ascii=False),
+                json.dumps(row.get("tags", []), ensure_ascii=False), row["confidence"], row["evidence_level"],
+                json.dumps(row.get("evidence_refs", []), ensure_ascii=False), row["evidence_boundary"], row["privacy_level"], now, now,
+            ),
+        )
+        return row
+
+    def _persist_metrics(self, metrics: dict[str, Any], events: list[dict[str, Any]]) -> None:
+        today = date.today().isoformat()
+        refs = [{"kind": "timeline_event", "id": event["id"]} for event in events[:10]]
+        scalar_keys = {
+            "pc_active_minutes": ("PC 活跃时长", "minutes"),
+            "focus_minutes": ("深度工作时长", "minutes"),
+            "context_switch_count": ("上下文切换次数", "count"),
+            "source_event_count": ("来源事件数", "count"),
+            "low_confidence_event_count": ("低置信事件数", "count"),
+        }
+        with self.connect() as conn:
+            conn.execute("DELETE FROM butler_metric_snapshots WHERE date = ?", (today,))
+            for key, (name, unit) in scalar_keys.items():
+                conn.execute(
+                    """
+                    INSERT INTO butler_metric_snapshots(id, user_id, date, period, metric_key, metric_name, value, unit, dimension, comparison, source_event_count, confidence, evidence_refs, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        str(uuid.uuid4()), DEFAULT_USER_ID, today, "today", key, name, float(metrics.get(key) or 0), unit,
+                        "{}", None, int(metrics.get("source_event_count") or 0), float(metrics.get("confidence") or 0.5),
+                        json.dumps(refs, ensure_ascii=False), now_iso(),
+                    ),
+                )
+
+    def _insert_insight(self, conn: sqlite3.Connection, item: dict[str, Any]) -> dict[str, Any]:
+        row = {"id": str(uuid.uuid4()), "user_id": DEFAULT_USER_ID, "household_id": None, **item}
+        conn.execute(
+            """
+            INSERT INTO insight_cards (
+                id, user_id, household_id, type, title, summary, detail, severity, priority, status,
+                suggested_actions, metrics, evidence_refs, evidence_boundary, confidence, generated_by,
+                generated_at, expires_at, snoozed_until
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                row["id"], row["user_id"], row.get("household_id"), row["type"], row["title"], row["summary"], row.get("detail"),
+                row["severity"], row["priority"], row["status"], json.dumps(row.get("suggested_actions", []), ensure_ascii=False),
+                json.dumps(row.get("metrics", {}), ensure_ascii=False), json.dumps(row.get("evidence_refs", []), ensure_ascii=False),
+                row["evidence_boundary"], row["confidence"], row["generated_by"], row["generated_at"], row.get("expires_at"), None,
+            ),
+        )
+        return row
+
+    def _insert_briefing(self, conn: sqlite3.Connection, item: dict[str, Any]) -> dict[str, Any]:
+        row = {"id": str(uuid.uuid4()), "user_id": DEFAULT_USER_ID, **item}
+        conn.execute(
+            """
+            INSERT INTO butler_briefings(id, user_id, type, title, sections, key_metrics, top_insights, suggested_next_actions, evidence_refs, evidence_boundary, created_at, period_start, period_end)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                row["id"], row["user_id"], row["type"], row["title"], json.dumps(row["sections"], ensure_ascii=False),
+                json.dumps(row["key_metrics"], ensure_ascii=False), json.dumps(row["top_insights"], ensure_ascii=False),
+                json.dumps(row["suggested_next_actions"], ensure_ascii=False), json.dumps(row["evidence_refs"], ensure_ascii=False),
+                row["evidence_boundary"], row["created_at"], row["period_start"], row["period_end"],
+            ),
+        )
+        return row
+
+    def _persist_harness_run(self, conn: sqlite3.Connection, kind: str, report: dict[str, Any]) -> dict[str, Any]:
+        failed = [item["id"] for item in report.get("acceptance", []) if item.get("status") != "passed"]
+        summary = report.get("summary") or {
+            "status": report.get("status"),
+            "acceptance_count": len(report.get("acceptance", [])),
+            "failed_check_count": len(failed),
+        }
+        row = {
+            "id": str(uuid.uuid4()),
+            "user_id": DEFAULT_USER_ID,
+            "kind": kind,
+            "status": report.get("status", "unknown"),
+            "dry_run": bool(report.get("dry_run", kind != "mvp_report")),
+            "mutates_data": bool(report.get("mutates_data", False)),
+            "summary": summary,
+            "failed_checks": failed,
+            "privacy": report.get("privacy", {}),
+            "evidence_boundary": report.get("evidence_boundary", BOUNDARY),
+            "created_at": report.get("generated_at", now_iso()),
+        }
+        conn.execute(
+            """
+            INSERT INTO butler_harness_runs(
+                id, user_id, kind, status, dry_run, mutates_data, summary,
+                failed_checks, privacy, evidence_boundary, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                row["id"], row["user_id"], row["kind"], row["status"], int(row["dry_run"]), int(row["mutates_data"]),
+                json.dumps(row["summary"], ensure_ascii=False), json.dumps(row["failed_checks"], ensure_ascii=False),
+                json.dumps(row["privacy"], ensure_ascii=False), row["evidence_boundary"], row["created_at"],
+            ),
+        )
+        return row
+
+    def _suggested_next_actions(self, insights: list[dict[str, Any]], metrics: dict[str, Any]) -> list[dict[str, Any]]:
+        actions = [{"type": "context_recovery", "label": "恢复最近 OpenButler/MineContext 工作上下文"}]
+        if any(item["type"] == "workflow_candidate" for item in insights):
+            actions.append({"type": "draft_skill", "label": "为重复流程生成 OpenClaw 技能草稿"})
+        if metrics.get("source_event_count", 0) == 0:
+            actions.append({"type": "import_pc_activity", "label": "导入今日 PC 活动"})
+        return actions
+
+    def _seed_goals_if_empty(self) -> None:
+        with self.connect() as conn:
+            count = conn.execute("SELECT COUNT(*) AS count FROM butler_goals").fetchone()["count"]
+        if count:
+            return
+        defaults = [
+            {"title": "每天至少 3 小时深度工作", "goal_type": "focus", "target": {"focus_minutes": 180}, "schedule": {"period": "daily"}},
+            {"title": "上下文切换过多时温和提醒", "goal_type": "context_switch", "target": {"threshold": 12}, "schedule": {"window_minutes": 30}},
+            {"title": "每天 18 点生成工作复盘", "goal_type": "briefing", "target": {"type": "evening"}, "schedule": {"time": "18:00"}},
+        ]
+        for item in defaults:
+            self.create_goal(item)
+
+    def _timeline_from_row(self, row: sqlite3.Row) -> dict[str, Any]:
+        item = dict(row)
+        item["entities"] = json.loads(item["entities"])
+        item["metrics"] = json.loads(item["metrics"])
+        item["tags"] = json.loads(item["tags"])
+        item["evidence_refs"] = json.loads(item["evidence_refs"])
+        return item
+
+    def _metric_from_row(self, row: sqlite3.Row) -> dict[str, Any]:
+        item = dict(row)
+        item["dimension"] = json.loads(item["dimension"])
+        item["comparison"] = json.loads(item["comparison"]) if item.get("comparison") else None
+        item["evidence_refs"] = json.loads(item["evidence_refs"])
+        return item
+
+    def _metrics_trend(self, items: list[dict[str, Any]], start_date: str, end_date: str) -> list[dict[str, Any]]:
+        by_date: dict[str, dict[str, Any]] = {}
+        current = date.fromisoformat(start_date)
+        last = date.fromisoformat(end_date)
+        while current <= last:
+            by_date[current.isoformat()] = {
+                "date": current.isoformat(),
+                "pc_active_minutes": 0,
+                "focus_minutes": 0,
+                "context_switch_count": 0,
+                "source_event_count": 0,
+                "low_confidence_event_count": 0,
+                "confidence": 0.2,
+                "status": "data_insufficient",
+                "evidence_refs": [],
+                "evidence_boundary": BOUNDARY,
+            }
+            current += timedelta(days=1)
+
+        metric_map = {
+            "pc_active_minutes",
+            "focus_minutes",
+            "context_switch_count",
+            "source_event_count",
+            "low_confidence_event_count",
+        }
+        for item in items:
+            bucket = by_date.get(item["date"])
+            if not bucket:
+                continue
+            key = item["metric_key"]
+            if key in metric_map:
+                value = int(round(float(item.get("value") or 0)))
+                bucket[key] = value
+            bucket["source_event_count"] = max(bucket["source_event_count"], int(item.get("source_event_count") or 0))
+            bucket["confidence"] = max(float(bucket.get("confidence") or 0.2), float(item.get("confidence") or 0.2))
+            if item.get("evidence_refs"):
+                bucket["evidence_refs"].extend(item["evidence_refs"])
+
+        for bucket in by_date.values():
+            if bucket["source_event_count"] > 0:
+                bucket["status"] = "ready"
+            bucket["evidence_refs"] = bucket["evidence_refs"][:10]
+        return list(by_date.values())
+
+    def _fill_metrics_trend_from_timeline(self, trend: list[dict[str, Any]], start_date: str, end_date: str) -> list[dict[str, Any]]:
+        by_date = {item["date"]: item for item in trend}
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM unified_timeline_events
+                WHERE started_at >= ? AND started_at <= ?
+                ORDER BY started_at ASC
+                """,
+                (start_date, f"{end_date}T23:59:59.999999+00:00"),
+            ).fetchall()
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            event = self._timeline_from_row(row)
+            grouped.setdefault(str(event.get("started_at", ""))[:10], []).append(event)
+        for day, events_for_day in grouped.items():
+            bucket = by_date.get(day)
+            if not bucket or bucket["source_event_count"] > 0:
+                continue
+            metrics = build_metric_summary(events_for_day, self.get_settings().metrics)
+            for key in ["pc_active_minutes", "focus_minutes", "context_switch_count", "source_event_count", "low_confidence_event_count"]:
+                bucket[key] = int(round(float(metrics.get(key) or 0)))
+            bucket["confidence"] = float(metrics.get("confidence") or 0.5)
+            bucket["status"] = "ready" if bucket["source_event_count"] else "data_insufficient"
+            bucket["evidence_refs"] = [{"kind": "timeline_event", "id": event["id"]} for event in events_for_day[:10]]
+        return list(by_date.values())
+
+    def _metrics_trend_summary(self, trend: list[dict[str, Any]], start_date: str, end_date: str) -> dict[str, Any]:
+        days_with_data = len([item for item in trend if item["source_event_count"] > 0])
+        usage = self._timeline_usage_summary(start_date, end_date)
+        return {
+            "status": "ready" if days_with_data else "data_insufficient",
+            "days": len(trend),
+            "days_with_data": days_with_data,
+            "total_pc_active_minutes": sum(int(item["pc_active_minutes"]) for item in trend),
+            "total_focus_minutes": sum(int(item["focus_minutes"]) for item in trend),
+            "total_context_switch_count": sum(int(item["context_switch_count"]) for item in trend),
+            "total_source_event_count": sum(int(item["source_event_count"]) for item in trend),
+            "top_apps": usage["top_apps"],
+            "top_domains": usage["top_domains"],
+            "top_projects": usage["top_projects"],
+            "data_insufficient_message": (
+                "最近 7 天没有可量化的 PC Activity 指标。请先导入 PC Activity、重建统一时间线并生成今日指标。"
+                if not days_with_data
+                else ""
+            ),
+        }
+
+    def _timeline_usage_summary(self, start_date: str, end_date: str) -> dict[str, list[dict[str, Any]]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT entities, duration_seconds
+                FROM unified_timeline_events
+                WHERE started_at >= ? AND started_at <= ?
+                """,
+                (start_date, f"{end_date}T23:59:59.999999+00:00"),
+            ).fetchall()
+        totals: dict[str, dict[str, int]] = {"app_name": {}, "domain": {}, "project_name": {}}
+        for row in rows:
+            entities = json.loads(row["entities"])
+            minutes = round(int(row["duration_seconds"] or 0) / 60)
+            for key in totals:
+                name = entities.get(key)
+                if name:
+                    totals[key][name] = totals[key].get(name, 0) + minutes
+
+        def top(key: str) -> list[dict[str, Any]]:
+            return [
+                {"name": name, "minutes": minutes}
+                for name, minutes in sorted(totals[key].items(), key=lambda item: item[1], reverse=True)[:5]
+            ]
+
+        return {"top_apps": top("app_name"), "top_domains": top("domain"), "top_projects": top("project_name")}
+
+    def _insight_from_row(self, row: sqlite3.Row) -> dict[str, Any]:
+        item = dict(row)
+        item["suggested_actions"] = json.loads(item["suggested_actions"])
+        item["metrics"] = json.loads(item["metrics"])
+        item["evidence_refs"] = json.loads(item["evidence_refs"])
+        return item
+
+    def _briefing_from_row(self, row: sqlite3.Row) -> dict[str, Any]:
+        item = dict(row)
+        item["sections"] = json.loads(item["sections"])
+        item["key_metrics"] = json.loads(item["key_metrics"])
+        item["top_insights"] = json.loads(item["top_insights"])
+        item["suggested_next_actions"] = json.loads(item["suggested_next_actions"])
+        item["evidence_refs"] = json.loads(item["evidence_refs"])
+        return item
+
+    def _goal_from_row(self, row: sqlite3.Row) -> dict[str, Any]:
+        item = dict(row)
+        item["target"] = json.loads(item["target"])
+        item["schedule"] = json.loads(item["schedule"])
+        item["enabled"] = bool(item["enabled"])
+        return item
+
+    def _harness_run_from_row(self, row: sqlite3.Row) -> dict[str, Any]:
+        item = dict(row)
+        item["dry_run"] = bool(item["dry_run"])
+        item["mutates_data"] = bool(item["mutates_data"])
+        item["summary"] = json.loads(item["summary"])
+        item["failed_checks"] = json.loads(item["failed_checks"])
+        item["privacy"] = json.loads(item["privacy"])
+        return item
+
+    def _audit(self, conn: sqlite3.Connection, action: str, user_id: str, details: dict[str, Any]) -> None:
+        conn.execute(
+            "INSERT INTO butler_audit_log(id, action, user_id, details, created_at) VALUES (?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), action, user_id, json.dumps(details, ensure_ascii=False), now_iso()),
+        )

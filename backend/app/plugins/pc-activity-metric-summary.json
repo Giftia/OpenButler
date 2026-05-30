@@ -1,0 +1,12 @@
+{
+  "id": "pc_activity_metric_summary",
+  "name": "PC 活动指标摘要",
+  "stage": "timeline_processor",
+  "version": "0.1.0",
+  "input_schema": {"type": "object", "required": ["timeline_events"]},
+  "output_schema": {"type": "object", "required": ["metrics"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["event.read", "metric.write"],
+  "prompt_template": "Compute PC active minutes, focus minutes, context switches, top apps, and top domains from local timeline events."
+}

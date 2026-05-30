@@ -1,0 +1,13 @@
+{
+  "id": "get_attention_heatmap",
+  "name": "获取注意力热区",
+  "stage": "butler_tool",
+  "input_schema": {"type": "object", "properties": {"time_window": {"type": "string"}}},
+  "output_schema": {"type": "object", "required": ["metrics", "confidence"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["event.read"],
+  "prompt_template": "Return attention zone ratios with confidence and method notes.",
+  "version": "0.1.0"
+}
+

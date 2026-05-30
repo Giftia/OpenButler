@@ -1,0 +1,12 @@
+{
+  "id": "get_actual_work_duration",
+  "name": "获取实际在场时长",
+  "stage": "butler_tool",
+  "input_schema": {"type": "object", "properties": {"date": {"type": "string"}}},
+  "output_schema": {"type": "object", "required": ["duration", "evidence"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["event.read", "summary.read"],
+  "prompt_template": "Return actual workstation duration based on presence events rather than computer uptime.",
+  "version": "0.1.0"
+}

@@ -1,0 +1,28 @@
+{
+  "id": "image-light-score",
+  "name": "Image Light Score",
+  "stage": "preprocessor",
+  "input_schema": {
+    "type": "object",
+    "required": ["image_uri"],
+    "properties": {
+      "image_uri": {"type": "string"},
+      "room": {"type": "string"}
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["score", "lux_estimate"],
+    "properties": {
+      "score": {"type": "number", "minimum": 0, "maximum": 100},
+      "lux_estimate": {"type": "number"},
+      "recommendation": {"type": "string"}
+    }
+  },
+  "privacy_level": "strict",
+  "model_requirements": {"provider": "edge", "modalities": ["image"], "min_context": 1024},
+  "permissions": ["read_raw_object", "write_event_lake"],
+  "prompt_template": "Estimate useful daylight and indoor lighting quality from the image. Return score, evidence, and action.",
+  "version": "0.1.0"
+}
+

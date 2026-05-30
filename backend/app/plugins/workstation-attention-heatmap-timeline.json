@@ -1,0 +1,12 @@
+{
+  "id": "workstation_attention_heatmap_timeline",
+  "name": "视觉注意力热区时间线",
+  "stage": "timeline_processor",
+  "input_schema": {"type": "object", "required": ["events", "time_window"]},
+  "output_schema": {"type": "object", "required": ["attention_metrics"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["event.read", "event.write"],
+  "prompt_template": "Aggregate attention zone estimates over a time window with sample count and confidence.",
+  "version": "0.1.0"
+}

@@ -1,0 +1,149 @@
+tools:
+  - name: get_workstation_status
+    description: 获取当前视觉状态，包括是否在场、姿态、专注状态和疲劳提示。
+    method: GET
+    path: /api/vision/status
+  - name: get_today_workstation_summary
+    description: 获取今日实际在场时长、离开次数、专注时段和姿态统计。
+    method: GET
+    path: /api/vision/summary/today
+  - name: get_workstation_fatigue_suggestions
+    description: 根据本地视觉感知事件提供非医学性质的休息建议。
+    method: GET
+    path: /api/vision/fatigue
+  - name: get_workstation_posture_suggestions
+    description: 根据姿态事件提供坐姿、站姿和屏幕高度建议。
+    method: GET
+    path: /api/vision/posture
+  - name: query_pc_activity_at_time
+    description: 基于 MineContext 本地数据查询某个时间点用户在 PC 上做了什么，返回证据边界。
+    method: POST
+    path: /api/pc-activity/minecontext/query-at-time
+  - name: search_pc_activity_by_keyword
+    description: 基于 MineContext 本地数据倒查某个关键词、网站、应用、项目或文档相关操作发生时间。
+    method: POST
+    path: /api/pc-activity/minecontext/search
+  - name: get_today_pc_activity_summary
+    description: 获取今日 PC 操作摘要，包括活跃时长、主要应用、主要网站、项目切换和深度工作时段。
+    method: GET
+    path: /api/pc-activity/summary/today
+  - name: get_pc_workflow_candidates
+    description: 根据 MineContext 和 OpenButler 时间线发现重复工作流，建议封装为技能或自动化。
+    method: GET
+    path: /api/pc-activity/workflow-candidates
+  - name: get_context_recovery_pack
+    description: 为 Codex 或 OpenClaw 提供开工上下文恢复包。
+    method: GET
+    path: /api/butler/context-recovery
+    request_example:
+      query:
+        lookback_hours: 24
+    response_example:
+      lookback_hours: 24
+      evidence_boundary: "结论来自 MineContext PC 活动事件和 OpenButler 时间线聚合；不代表远程仓库、云效任务、部署或线上服务的实时状态。"
+      briefing:
+        type: context_recovery
+        title: "开工上下文恢复"
+        key_metrics:
+          pc_active_minutes: 214
+          focus_minutes: 96
+        suggested_next_actions:
+          - type: context_recovery
+            label: "恢复最近工作上下文"
+  - name: get_today_butler_overview
+    description: 获取 OpenButler 今日主动管家概览，包括关键指标、洞察和建议动作。
+    method: GET
+    path: /api/butler/home
+    request_example: {}
+    response_example:
+      date: "2026-05-29"
+      overview:
+        headline: "记录显示今天 PC 活跃约 214 分钟，深度工作约 96 分钟。"
+        evidence_boundary: "结论来自 MineContext PC 活动事件和 OpenButler 时间线聚合；不代表远程仓库、云效任务、部署或线上服务的实时状态。"
+      metrics:
+        pc_active_minutes: 214
+        focus_minutes: 96
+        context_switch_count: 38
+        source_event_count: 14
+      insights:
+        - id: ins_001
+          type: workflow_candidate
+          title: "发现重复流程候选"
+          confidence: 0.64
+      privacy:
+        external_model_used: false
+        system_notification_enabled: false
+    data_insufficient_response_example:
+      overview:
+        headline: "当前 PC 活动数据不足，暂不生成强结论。"
+        evidence_boundary: "结论来自 MineContext PC 活动事件和 OpenButler 时间线聚合；不代表远程仓库、云效任务、部署或线上服务的实时状态。"
+      metrics:
+        source_event_count: 0
+      insights:
+        - type: data_quality_notice
+          title: "PC 活动数据不足"
+      suggested_next_actions:
+        - type: import_pc_activity
+          label: "导入今日 PC 活动"
+  - name: get_active_insights
+    description: 获取当前未处理的主动洞察卡片。
+    method: GET
+    path: /api/butler/insights
+    request_example:
+      query:
+        status: new
+    response_example:
+      count: 1
+      items:
+        - id: ins_001
+          type: daily_overview
+          status: new
+          title: "今日主动概览"
+          evidence_refs:
+            - kind: timeline_event
+              id: evt_001
+          evidence_boundary: "结论来自 MineContext PC 活动事件和 OpenButler 时间线聚合；不代表远程仓库、云效任务、部署或线上服务的实时状态。"
+  - name: get_butler_briefing
+    description: 获取晨报、午间检查、晚报或周报。
+    method: POST
+    path: /api/butler/briefings/generate
+    request_example:
+      body:
+        type: evening
+    response_example:
+      type: evening
+      title: "晚间复盘"
+      key_metrics:
+        pc_active_minutes: 214
+        focus_minutes: 96
+      evidence_boundary: "结论来自 MineContext PC 活动事件和 OpenButler 时间线聚合；不代表远程仓库、云效任务、部署或线上服务的实时状态。"
+  - name: explain_insight_evidence
+    description: 解释某条洞察的证据来源、置信度和不确定性边界。
+    method: GET
+    path: /api/butler/insights
+    request_example:
+      query:
+        status: new
+      client_filter:
+        insight_id: ins_001
+    response_example:
+      id: ins_001
+      confidence: 0.78
+      evidence_refs:
+        - kind: timeline_event
+          id: evt_001
+      evidence_boundary: "结论来自 MineContext PC 活动事件和 OpenButler 时间线聚合；不代表远程仓库、云效任务、部署或线上服务的实时状态。"
+  - name: submit_insight_feedback
+    description: 提交用户对洞察的反馈，例如有用、不准确、过于频繁、稍后提醒。
+    method: POST
+    path: /api/butler/insights/{insight_id}/feedback
+    request_example:
+      path:
+        insight_id: ins_001
+      body:
+        feedback_type: inaccurate
+        comment: "这个建议不准确，以后少提醒。"
+    response_example:
+      id: ins_001
+      status: marked_inaccurate
+      evidence_boundary: "结论来自 MineContext PC 活动事件和 OpenButler 时间线聚合；不代表远程仓库、云效任务、部署或线上服务的实时状态。"

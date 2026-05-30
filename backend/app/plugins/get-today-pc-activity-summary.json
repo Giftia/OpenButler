@@ -1,0 +1,12 @@
+{
+  "id": "get_today_pc_activity_summary",
+  "name": "获取今日 PC 操作摘要",
+  "stage": "butler_tool",
+  "version": "0.1.0",
+  "input_schema": {"type": "object"},
+  "output_schema": {"type": "object", "required": ["metrics", "app_usage", "workflow_candidates"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["event.read"],
+  "prompt_template": "Summarize imported PC activity events with confidence and evidence boundaries."
+}

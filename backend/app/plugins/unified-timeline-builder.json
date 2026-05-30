@@ -1,0 +1,12 @@
+{
+  "id": "unified_timeline_builder",
+  "name": "统一时间线构建器",
+  "stage": "timeline_processor",
+  "version": "0.1.0",
+  "input_schema": {"type": "object", "required": ["source_events"]},
+  "output_schema": {"type": "object", "required": ["timeline_events"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["event.read", "event.write"],
+  "prompt_template": "Build a local unified timeline from authorized OpenButler events while preserving evidence boundaries."
+}

@@ -1,0 +1,12 @@
+{
+  "id": "workstation_posture_timeline",
+  "name": "视觉姿态时间线",
+  "stage": "timeline_processor",
+  "input_schema": {"type": "object", "required": ["events"]},
+  "output_schema": {"type": "object", "required": ["posture_distribution"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["event.read", "event.write"],
+  "prompt_template": "Aggregate posture states and filter short low-confidence noise.",
+  "version": "0.1.0"
+}

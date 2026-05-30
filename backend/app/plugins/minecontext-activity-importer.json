@@ -1,0 +1,13 @@
+{
+  "id": "minecontext_activity_importer",
+  "name": "MineContext 活动导入器",
+  "stage": "preprocessor",
+  "version": "0.1.0",
+  "input_schema": {"type": "object", "required": ["start_time", "end_time"]},
+  "output_schema": {"type": "object", "required": ["events"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["minecontext.activity.read", "minecontext.context.read", "event.write"],
+  "retention": {"raw_minecontext_record": "reference_only", "screenshot": "path_only_by_default"},
+  "prompt_template": "Import MineContext activity records as OpenButler PC activity events. Do not treat generated summaries as final facts."
+}

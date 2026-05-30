@@ -1,0 +1,12 @@
+{
+  "id": "query_pc_activity_at_time",
+  "name": "查询某时间点 PC 操作",
+  "stage": "butler_tool",
+  "version": "0.1.0",
+  "input_schema": {"type": "object", "required": ["when"]},
+  "output_schema": {"type": "object", "required": ["can_confirm", "summary", "evidence_boundary"]},
+  "privacy_level": "strict_local",
+  "model_requirements": {"provider": "local", "modalities": ["text"], "local_only_supported": true},
+  "permissions": ["minecontext.godview.read", "audit.write"],
+  "prompt_template": "Answer what the user was doing at a local PC time by calling MineContext godview. Never answer from memory."
+}
