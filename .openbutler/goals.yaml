@@ -1,13 +1,14 @@
 product_goal:
   name: "OpenButler 主动全场景感知 AI 管家"
   mission: "让用户的生活更加清晰高效可量化"
-  current_stage: "Proactive Butler Core L2"
+  current_stage: "Git baseline and architecture reality alignment"
   north_star: "用户每天 60 秒内理解今天发生了什么、什么值得注意、下一步应该做什么"
 
 active_objectives:
   - id: OB-GOAL-001
     title: "完成主动管家中枢 MVP"
     priority: P0
+    status: implemented
     success_criteria:
       - "/butler 页面可用"
       - "今日指标可生成"
@@ -18,6 +19,7 @@ active_objectives:
   - id: OB-GOAL-002
     title: "把 MineContext PC 活动转化为统一时间线"
     priority: P0
+    status: implemented
     success_criteria:
       - "PCActivityEvent 可转换为 UnifiedTimelineEvent"
       - "支持 timeline rebuild"
@@ -26,6 +28,7 @@ active_objectives:
   - id: OB-GOAL-003
     title: "建立可持续产品化开发流程"
     priority: P0
+    status: implemented
     success_criteria:
       - "AGENTS.md 存在"
       - "ROADMAP 存在"
@@ -36,7 +39,7 @@ active_objectives:
   - id: OB-GOAL-004
     title: "Proactive Butler Core L2：真实历史、证据复核与反馈降噪"
     priority: P0
-    status: active
+    status: partially_verified
     description: >
       将主动管家从 MVP 功能推进到可持续使用阶段。
       本阶段聚焦真实 7 天历史导入、洞察证据详情可复核、
@@ -53,6 +56,25 @@ active_objectives:
       - "默认不复制 MineContext 截图"
       - "不删除 MineContext 原始数据"
 
+governance_objectives:
+  - id: OB-GOAL-005
+    title: "Architecture Reality Alignment and Repository Baseline"
+    priority: P0
+    status: active
+    description: "建立 Git 基线，并把文档、任务队列、路径约定、插件运行时说明与当前真实仓库对齐。"
+    success_criteria:
+      - "git init completed"
+      - "baseline commit exists"
+      - "architecture docs reflect backend/frontend/api layout"
+      - "runtime plugin source is documented as backend/app/plugins/*.json"
+      - "insight evidence contract documents inline evidence_refs"
+      - "task queue has ready next tasks"
+    note: >
+      OB-GOAL-005 is intentionally not listed under active_objectives because the
+      current Productization Harness evidence mapper only supports OB-GOAL-001
+      through OB-GOAL-004. See OB-TASK-057 before adding new active objective
+      mappers.
+
 constraints:
   - "不接入新硬件"
   - "不自动部署"
@@ -60,8 +82,6 @@ constraints:
   - "不删除 MineContext 原始数据"
   - "strict 模式下禁止外部模型"
   - "不重写 MineContext / godview"
-  - "不自动调用外部模型"
   - "不自动上传截图或原始 PC 活动"
   - "不自动写入外部系统"
   - "不做心理、医学、人格判断"
-  - "不把 MineContext 生成摘要当最终事实"

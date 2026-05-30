@@ -7,5 +7,8 @@ ADR index:
 - [0003 MineContext As Observation Layer Not Final Truth](decisions/0003-minecontext-as-observation-layer-not-final-truth.md)
 - [0004 Strict Privacy Mode](decisions/0004-strict-privacy-mode.md)
 - [0005 Proactive Butler Core Before More Devices](decisions/0005-proactive-butler-core-before-more-devices.md)
+- [0006 Keep Current Backend Frontend API Layout](decisions/0006-keep-current-backend-frontend-api-layout.md)
+- [0007 Plugin Runtime Source Of Truth](decisions/0007-plugin-runtime-source-of-truth.md)
+- [0008 Insight Evidence Contract](decisions/0008-insight-evidence-contract.md)
 
 New architectural decisions should be added as `docs/architecture/decisions/NNNN-short-name.md` and linked here.

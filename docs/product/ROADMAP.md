@@ -1,5 +1,12 @@
 # Roadmap
 
+## Phase G: Git Baseline And Architecture Reality Alignment
+
+- Goal: make the repository safe for sustained Codex development by establishing Git history and aligning docs with the real `backend/`, `frontend/`, and `api/` layout.
+- Deliverables: Git baseline, current architecture docs, repo structure docs, API contracts, plugin runtime docs, ADRs 0006-0008, aligned AGENTS/current_state/task queue.
+- Acceptance: baseline and architecture commits exist, tests still pass, no runtime/private data is tracked, task queue has clear ready/needs-human next tasks.
+- Risks: stale prompts may still assume `apps/api`, `apps/web`, top-level runtime plugins, or a dedicated insight evidence endpoint.
+
 ## Phase 0: Prototype
 
 - Goal: prove a local-first web prototype can show events, plugins, privacy mode, and chat.

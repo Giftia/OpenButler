@@ -2,6 +2,8 @@
 
 OpenButler is built around local evidence-preserving context rather than raw AI summaries.
 
+Reality note: the current repository uses `backend/`, `frontend/`, and `api/`. It does not use `apps/api` or `apps/web`. See `docs/architecture/CURRENT_ARCHITECTURE.md` and `docs/architecture/REPO_STRUCTURE.md` for the current path map.
+
 ## Flow
 
 ```text
