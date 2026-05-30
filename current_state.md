@@ -107,9 +107,21 @@ npm run build
 OK
 ```
 
+## Browser Smoke Verification
+
+Butler Inbox evidence browser smoke was completed on 2026-05-30 using a temporary backend data directory and synthetic demo data:
+
+- backend API: `http://127.0.0.1:8011`.
+- frontend build: `npm run build` OK.
+- browser smoke: `npm run smoke:butler-browser` OK.
+- verified `/butler/inbox` opened.
+- verified an insight card could expand evidence refs.
+- verified `evidence_boundary` was visible.
+- privacy counters: `external_model_used=false`, `minecontext_source_deleted=0`, `copied_screenshots=0`.
+- no real MineContext activity was read for this smoke; MineContext paths were pointed at nonexistent temporary locations.
+
 ## Not Run In This Governance Round
 
-- Browser click smoke for Butler Inbox evidence detail.
 - `npm run verify:productization` because it may write/update local artifacts under `data/`.
 - OpenClaw runtime execution.
 

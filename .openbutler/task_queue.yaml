@@ -79,13 +79,19 @@ tasks:
     title: "Run Butler Inbox evidence detail browser smoke"
     goal_id: OB-GOAL-004
     priority: P0
-    status: ready
+    status: done
     done_when:
       - "frontend starts"
       - "Inbox page opens"
       - "an insight card can expand evidence_refs"
       - "evidence boundary is visible"
       - "smoke result documented"
+    evidence:
+      - "Ran npm run build successfully before browser smoke."
+      - "Ran npm run smoke:butler-browser against temporary backend data dir on http://127.0.0.1:8011."
+      - "Smoke result: inbox_evidence_click=true and evidence_boundary=true."
+      - "Privacy counters: external_model_used=false, minecontext_source_deleted=0, copied_screenshots=0."
+      - "Backend used synthetic demo data and nonexistent MineContext paths for this smoke; no real MineContext activity was read."
     risks:
       - "Requires local browser/runtime state"
 
