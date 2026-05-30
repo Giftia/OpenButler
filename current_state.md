@@ -97,6 +97,14 @@ Mobile UX Polish V2 was implemented on 2026-05-30:
 - `/me` now shows privacy/data, data sources, and preference settings first; advanced architecture details are folded under `高级与实验室`.
 - No backend API contract was changed.
 
+Timeline Event Feed V2 was implemented on 2026-05-30:
+
+- `/timeline` now uses a scan-friendly event feed layout with weak time, prominent event title/summary, and right-side thumbnail slots.
+- Filters are available for time, source, and event type in the frontend ViewModel while reusing `GET /api/butler/timeline`.
+- Safe image URLs can render as thumbnails; local screenshot paths are not displayed or loaded and become a `有本地截图依据` placeholder.
+- Empty filtered states are user-facing and suggest widening the filter.
+- No real MineContext data was read, no screenshots were copied, no external model was called, and no backend API route was added.
+
 ### OpenClaw
 
 - Declaration files exist in `openclaw-skill/`.

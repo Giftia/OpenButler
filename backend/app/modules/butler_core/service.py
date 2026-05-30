@@ -1494,6 +1494,80 @@ class ButlerCoreService:
                         [{"kind": "file", "path": "current_state.md"}],
                     ),
             ],
+            "OB-GOAL-009": [
+                    criterion(
+                        "timeline_title_summary_priority",
+                        "时间线事件标题和摘要成为视觉重点",
+                        "event-feed-card" in app_text
+                        and "moment.title" in app_text
+                        and "moment.summary" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "timeline_auxiliary_info_subdued",
+                        "时间、来源、置信度等辅助信息被淡化",
+                        "event-feed-card time" in (root / "frontend" / "src" / "styles.css").read_text(encoding="utf-8")
+                        and "color: #94a3b8" in (root / "frontend" / "src" / "styles.css").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "frontend/src/styles.css"}],
+                    ),
+                    criterion(
+                        "timeline_thumbnail_supported",
+                        "事件卡片支持右侧缩略图",
+                        "TimelineThumbnail" in app_text
+                        and "event-thumb" in (root / "frontend" / "src" / "styles.css").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                            {"kind": "file", "path": "frontend/src/styles.css"},
+                        ],
+                    ),
+                    criterion(
+                        "timeline_media_fallbacks",
+                        "有图片证据时显示图片，无图片时显示来源占位",
+                        "isSafeImageUrl" in (root / "frontend" / "src" / "lib" / "timelineUiAdapter.ts").read_text(encoding="utf-8")
+                        and "有本地截图依据" in (root / "frontend" / "src" / "lib" / "timelineUiAdapter.ts").read_text(encoding="utf-8")
+                        and "source-icon" in (root / "frontend" / "src" / "lib" / "timelineUiAdapter.ts").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "frontend/src/lib/timelineUiAdapter.ts"}],
+                    ),
+                    criterion(
+                        "timeline_three_filters",
+                        "支持时间、来源、事件三类筛选",
+                        "timeline-filter-bar" in app_text
+                        and "timeFilter" in app_text
+                        and "sourceFilter" in app_text
+                        and "eventFilter" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "timeline_filter_empty_state",
+                        "筛选空状态友好",
+                        "这个筛选下暂时没有事件" in app_text
+                        and "放宽时间、来源或事件条件" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "timeline_internal_fields_hidden",
+                        "普通 UI 不暴露内部字段名",
+                        "event-feed-card" in app_text
+                        and "未展示原始路径" in app_text
+                        and "ordinary UI must not expose" in (root / "docs" / "product" / "TIMELINE_EVENT_FEED_V2.md").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                            {"kind": "file", "path": "docs/product/TIMELINE_EVENT_FEED_V2.md"},
+                        ],
+                    ),
+                    criterion(
+                        "frontend_build_documented_timeline_v2",
+                        "frontend build 通过",
+                        (root / "current_state.md").exists() and "Frontend build passes" in (root / "current_state.md").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "current_state.md"}],
+                    ),
+                    criterion(
+                        "backend_tests_not_broken_timeline_v2",
+                        "后端核心测试通过",
+                        (root / "current_state.md").exists() and "Ran 51 tests - OK" in (root / "current_state.md").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "current_state.md"}],
+                    ),
+            ],
         }
         objectives = []
         for declared in active_objectives:

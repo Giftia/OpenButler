@@ -289,6 +289,72 @@
   gap: 18px;
 }
 
+.timeline-feed-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: end;
+  padding: 18px 20px;
+  border: 1px solid rgb(15 23 42 / 8%);
+  border-radius: 24px;
+  background: rgb(255 255 255 / 82%);
+  box-shadow: 0 18px 48px rgb(15 23 42 / 7%);
+}
+
+.timeline-feed-hero h2 {
+  margin: 4px 0 6px;
+  color: #0f172a;
+  font-size: clamp(28px, 4vw, 44px);
+  line-height: 1;
+}
+
+.timeline-feed-hero p {
+  max-width: 680px;
+  margin: 0;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.timeline-filter-bar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid rgb(15 23 42 / 8%);
+  border-radius: 22px;
+  background: rgb(255 255 255 / 86%);
+  box-shadow: 0 14px 36px rgb(15 23 42 / 6%);
+}
+
+.timeline-filter-bar label {
+  display: grid;
+  gap: 5px;
+}
+
+.timeline-filter-bar span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.timeline-filter-bar select {
+  min-height: 42px;
+  width: 100%;
+  border: 1px solid rgb(15 23 42 / 10%);
+  border-radius: 999px;
+  padding: 0 34px 0 14px;
+  color: #0f172a;
+  background: #f8fafc;
+  font-weight: 800;
+}
+
+.timeline-result-note {
+  margin: -6px 4px 0;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .life-day-group {
   display: grid;
   gap: 12px;
@@ -306,6 +372,94 @@
   gap: 14px;
   padding: 18px;
 }
+
+.event-feed-card {
+  grid-template-columns: 54px minmax(0, 1fr) 112px;
+  align-items: start;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 22px;
+}
+
+.event-feed-card time {
+  padding-top: 3px;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.event-feed-card .moment-body {
+  gap: 7px;
+}
+
+.event-feed-card .moment-body strong {
+  margin: 0;
+  font-size: clamp(17px, 2.5vw, 21px);
+  line-height: 1.25;
+}
+
+.event-feed-card .moment-body p {
+  margin: 0;
+  color: #334155;
+  font-size: 14px;
+}
+
+.event-feed-card .moment-tags small {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.event-thumb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 112px;
+  height: 76px;
+  margin: 0;
+  overflow: hidden;
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgb(15 118 110 / 18%), rgb(14 165 233 / 10%)),
+    #eef6f7;
+}
+
+.event-thumb span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  color: #0f766e;
+  background: rgb(255 255 255 / 78%);
+  font-weight: 900;
+}
+
+.event-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.event-thumb figcaption {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  max-width: calc(100% - 14px);
+  padding: 4px 7px;
+  border-radius: 999px;
+  color: #0f172a;
+  background: rgb(255 255 255 / 82%);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.event-thumb.blue { background: linear-gradient(135deg, #dbeafe, #e0f2fe); }
+.event-thumb.amber { background: linear-gradient(135deg, #fef3c7, #ffedd5); }
+.event-thumb.green { background: linear-gradient(135deg, #dcfce7, #ccfbf1); }
+.event-thumb.teal { background: linear-gradient(135deg, #ccfbf1, #e0f2fe); }
+.event-thumb.violet { background: linear-gradient(135deg, #ede9fe, #f5d0fe); }
+.event-thumb.slate { background: linear-gradient(135deg, #e2e8f0, #f8fafc); }
 
 .moment-icon {
   display: grid;
@@ -396,6 +550,65 @@
   .life-moment {
     grid-template-columns: 38px minmax(0, 1fr);
     padding: 14px;
+  }
+
+  .timeline-feed-hero {
+    align-items: start;
+    padding: 14px;
+    border-radius: 20px;
+  }
+
+  .timeline-filter-bar {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 7px;
+    padding: 8px;
+    overflow-x: auto;
+  }
+
+  .timeline-filter-bar label {
+    min-width: 104px;
+  }
+
+  .timeline-filter-bar select {
+    min-height: 40px;
+    padding-inline: 10px;
+    font-size: 13px;
+  }
+
+  .event-feed-card {
+    grid-template-columns: 42px minmax(0, 1fr) 92px;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .event-feed-card time {
+    font-size: 12px;
+  }
+
+  .event-feed-card .moment-body strong {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    font-size: 16px;
+  }
+
+  .event-feed-card .moment-body p {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    font-size: 13px;
+  }
+
+  .event-thumb {
+    width: 92px;
+    height: 66px;
+    border-radius: 15px;
+  }
+
+  .event-thumb figcaption {
+    font-size: 9px;
   }
 
   .moment-icon {

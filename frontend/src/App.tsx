@@ -84,7 +84,13 @@ import {
   simulateEvents
 } from "./lib/api";
 import {buildTodayHomeViewModel} from "./lib/butlerUiAdapter";
-import {groupTimelineByDate, toTimelineMoment, type TimelineMoment} from "./lib/timelineUiAdapter";
+import {
+  groupTimelineByDate,
+  timelineEventLabel,
+  timelineSourceLabel,
+  toTimelineMoment,
+  type TimelineMoment
+} from "./lib/timelineUiAdapter";
 import {insightTypeLabel, privacyModeLabel, sourceLabel, statusLabel, userFacingDemoText} from "./lib/userFacingLabels";
 import type {EventItem, PluginManifest, PrivacyMode} from "./types";
 
@@ -1548,9 +1554,94 @@ function UsagePanel({title, items}: {title: string; items: Array<Record<string, 
   );
 }
 
+type TimelineTimeFilter = "today" | "yesterday" | "7d" | "all";
+
+const timelineTimeFilters: Array<{value: TimelineTimeFilter; label: string}> = [
+  {value: "today", label: "今天"},
+  {value: "yesterday", label: "昨天"},
+  {value: "7d", label: "近 7 天"},
+  {value: "all", label: "全部"},
+];
+
+const timelineSourceFilters = [
+  "all",
+  "pc_activity",
+  "godview",
+  "phone_album",
+  "workstation_vision",
+  "butler_core",
+  "manual",
+  "system",
+];
+
+const timelineEventFilters = [
+  "all",
+  "focus_block",
+  "context_switch",
+  "insight",
+  "workflow_candidate",
+  "object_location",
+  "lighting_context",
+  "security_event",
+  "achievement",
+  "data_quality_notice",
+  "pc_activity",
+];
+
+function isInTimeFilter(moment: TimelineMoment, filter: TimelineTimeFilter): boolean {
+  if (filter === "all") return true;
+  const started = new Date(moment.startedAt);
+  if (Number.isNaN(started.getTime())) return true;
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfTomorrow = new Date(startOfToday);
+  startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+  const startOfYesterday = new Date(startOfToday);
+  startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+  const startOfSevenDays = new Date(startOfToday);
+  startOfSevenDays.setDate(startOfSevenDays.getDate() - 6);
+  if (filter === "today") return started >= startOfToday && started < startOfTomorrow;
+  if (filter === "yesterday") return started >= startOfYesterday && started < startOfToday;
+  return started >= startOfSevenDays && started < startOfTomorrow;
+}
+
+function filterTimelineMoments(
+  moments: TimelineMoment[],
+  timeFilter: TimelineTimeFilter,
+  sourceFilter: string,
+  eventFilter: string
+) {
+  return moments.filter((moment) => (
+    isInTimeFilter(moment, timeFilter)
+    && (sourceFilter === "all" || moment.sourceKey === sourceFilter)
+    && (eventFilter === "all" || moment.eventKey === eventFilter || (eventFilter === "insight" && moment.eventKey === "daily_overview"))
+  ));
+}
+
+function TimelineThumbnail({moment}: {moment: TimelineMoment}) {
+  const thumb = moment.thumbnail;
+  if (thumb.kind === "image" && thumb.url) {
+    return (
+      <figure className="event-thumb image-thumb">
+        <img src={thumb.url} alt={thumb.alt} onError={(event) => { event.currentTarget.style.display = "none"; }} />
+        {thumb.privacyLabel && <figcaption>{thumb.privacyLabel}</figcaption>}
+      </figure>
+    );
+  }
+  return (
+    <figure className={`event-thumb ${thumb.tone}`}>
+      <span>{thumb.kind === "placeholder" ? moment.category.slice(0, 1) : moment.sourceLabel.slice(0, 1)}</span>
+      <figcaption>{thumb.privacyLabel ?? "来源占位"}</figcaption>
+    </figure>
+  );
+}
+
 function UnifiedTimeline() {
   const [items, setItems] = useState<Array<Record<string, any>>>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [timeFilter, setTimeFilter] = useState<TimelineTimeFilter>("today");
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [eventFilter, setEventFilter] = useState("all");
 
   async function refreshTimeline() {
     const result = await getButlerTimeline();
@@ -1562,36 +1653,58 @@ function UnifiedTimeline() {
   }, []);
 
   const moments = items.map(toTimelineMoment);
-  const groups = groupTimelineByDate(moments);
+  const filteredMoments = filterTimelineMoments(moments, timeFilter, sourceFilter, eventFilter);
+  const groups = groupTimelineByDate(filteredMoments);
+  const activeFilterSummary = `${timelineTimeFilters.find((item) => item.value === timeFilter)?.label ?? "今天"} · ${timelineSourceLabel(sourceFilter)} · ${timelineEventLabel(eventFilter)}`;
 
   return (
     <section className="life-timeline-page">
-      <div className="section-title">
+      <div className="timeline-feed-hero">
         <div>
-          <p className="eyebrow">被整理好的一天</p>
+          <p className="eyebrow">全场景事件流</p>
           <h2>时间线</h2>
           <p>OpenButler 会把已授权的本地线索整理成生活记录。每条记录都保留依据和边界说明。</p>
         </div>
         <button className="secondary" onClick={refreshTimeline}>刷新</button>
       </div>
+      <div className="timeline-filter-bar" aria-label="时间线筛选">
+        <label>
+          <span>时间</span>
+          <select value={timeFilter} onChange={(event) => setTimeFilter(event.target.value as TimelineTimeFilter)}>
+            {timelineTimeFilters.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>来源</span>
+          <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}>
+            {timelineSourceFilters.map((item) => <option key={item} value={item}>{timelineSourceLabel(item)}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>事件</span>
+          <select value={eventFilter} onChange={(event) => setEventFilter(event.target.value)}>
+            {timelineEventFilters.map((item) => <option key={item} value={item}>{timelineEventLabel(item)}</option>)}
+          </select>
+        </label>
+      </div>
+      <p className="timeline-result-note">
+        已显示 {filteredMoments.length} 条事件 · {activeFilterSummary}
+      </p>
       {groups.length ? (
-        <div className="life-timeline">
+        <div className="life-timeline event-feed">
           {groups.map((group) => (
             <section className="life-day-group" key={group.date}>
               <h3>{group.date}</h3>
               {group.items.map((moment) => (
-                <article className="life-moment" key={moment.id}>
-                  <div className={`moment-icon ${moment.icon}`}>{moment.category.slice(0, 1)}</div>
+                <article className="life-moment event-feed-card" key={moment.id}>
+                  <time dateTime={moment.startedAt}>{moment.time}</time>
                   <div className="moment-body">
-                    <div className="moment-meta">
-                      <span>{moment.time} · {moment.category}</span>
-                      <span>{moment.sourceLabel}</span>
-                    </div>
                     <strong>{moment.title}</strong>
                     <p>{moment.summary}</p>
                     <div className="moment-tags">
                       <small>{moment.valueTag}</small>
-                      <small>{moment.confidenceLabel}</small>
+                      <small>{moment.sourceLabel}</small>
+                      <small>{moment.eventLabel}</small>
                       <small>{moment.evidenceAvailable ? "可查看依据" : "依据不足"}</small>
                     </div>
                     <button
@@ -1602,16 +1715,18 @@ function UnifiedTimeline() {
                     </button>
                     {expandedId === moment.id && (
                       <div className="moment-evidence">
-                        <strong>边界说明</strong>
+                        <strong>依据与边界</strong>
                         <span>{moment.evidenceBoundary}</span>
                         <div className="evidence">
-                          <small>来源 {moment.sourceLabel}</small>
+                          <small>依据来源：{moment.sourceLabel}</small>
                           <small>{moment.confidenceLabel}</small>
-                          <small>本地线索，不确认远程系统实时状态</small>
+                          <small>{moment.thumbnail.privacyLabel ?? "未展示原始路径"}</small>
+                          <small>未上传数据，未复制本地截图</small>
                         </div>
                       </div>
                     )}
                   </div>
+                  <TimelineThumbnail moment={moment} />
                 </article>
               ))}
             </section>
@@ -1619,8 +1734,8 @@ function UnifiedTimeline() {
         </div>
       ) : (
         <div className="friendly-empty">
-          <strong>时间线还没有记录</strong>
-          <span>连接本地数据源后，这里会按时间整理工作、生活、提醒和自动化候选。</span>
+          <strong>{items.length ? "这个筛选下暂时没有事件" : "时间线还没有记录"}</strong>
+          <span>{items.length ? "可以放宽时间、来源或事件条件，查看更完整的生活记录。" : "连接本地数据源后，这里会按时间整理工作、生活、提醒和自动化候选。"}</span>
         </div>
       )}
     </section>
