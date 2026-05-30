@@ -1,7 +1,7 @@
 product_goal:
   name: "OpenButler 主动全场景感知 AI 管家"
   mission: "让用户的生活更加清晰高效可量化"
-  current_stage: "Mobile UX Polish V2"
+  current_stage: "Timeline Event Feed V2"
   north_star: "用户每天 60 秒内理解今天发生了什么、什么值得注意、下一步应该做什么"
 
 active_objectives:
@@ -91,6 +91,25 @@ active_objectives:
       - "管家演示回答不泄露内部数据源字段"
       - "我的页第一层面向普通用户，高级架构内容进入高级与实验室"
       - "所有按钮可点击状态清晰"
+      - "frontend build 通过"
+      - "后端核心测试通过"
+
+  - id: OB-GOAL-009
+    title: "Timeline V2：米家式事件流与三维筛选"
+    priority: P0
+    status: active
+    description: >
+      将 OpenButler 时间线优化为普通用户更容易浏览的事件流。
+      单条事件弱化时间和来源，突出事件内容，并支持右侧图片证据。
+      顶部提供时间、来源、事件三个筛选维度。
+    success_criteria:
+      - "时间线事件标题和摘要成为视觉重点"
+      - "时间、来源、置信度等辅助信息被淡化"
+      - "事件卡片支持右侧缩略图"
+      - "有图片证据时显示图片，无图片时显示来源占位"
+      - "支持时间、来源、事件三类筛选"
+      - "筛选空状态友好"
+      - "普通 UI 不暴露内部字段名"
       - "frontend build 通过"
       - "后端核心测试通过"
 

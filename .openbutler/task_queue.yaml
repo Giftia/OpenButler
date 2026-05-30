@@ -306,4 +306,81 @@ tasks:
       - "docs/product/DEMO_COPY_GUIDELINES.md defines demo-data copy rules."
       - "docs/product/USER_FACING_TERMINOLOGY.md includes V2 terminology rules."
 
+  - id: OB-TASK-090
+    title: "审计当前 Timeline 页面和事件数据结构"
+    goal_id: OB-GOAL-009
+    priority: P0
+    status: done
+    done_when:
+      - "确认当前 /timeline 使用的组件和 API"
+      - "确认事件字段中可用于标题、摘要、来源、时间、图片、证据的字段"
+      - "确认是否已有 media_refs、thumbnail、screenshot_paths、evidence_refs"
+      - "输出本轮最小改动方案"
+    evidence:
+      - "/timeline is rendered by UnifiedTimeline in frontend/src/App.tsx."
+      - "Events come from GET /api/butler/timeline through frontend/src/lib/api.ts."
+      - "frontend/src/lib/timelineUiAdapter.ts now maps source/type/evidence/media fields into a safe event-feed view model."
+
+  - id: OB-TASK-091
+    title: "实现 Timeline 事件卡片 V2"
+    goal_id: OB-GOAL-009
+    priority: P0
+    status: done
+    done_when:
+      - "事件标题和摘要是视觉重点"
+      - "时间和来源被弱化显示"
+      - "右侧支持缩略图或占位"
+      - "移动端布局稳定"
+      - "不暴露技术字段"
+    evidence:
+      - "UnifiedTimeline renders event-feed-card with weak time column, prominent title/summary, subdued chips, and TimelineThumbnail."
+      - "frontend/src/styles.css contains event-feed-card and event-thumb responsive styles."
+
+  - id: OB-TASK-092
+    title: "实现时间 / 来源 / 事件三维筛选"
+    goal_id: OB-GOAL-009
+    priority: P0
+    status: done
+    done_when:
+      - "时间筛选可用"
+      - "来源筛选可用"
+      - "事件类型筛选可用"
+      - "筛选组合后列表正确"
+      - "筛选空状态友好"
+      - "筛选状态在 UI 中清晰可见"
+    evidence:
+      - "UnifiedTimeline keeps local filter state for today/yesterday/7d/all, source, and event type."
+      - "Filtered count and active filter summary are displayed above the event feed."
+
+  - id: OB-TASK-093
+    title: "实现事件缩略图与隐私安全展示策略"
+    goal_id: OB-GOAL-009
+    priority: P0
+    status: done
+    done_when:
+      - "有安全图片 URL 或 demo thumbnail 时显示右侧图片"
+      - "只有本地截图路径时不直接暴露路径"
+      - "无图片时显示来源图标或柔和占位"
+      - "demo 事件至少包含若干右侧图片示例"
+      - "图片加载失败有 fallback"
+    evidence:
+      - "timelineUiAdapter only accepts http(s) or /assets image URLs and rejects Windows screenshot paths."
+      - "Local screenshot references become a 有本地截图依据 placeholder, not a visible path."
+      - "Demo or no-image events render CSS thumbnail placeholders by source tone."
+
+  - id: OB-TASK-094
+    title: "补充 Timeline V2 产品文档"
+    goal_id: OB-GOAL-009
+    priority: P1
+    status: done
+    done_when:
+      - "说明为何弱化时间和来源"
+      - "说明事件卡片信息层级"
+      - "说明筛选维度"
+      - "说明图片证据隐私策略"
+    evidence:
+      - "docs/product/TIMELINE_EVENT_FEED_V2.md documents event-card hierarchy."
+      - "docs/product/TIMELINE_FILTERS_V2.md documents time/source/event filters."
+      - "docs/product/TIMELINE_MEDIA_PRIVACY.md documents thumbnail privacy rules."
+
 blocked: []
