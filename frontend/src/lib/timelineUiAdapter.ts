@@ -43,6 +43,14 @@ function formatTime(value: unknown): string {
   return new Intl.DateTimeFormat("zh-CN", {hour: "2-digit", minute: "2-digit"}).format(date);
 }
 
+function displayStartedAt(event: Record<string, any>): string {
+  const original = new Date(String(event.started_at ?? Date.now()));
+  if (Number.isNaN(original.getTime()) || !isDemoLike(event)) return String(event.started_at ?? new Date().toISOString());
+  const today = new Date();
+  today.setHours(original.getHours(), original.getMinutes(), original.getSeconds(), original.getMilliseconds());
+  return today.toISOString();
+}
+
 function friendlyTitle(event: Record<string, any>): string {
   const type = String(event.event_type ?? "");
   if (isDemoLike(event)) {
@@ -243,7 +251,7 @@ function thumbnailFor(event: Record<string, any>, sourceKey: string, eventKey: s
   }
   const demo = isDemoLike(event);
   if (demo || ["object_location", "security_event", "lighting_context"].includes(eventKey)) {
-    return {kind: "placeholder", alt: `${title} 的演示缩略图`, tone, privacyLabel: demo ? "演示数据" : "来源占位"};
+    return {kind: "placeholder", alt: `${title} 的样例缩略图`, tone, privacyLabel: demo ? "样例" : "来源占位"};
   }
   return {kind: "source-icon", alt: `${timelineSourceLabel(sourceKey)}来源占位`, tone, privacyLabel: timelineSourceLabel(sourceKey)};
 }
@@ -255,6 +263,7 @@ export function toTimelineMoment(event: Record<string, any>): TimelineMoment {
   const refs = Array.isArray(event.evidence_refs) ? event.evidence_refs : [];
   const category = categoryFor(event);
   const demo = isDemoLike(event);
+  const shownStartedAt = displayStartedAt(event);
   const title = friendlyTitle(event);
   const sourceKey = sourceKeyFor(event);
   const eventKey = eventKeyFor(event);
@@ -269,15 +278,15 @@ export function toTimelineMoment(event: Record<string, any>): TimelineMoment {
     id: String(event.id ?? `${event.started_at}-${event.title}`),
     icon: iconFor(category),
     title,
-    date: formatDate(event.started_at),
-    time: formatTime(event.started_at),
-    startedAt: String(event.started_at ?? new Date().toISOString()),
+    date: formatDate(shownStartedAt),
+    time: formatTime(shownStartedAt),
+    startedAt: shownStartedAt,
     category,
     summary: demo
       ? userFacingDemoText(event.title ?? event.summary)
       : userFacingDemoText(event.summary ?? "这条记录来自 OpenButler 已授权的本地时间线。"),
     valueTag,
-    sourceLabel: demo ? `${sourceLabel(event.source)} · 演示数据` : sourceLabel(event.source),
+    sourceLabel: sourceLabel(event.source),
     sourceKey,
     categoryKey,
     importanceKey,
@@ -285,7 +294,9 @@ export function toTimelineMoment(event: Record<string, any>): TimelineMoment {
     eventLabel: timelineEventLabel(eventKey),
     confidenceLabel: confidence > 0 ? `可信度 ${confidence}%` : "可信度待确认",
     evidenceAvailable: refs.length > 0 || Boolean(event.evidence_boundary),
-    evidenceBoundary: userFacingDemoText(event.evidence_boundary ?? "这条记录只代表本地线索，远程系统状态需要回源确认。"),
+    evidenceBoundary: demo
+      ? "这是样例线索，只说明管家会如何解释依据；不代表你的真实生活记录。"
+      : userFacingDemoText(event.evidence_boundary ?? "这条记录只代表本地线索，外部服务状态需要你回到原处确认。"),
     thumbnail: thumbnailFor(event, sourceKey, eventKey, title),
     details: event,
   };

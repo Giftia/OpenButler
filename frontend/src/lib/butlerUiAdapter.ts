@@ -44,7 +44,7 @@ function numberText(value: unknown, suffix = ""): string {
 const demoSuggestions = [
   {
     title: "钥匙可能在玄关托盘附近",
-    summary: "演示线索显示钥匙最后出现在玄关左侧托盘。你可以点开依据，看看管家如何说明不确定性。",
+    summary: "样例线索显示钥匙最后出现在玄关左侧托盘。你可以点开依据，看看管家如何说明不确定性。",
   },
   {
     title: "有一项会议后待办适合收尾",
@@ -163,7 +163,7 @@ export function buildTodayHomeViewModel(
       {
         title: "授权状态",
         value: mode === "new_user" ? "未就绪" : "可控",
-        description: demoMode ? "当前只展示演示内容" : "优先使用本地观察和完全本地模式",
+        description: demoMode ? "当前只展示样例内容" : "优先使用本地观察和只在本机整理模式",
         tone: "red",
       },
     ],

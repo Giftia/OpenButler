@@ -459,4 +459,21 @@ tasks:
     evidence:
       - "Pending until post-deployment neutral review completes."
 
+  - id: OB-TASK-106
+    title: "修复复评暴露的 6 个高优先级体验问题"
+    goal_id: OB-GOAL-010
+    priority: P0
+    status: done
+    done_when:
+      - "移动端横向溢出被收敛"
+      - "线上 demo 的今天叙事一致"
+      - "技术词下沉到开发者设置或适配层"
+      - "演示提示降噪为样例体验"
+      - "缩略图标签更具生活辨识度"
+      - "管家回答隐藏 mock/seed 痕迹"
+    evidence:
+      - "frontend/src/styles.css strengthens mobile overflow guards."
+      - "frontend/src/lib/timelineUiAdapter.ts shifts demo display dates to today and simplifies evidence boundaries."
+      - "frontend/src/App.tsx simplifies ordinary wording and sanitizes chat answers."
+
 blocked: []

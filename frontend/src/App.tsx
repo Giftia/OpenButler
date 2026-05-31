@@ -300,7 +300,7 @@ function App() {
           <div className="brand-mark"><Bot size={22} /></div>
           <div>
             <strong>OpenButler</strong>
-            <span>Local-first AI Butler</span>
+            <span>你的私人管家</span>
           </div>
         </div>
         <nav>
@@ -735,10 +735,10 @@ function ButlerHome() {
     <div className="today-page">
       <section className="today-hero">
         <div className="today-hero-copy">
-          <p className="eyebrow">OpenButler 主动 AI 管家 · {view.demoMode ? "演示数据" : "本地数据"} · {privacyModeLabel("strict")}</p>
+          <p className="eyebrow">OpenButler 主动 AI 管家 · {view.demoMode ? "样例体验" : "本地数据"} · {privacyModeLabel("strict")}</p>
           <h1>{view.headline}</h1>
           <p className="hero-summary">{view.subheadline}</p>
-          <p>{view.demoMode ? "这是演示体验，用来展示它如何照看物品、待办和生活节律。" : "OpenButler 会把授权的本地线索整理成今日概览、提醒和可复核依据。"}</p>
+          <p>{view.demoMode ? "这是样例体验，用来展示它如何照看物品、待办和生活节律。" : "OpenButler 会把授权的本地线索整理成今日概览、提醒和可复核依据。"}</p>
           <div className="hero-actions">
             <button className="primary" onClick={() => document.getElementById("today-suggestions")?.scrollIntoView({behavior: "smooth"})}>
               <CheckCircle2 size={17} />
@@ -751,11 +751,11 @@ function ButlerHome() {
             <span>{view.statusCards[0]?.value ?? "0 条"}信号</span>
             <span>{view.statusCards[1]?.value ?? "0 条"}提醒</span>
             <span>{view.statusCards[2]?.value ?? "0 分钟"}专注</span>
-            <span>{view.demoMode ? "演示数据" : "完全本地"}</span>
+            <span>{view.demoMode ? "样例体验" : privacyModeLabel("strict")}</span>
           </div>
         </div>
         <div className="today-hero-status">
-          <span className="privacy-chip">{view.demoMode ? "演示数据" : privacyModeLabel("strict")}</span>
+          <span className="privacy-chip">{view.demoMode ? "样例体验" : privacyModeLabel("strict")}</span>
           <strong>{view.summaryLine}</strong>
           <span>{view.demoMode ? "演示内容不会读取你的真实数据。" : "今日已整理信号"}</span>
           <small>{view.dataQualityText}</small>
@@ -1436,7 +1436,7 @@ function InsightEvidenceDetails({insight}: {insight: Record<string, any>}) {
       </div>
       <div className="suggestion-box">
         <strong>隐私说明</strong>
-        <span>未复制截图文件 · 未上传截图文件 · 未调用外部模型 · 截图只显示为本地路径引用</span>
+        <span>本地图片不会上传；需要时只说明“有本地依据”，不展示真实路径。</span>
       </div>
       {refs.length ? (
         <div className="evidence-ref-list">
@@ -1616,12 +1616,12 @@ function filterTimelineMoments(
 function TimelineThumbnail({moment}: {moment: TimelineMoment}) {
   const thumb = moment.thumbnail;
   const mark = {
-    objects: "钥",
-    reminders: "待",
-    habits: "休",
-    home: "家",
-    work: "事",
-    automation: "技",
+    objects: "钥匙",
+    reminders: "待办",
+    habits: "休息",
+    home: "家庭",
+    work: "记录",
+    automation: "建议",
   }[moment.categoryKey] ?? moment.category.slice(0, 1);
   if (thumb.kind === "image" && thumb.url) {
     return (
@@ -1724,7 +1724,7 @@ function UnifiedTimeline() {
                           <small>依据来源：{moment.sourceLabel}</small>
                           <small>{moment.confidenceLabel}</small>
                           <small>{moment.thumbnail.privacyLabel ?? "未展示原始路径"}</small>
-                          <small>这是本地线索整理，不代表远程网站或服务的实时状态。</small>
+                          <small>这只是线索，不代表外部服务的真实状态。</small>
                         </div>
                       </div>
                     )}
@@ -2370,7 +2370,13 @@ function Chat() {
   function sanitizeAnswer(answer: string) {
     return answer
       .replace(/phone_album/g, "相册线索（演示）")
+      .replace(/模拟事件\s*seed/g, "演示线索")
+      .replace(/模拟事件\s*演示线索/g, "演示线索")
+      .replace(/演示线索/g, "样例线索")
       .replace(/seed/g, "演示线索")
+      .replace(/证据来自 相册线索（演示）：/g, "依据：相册线索（样例）。")
+      .replace(/模拟事件/g, "样例线索")
+      .replace(/演示线索/g, "样例线索")
       .replace(/raw source/g, "原始依据")
       .replace(/source_event_id/g, "依据编号")
       .replace(/MineContext/g, "电脑活动")
@@ -2395,9 +2401,9 @@ function Chat() {
   return (
     <section className="chat-layout">
       <div className="butler-brief">
-        <span className="privacy-chip">演示体验</span>
+        <span className="privacy-chip">样例体验</span>
         <strong>我先帮你看过一遍今天。</strong>
-        <p>现在可以回看今日重点、确认下一步，或查看物品和生活节律的演示线索。</p>
+        <p>现在可以回看今日重点、确认下一步，或查看物品和生活节律的样例线索。</p>
         <div className="hero-actions">
           <button className="primary" onClick={() => send("帮我回看今天")}>帮我回看今天</button>
           <button className="secondary" onClick={() => send("提醒我下一步")}>提醒我下一步</button>
@@ -2461,16 +2467,16 @@ function Privacy({
         <div className="mode-toggle">
           <button className={mode === "basic" ? "selected" : ""} onClick={() => onChange("basic")}>
             <ShieldCheck size={20} />
-            <strong>基础隐私</strong>
-            <span>适合你明确授权的联网服务。</span>
+            <strong>允许授权联网</strong>
+            <span>只在你明确同意时使用联网能力。</span>
           </button>
           <button className={mode === "strict" ? "selected" : ""} onClick={() => onChange("strict")}>
             <CloudOff size={20} />
-            <strong>完全本地</strong>
-            <span>禁止外部模型、云端 API 和外部回调。</span>
+            <strong>只在本机整理</strong>
+            <span>不会把你的数据发给外部服务。</span>
           </button>
         </div>
-        <p className="policy-note">完全本地模式下，有 {blocked} 项联网能力已暂停，避免未经确认的数据外发。</p>
+        <p className="policy-note">当前有 {blocked} 项联网能力已暂停，避免未经确认的数据外发。</p>
       </section>
 
       <section className="today-panel">

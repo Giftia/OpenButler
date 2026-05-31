@@ -114,6 +114,15 @@ Product Experience V3 was implemented on 2026-05-30:
 - `/me` is framed as authorization and reminder preferences; implementation details are folded into developer settings.
 - The public demo remains demo-only and does not read real MineContext data, copy screenshots, upload data, or call external models.
 
+Mobile Critical Fix V4 was implemented on 2026-05-31:
+
+- Mobile overflow guards were strengthened on the app shell, hero, buttons, chips, timeline cards, and brief cards.
+- Demo timeline dates are shifted in the frontend view model so the public demo always has "today" events without mutating backend data.
+- Ordinary UI language now uses `只在本机整理`, `样例体验`, and user-facing authorization language instead of engineering-first privacy labels.
+- Timeline evidence wording is simplified for ordinary users and local screenshot paths remain hidden.
+- Timeline thumbnails use more descriptive life labels such as `钥匙`, `待办`, and `休息`.
+- Butler chat answer sanitization removes visible mock/seed phrasing from demo answers.
+
 ### OpenClaw
 
 - Declaration files exist in `openclaw-skill/`.
