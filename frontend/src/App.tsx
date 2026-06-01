@@ -772,19 +772,21 @@ function ButlerHome() {
   const primarySuggestion = view.topSuggestions[0];
   return (
     <div className="today-page">
-      <section className="today-hero">
+      <section className="today-hero" aria-label="OpenButler 主动 AI 管家">
         <div className="today-hero-copy">
-          <p className="eyebrow">OpenButler 主动 AI 管家 · {view.demoMode ? "样例体验" : "本地数据"} · {privacyModeLabel("strict")}</p>
+          <p className="eyebrow">私人 AI 管家 · {view.demoMode ? "样例体验" : "本地数据"} · {privacyModeLabel("strict")}</p>
           <h1>{view.headline}</h1>
           <p className="hero-summary">{view.subheadline}</p>
           <p>{view.demoMode ? "这是样例体验，用来展示它如何照看物品、待办和生活节律。" : "OpenButler 会把授权的本地线索整理成今日概览、提醒和可复核依据。"}</p>
-          <div className="hero-actions">
+          <div className="hero-actions primary-action-row">
             <button className="primary" onClick={() => document.getElementById("today-suggestions")?.scrollIntoView({behavior: "smooth"})}>
               <CheckCircle2 size={17} />
               <span>{view.primaryAction}</span>
             </button>
-            <button className="secondary" onClick={() => navigateTo("/chat")}>问管家</button>
-            <button className="ghost" onClick={() => navigateTo("/timeline")}>查看全部记录</button>
+          </div>
+          <div className="hero-quiet-links" aria-label="首页快捷入口">
+            <button className="text-link" onClick={() => navigateTo("/assistant")}>问管家</button>
+            <button className="text-link" onClick={() => navigateTo("/timeline")}>查看全部记录</button>
           </div>
           <div className="summary-chips">
             <span>{view.statusCards[0]?.value ?? "0 条"}信号</span>
@@ -795,8 +797,8 @@ function ButlerHome() {
         </div>
         <div className="today-hero-status">
           <span className="privacy-chip">{view.demoMode ? "样例体验" : privacyModeLabel("strict")}</span>
-          <strong>{view.summaryLine}</strong>
-          <span>{view.demoMode ? "演示内容不会读取你的真实数据。" : "今日已整理信号"}</span>
+          <strong>今日摘要</strong>
+          <span>{view.summaryLine}</span>
           <small>{view.dataQualityText}</small>
         </div>
       </section>
@@ -876,7 +878,7 @@ function ButlerHome() {
       </section>
 
       <details className="advanced-lab-panel developer-only-panel">
-        <summary>开发者设置</summary>
+        <summary>高级与实验室</summary>
         <div className="advanced-lab-grid">
           <button className="secondary" onClick={runDemoPath} disabled={demoBusy}>
             {demoBusy ? <Loader2 className="spin" size={17} /> : <CheckCircle2 size={17} />}
@@ -2441,8 +2443,8 @@ function Chat() {
     <section className="chat-layout">
       <div className="butler-brief">
         <span className="privacy-chip">样例体验</span>
-        <strong>我先帮你看过一遍今天。</strong>
-        <p>现在可以回看今日重点、确认下一步，或查看物品和生活节律的样例线索。</p>
+        <strong>我会先给你结论，再说明依据。</strong>
+        <p>你可以让我回看今天、确认下一步，或解释某条提醒为什么出现。每次回答都会保留边界说明。</p>
         <div className="hero-actions">
           <button className="primary" onClick={() => send("帮我回看今天")}>帮我回看今天</button>
           <button className="secondary" onClick={() => send("提醒我下一步")}>提醒我下一步</button>
@@ -2594,7 +2596,7 @@ function Privacy({
         <div className="mode-toggle">
           <button className={mode === "basic" ? "selected" : ""} onClick={() => onChange("basic")}>
             <ShieldCheck size={20} />
-            <strong>允许授权联网</strong>
+            <strong>基础隐私</strong>
             <span>只在你明确同意时使用联网能力。</span>
           </button>
           <button className={mode === "strict" ? "selected" : ""} onClick={() => onChange("strict")}>
@@ -2638,7 +2640,7 @@ function Privacy({
       </section>
 
       <details className="advanced-lab-panel">
-        <summary>开发者设置</summary>
+        <summary>高级与实验室</summary>
         <div className="topology">
           <div className="topology-row"><ShieldCheck size={18} /><span>隐私策略详情：完全本地模式会拦截 Provider、Webhook 和外部模型。</span></div>
           <div className="topology-row"><Camera size={18} /><span>Capture Gateway（高级采集入口）</span></div>
