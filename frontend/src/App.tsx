@@ -127,6 +127,7 @@ const advancedNavItems: Array<{key: PageKey; label: string; icon: typeof Home}> 
 ];
 
 const navItems = [...primaryNavItems, ...advancedNavItems];
+const FIRST_RUN_GUIDE_STORAGE_KEY = "openbutler:first_run_guide:v1";
 
 function routeForPage(key: PageKey) {
   return {
@@ -143,6 +144,32 @@ function routeForPage(key: PageKey) {
     butlerInbox: "/butler/inbox",
     ingest: "/ingest"
   }[key];
+}
+
+function pageForPath(path: string): PageKey {
+  return path.includes("butler/inbox")
+    ? "butlerInbox"
+    : path.includes("metrics")
+      ? "metrics"
+      : path.includes("goals")
+        ? "goals"
+        : path.includes("pc-activity-context")
+          ? "pcActivity"
+          : path.includes("vision")
+            ? "workstation"
+            : path.includes("timeline")
+              ? "timeline"
+              : path.includes("assistant") || path.includes("butler/chat") || path.includes("chat")
+                ? "chat"
+                : path.includes("me") || path.includes("settings") || path.includes("privacy")
+                  ? "privacy"
+                  : path.includes("plugins")
+                    ? "plugins"
+                    : path.includes("ingest")
+                      ? "ingest"
+                      : path.includes("dashboard")
+                        ? "dashboard"
+                        : "butler";
 }
 
 const sourceCatalog = [
@@ -181,39 +208,20 @@ function groupByStage(plugins: PluginManifest[]) {
 
 function App() {
   const currentPath = window.location.pathname;
-  const [page, setPage] = useState<PageKey>(
-    currentPath.includes("butler/inbox")
-      ? "butlerInbox"
-      : currentPath.includes("metrics")
-        ? "metrics"
-        : currentPath.includes("goals")
-          ? "goals"
-          : currentPath.includes("pc-activity-context")
-      ? "pcActivity"
-      : currentPath.includes("vision")
-        ? "workstation"
-        : currentPath.includes("timeline")
-          ? "timeline"
-          : currentPath.includes("assistant") || currentPath.includes("butler/chat")
-            ? "chat"
-            : currentPath.includes("me") || currentPath.includes("settings") || currentPath.includes("privacy")
-              ? "privacy"
-              : currentPath.includes("plugins")
-                ? "plugins"
-                : currentPath.includes("ingest")
-                  ? "ingest"
-                  : currentPath.includes("dashboard")
-                    ? "dashboard"
-                    : currentPath.includes("butler")
-            ? "butler"
-            : "butler"
-  );
+  const [page, setPage] = useState<PageKey>(() => pageForPath(currentPath));
   const [events, setEvents] = useState<EventItem[]>([]);
   const [plugins, setPlugins] = useState<PluginManifest[]>([]);
   const [privacyMode, setMode] = useState<PrivacyMode>("basic");
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [showFirstRunGuide, setShowFirstRunGuide] = useState(() => {
+    try {
+      return window.localStorage.getItem(FIRST_RUN_GUIDE_STORAGE_KEY) !== "done";
+    } catch {
+      return false;
+    }
+  });
 
   async function refresh(q = search) {
     setError(null);
@@ -233,6 +241,15 @@ function App() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    function syncPageFromLocation() {
+      setPage(pageForPath(window.location.pathname));
+    }
+
+    window.addEventListener("popstate", syncPageFromLocation);
+    return () => window.removeEventListener("popstate", syncPageFromLocation);
+  }, []);
+
   async function handleSimulate() {
     setLoading(true);
     try {
@@ -249,6 +266,15 @@ function App() {
   async function handlePrivacy(mode: PrivacyMode) {
     await setPrivacyMode(mode);
     await refresh();
+  }
+
+  function completeFirstRunGuide() {
+    try {
+      window.localStorage.setItem(FIRST_RUN_GUIDE_STORAGE_KEY, "done");
+    } catch {
+      // Local storage can be unavailable in restricted browser modes.
+    }
+    setShowFirstRunGuide(false);
   }
 
   const stats = useMemo(() => {
@@ -289,84 +315,97 @@ function App() {
         mode={privacyMode}
         onChange={handlePrivacy}
         plugins={plugins}
+        onOpenGuide={() => setShowFirstRunGuide(true)}
       />
     )
   }[page];
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark"><Bot size={22} /></div>
-          <div>
-            <strong>OpenButler</strong>
-            <span>你的私人管家</span>
-          </div>
-        </div>
-        <nav>
-          {primaryNavItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.key}
-                data-nav-key={item.key}
-                className={page === item.key ? "active" : ""}
-                onClick={() => {
-                  setPage(item.key);
-                  window.history.replaceState(null, "", routeForPage(item.key));
-                }}
-                title={item.label}
-              >
-                <Icon size={18} />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-          <details className="advanced-nav">
-            <summary>高级与实验室</summary>
+    <>
+      <div className="app-shell">
+        <aside className="sidebar">
+          <div className="brand">
+            <div className="brand-mark"><Bot size={22} /></div>
             <div>
-              {advancedNavItems.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <button
-                    key={item.key}
-                    data-nav-key={item.key}
-                    className={page === item.key ? "active" : ""}
-                    onClick={() => {
-                      setPage(item.key);
-                      window.history.replaceState(null, "", routeForPage(item.key));
-                    }}
-                    title={item.label}
-                  >
-                    <Icon size={18} />
-                    <span>{item.label}</span>
-                  </button>
-                );
-              })}
+              <strong>OpenButler</strong>
+              <span>你的私人管家</span>
             </div>
-          </details>
-        </nav>
-        <div className="mode-chip">
-          {privacyMode === "strict" ? <CloudOff size={16} /> : <ShieldCheck size={16} />}
-          <span>{privacyModeLabel(privacyMode)}</span>
-        </div>
-      </aside>
-
-      <main>
-        {!primaryNavItems.some((item) => item.key === page) && <header className="topbar">
-          <div>
-            <p className="eyebrow">个人/家庭多模态事件湖原型</p>
-            <h1>{navItems.find((item) => item.key === page)?.label}</h1>
           </div>
-          <button className="primary" onClick={handleSimulate} disabled={loading}>
-            {loading ? <Loader2 className="spin" size={17} /> : <RefreshCw size={17} />}
-            <span>生成演示记录</span>
-          </button>
-        </header>}
-        {error && <div className="error">API 连接失败：{error}</div>}
-        {CurrentPage}
-      </main>
-    </div>
+          <nav>
+            {primaryNavItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.key}
+                  data-nav-key={item.key}
+                  className={page === item.key ? "active" : ""}
+                  onClick={() => {
+                    setPage(item.key);
+                    window.history.replaceState(null, "", routeForPage(item.key));
+                  }}
+                  title={item.label}
+                >
+                  <Icon size={18} />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+            <details className="advanced-nav">
+              <summary>高级与实验室</summary>
+              <div>
+                {advancedNavItems.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.key}
+                      data-nav-key={item.key}
+                      className={page === item.key ? "active" : ""}
+                      onClick={() => {
+                        setPage(item.key);
+                        window.history.replaceState(null, "", routeForPage(item.key));
+                      }}
+                      title={item.label}
+                    >
+                      <Icon size={18} />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </details>
+          </nav>
+          <div className="mode-chip">
+            {privacyMode === "strict" ? <CloudOff size={16} /> : <ShieldCheck size={16} />}
+            <span>{privacyModeLabel(privacyMode)}</span>
+          </div>
+        </aside>
+
+        <main>
+          {!primaryNavItems.some((item) => item.key === page) && <header className="topbar">
+            <div>
+              <p className="eyebrow">个人/家庭多模态事件湖原型</p>
+              <h1>{navItems.find((item) => item.key === page)?.label}</h1>
+            </div>
+            <button className="primary" onClick={handleSimulate} disabled={loading}>
+              {loading ? <Loader2 className="spin" size={17} /> : <RefreshCw size={17} />}
+              <span>生成演示记录</span>
+            </button>
+          </header>}
+          {error && <div className="error">API 连接失败：{error}</div>}
+          {CurrentPage}
+        </main>
+      </div>
+      {showFirstRunGuide && (
+        <FirstRunGuide
+          onPrimary={() => {
+            completeFirstRunGuide();
+            setPage("butler");
+            window.history.replaceState(null, "", routeForPage("butler"));
+          }}
+          onDismiss={completeFirstRunGuide}
+        />
+      )}
+    </>
   );
 }
 
@@ -2444,14 +2483,102 @@ function Chat() {
   );
 }
 
+function FirstRunGuide({
+  onPrimary,
+  onDismiss
+}: {
+  onPrimary: () => void;
+  onDismiss: () => void;
+}) {
+  const guideSteps = [
+    {
+      title: "整理今天",
+      text: "把你授权的本机线索整理成一条可回看的时间线。",
+      icon: CalendarDays,
+    },
+    {
+      title: "提醒重点",
+      text: "只把值得你决定、回看或稍后处理的事情放到前面。",
+      icon: Lightbulb,
+    },
+    {
+      title: "保留依据",
+      text: "每条提醒都能展开查看来源、可信度和边界说明。",
+      icon: ShieldCheck,
+    },
+  ];
+
+  const previewItems = [
+    {time: "09:22", title: "钥匙可能在玄关托盘附近", source: "相册线索 · 样例"},
+    {time: "14:10", title: "有一项会议后待办适合收尾", source: "今日记录 · 样例"},
+    {time: "18:40", title: "可以安排 5 分钟活动一下", source: "生活节律 · 样例"},
+  ];
+
+  return (
+    <div className="first-run-backdrop" role="dialog" aria-modal="true" aria-labelledby="first-run-title">
+      <section className="first-run-guide">
+        <div className="first-run-copy">
+          <p className="eyebrow">首次使用说明</p>
+          <h2 id="first-run-title">先认识一下你的私人管家</h2>
+          <p>
+            OpenButler 会把你授权的本机线索整理成今日概览、管家提醒和可复核依据。
+            它不会替你做最终判断，也不会在未授权时读取真实数据。
+          </p>
+          <div className="first-run-actions">
+            <button className="primary" onClick={onPrimary}>
+              <CheckCircle2 size={17} />
+              <span>开始看今天</span>
+            </button>
+            <button className="ghost" onClick={onDismiss}>稍后了解</button>
+          </div>
+        </div>
+
+        <div className="first-run-cards">
+          {guideSteps.map((step) => {
+            const Icon = step.icon;
+            return (
+              <article className="first-run-card" key={step.title}>
+                <Icon size={20} />
+                <strong>{step.title}</strong>
+                <span>{step.text}</span>
+              </article>
+            );
+          })}
+        </div>
+
+        <div className="first-run-preview" aria-label="OpenButler 整理结果示例">
+          <span className="privacy-chip">样例体验</span>
+          <strong>你会看到这样的今日记录</strong>
+          <div>
+            {previewItems.map((item) => (
+              <article key={`${item.time}-${item.title}`}>
+                <time>{item.time}</time>
+                <div>
+                  <strong>{item.title}</strong>
+                  <span>{item.source}</span>
+                </div>
+              </article>
+            ))}
+          </div>
+          <small>样例只用于说明产品效果，不代表你的真实生活记录。</small>
+        </div>
+
+        <button className="first-run-close" onClick={onDismiss}>关闭</button>
+      </section>
+    </div>
+  );
+}
+
 function Privacy({
   mode,
   onChange,
-  plugins
+  plugins,
+  onOpenGuide
 }: {
   mode: PrivacyMode;
   onChange: (mode: PrivacyMode) => void;
   plugins: PluginManifest[];
+  onOpenGuide: () => void;
 }) {
   const blocked = plugins.filter((plugin) => !plugin.runtime.available).length;
   return (
@@ -2497,6 +2624,16 @@ function Privacy({
           <StatusItem label="提醒频率" value="保守" />
           <StatusItem label="生活建议" value="开启" />
           <StatusItem label="依据说明" value="点击后展开" />
+        </div>
+      </section>
+
+      <section className="today-panel">
+        <div className="section-title">
+          <div>
+            <h2>产品引导</h2>
+            <p>重新看一遍 OpenButler 会如何整理线索、提醒重点并保留依据。</p>
+          </div>
+          <button className="secondary" onClick={onOpenGuide}>重新查看产品引导</button>
         </div>
       </section>
 
