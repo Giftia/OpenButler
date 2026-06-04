@@ -206,6 +206,24 @@ active_objectives:
       - "前端 build 和 inbox smoke 通过"
       - "后端核心测试通过"
 
+  - id: OB-GOAL-015
+    title: "Assistant as Natural Control Layer"
+    priority: P0
+    status: active
+    description: >
+      将 /assistant 打磨成自然语言入口。用户可以回看今天、确认下一步、
+      解释依据、提交提醒反馈、生成复盘和查时间线；回答必须保留关键数字、
+      依据、边界说明和下一步。
+    success_criteria:
+      - "问管家支持今日回看、下一步建议、解释依据、修改偏好、生成复盘、查时间线"
+      - "回答包含关键数字、依据、边界说明和下一步"
+      - "数据不足时明确说明，不凭聊天记忆编造"
+      - "不能确认远程仓库、部署、接口或任务系统实时状态"
+      - "普通回答不出现 mock、seed、phone_album、source_event_id 等内部字段"
+      - "移动端问管家入口不横向溢出"
+      - "前端 build 和 assistant smoke 通过"
+      - "后端核心测试通过"
+
 governance_objectives:
   - id: OB-GOAL-005
     title: "Architecture Reality Alignment and Repository Baseline"

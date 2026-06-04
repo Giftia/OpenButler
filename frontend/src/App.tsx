@@ -2628,10 +2628,25 @@ function StatusItem({label, value}: {label: string; value: string}) {
 
 function Chat() {
   const [messages, setMessages] = useState<Array<{role: "user" | "butler"; text: string}>>([
-    {role: "butler", text: "我已经为你整理好今天值得回看的 3 件事，其中 1 件可能需要你决定。你可以让我回看今天，也可以让我提醒下一步。"}
+    {role: "butler", text: "结论：我可以先帮你回看今天。\n关键数字：回答里会尽量给出少量数字，比如提醒数量、专注时长或时间线记录数。\n依据：我只使用 OpenButler 已授权的本地整理结果。\n边界说明：我不会凭聊天记忆补事实，也不能确认远程系统状态。\n下一步：你可以先问“今天有什么值得注意？”。"}
   ]);
-  const [text, setText] = useState("我的钥匙在哪");
+  const [text, setText] = useState("今天有什么值得注意？");
   const [pending, setPending] = useState(false);
+  const capabilityCards = [
+    {title: "回看今天", text: "把今天的记录整理成几件能处理的事。", prompt: "今天有什么值得注意？"},
+    {title: "查时间线", text: "从今天的记录里找最近发生了什么。", prompt: "查看今日记录"},
+    {title: "解释依据", text: "说明一条提醒从哪里来、能信到什么程度。", prompt: "解释这条提醒的依据"},
+    {title: "调整提醒", text: "记录“不准确”或“以后少提醒”的反馈。", prompt: "以后少提醒类似内容"},
+  ];
+  const promptGroups = [
+    "今天有什么值得注意？",
+    "我现在该先做什么？",
+    "查看今日记录",
+    "解释这条提醒的依据",
+    "帮我生成晚间复盘",
+    "这个建议不准确",
+    "我的钥匙在哪？",
+  ];
 
   function sanitizeAnswer(answer: string) {
     return answer
@@ -2645,8 +2660,13 @@ function Chat() {
       .replace(/演示线索/g, "样例线索")
       .replace(/raw source/g, "原始依据")
       .replace(/source_event_id/g, "依据编号")
+      .replace(/raw_ref/g, "原始依据")
+      .replace(/evidence_refs/g, "依据")
       .replace(/MineContext/g, "电脑活动")
+      .replace(/godview/g, "本机回溯")
+      .replace(/PCActivity/g, "电脑使用")
       .replace(/PC Activity/g, "电脑使用")
+      .replace(/butler_core/g, "管家整理")
       .replace(/mock/g, "演示")
       .replace(/fixture/g, "演示");
   }
@@ -2668,22 +2688,23 @@ function Chat() {
     <section className="chat-layout">
       <div className="butler-brief">
         <span className="privacy-chip">样例体验</span>
-        <strong>我会先给你结论，再说明依据。</strong>
-        <p>你可以让我回看今天、确认下一步，或解释某条提醒为什么出现。每次回答都会保留边界说明。</p>
+        <strong>你可以直接问我今天该看什么。</strong>
+        <p>我会先给结论，再给关键数字、依据和边界。涉及外部系统状态时，我只会提示你回到原处确认。</p>
         <div className="hero-actions">
-          <button className="primary" onClick={() => send("帮我回看今天")}>帮我回看今天</button>
-          <button className="secondary" onClick={() => send("提醒我下一步")}>提醒我下一步</button>
+          <button className="primary" onClick={() => send("今天有什么值得注意？")}>回看今天</button>
+          <button className="secondary" onClick={() => send("我现在该先做什么？")}>提醒下一步</button>
         </div>
       </div>
+      <div className="assistant-capabilities" aria-label="问管家可以做什么">
+        {capabilityCards.map((item) => (
+          <button className="assistant-capability" key={item.title} onClick={() => send(item.prompt)}>
+            <strong>{item.title}</strong>
+            <span>{item.text}</span>
+          </button>
+        ))}
+      </div>
       <div className="suggestions">
-        {[
-          "今天有什么值得注意？",
-          "查看今日记录",
-          "哪些事适合自动提醒？",
-          "我的钥匙在哪？",
-          "今天适合休息一下吗？",
-          "帮我总结本周的小成就"
-        ].map((item) => (
+        {promptGroups.map((item) => (
           <button className="secondary" key={item} onClick={() => send(item)}>{item}</button>
         ))}
       </div>
@@ -2699,7 +2720,7 @@ function Chat() {
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={(event) => event.key === "Enter" && send()}
-          placeholder="向 OpenButler 提问"
+          placeholder="问 OpenButler：今天有什么值得注意？"
         />
         <button className="primary" onClick={() => send()} disabled={pending}>
           {pending ? <Loader2 className="spin" size={17} /> : <MessageSquareText size={17} />}

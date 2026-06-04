@@ -425,6 +425,41 @@ def update_mode(payload: PrivacyModePayload) -> dict[str, PrivacyMode]:
     return {"mode": payload.mode}
 
 
+def compose_chat_answer(
+    *,
+    conclusion: str,
+    key_numbers: str | None,
+    evidence: str,
+    boundary: str,
+    next_step: str,
+) -> str:
+    parts = [f"结论：{conclusion}"]
+    if key_numbers:
+        parts.append(f"关键数字：{key_numbers}")
+    parts.extend(
+        [
+            f"依据：{evidence}",
+            f"边界说明：{boundary}",
+            f"下一步：{next_step}",
+        ]
+    )
+    return "\n".join(parts)
+
+
+def user_facing_source(source: str | None) -> str:
+    mapping = {
+        "phone_album": "相册线索（样例）",
+        "minecontext": "电脑活动",
+        "godview": "本机回溯",
+        "pc_activity": "电脑活动",
+        "butler_core": "管家整理",
+        "workstation_vision": "工位观察",
+        "manual": "手动记录",
+        "seed": "样例线索",
+    }
+    return mapping.get(str(source or "").lower(), "本地记录")
+
+
 @app.post("/api/chat")
 def chat(payload: ChatRequest) -> dict[str, Any]:
     message = payload.message.lower()
@@ -432,23 +467,59 @@ def chat(payload: ChatRequest) -> dict[str, Any]:
     if "钥匙" in message or "key" in message:
         match = next((e for e in events if e.get("object_label") == "钥匙"), None)
         if match:
-            answer = f"我最近一次看到钥匙是在{match['location']}。证据来自 {match['source']}：{match['summary']}"
+            answer = compose_chat_answer(
+                conclusion=f"我最近一次看到钥匙是在{match['location']}。",
+                key_numbers="找到 1 条相关记录。",
+                evidence=f"{user_facing_source(match.get('source'))}：{match['summary']}",
+                boundary="这可能是样例或本地派生记录，不代表真实相册或摄像头事实。需要确认时，请回到原始线索查看。",
+                next_step="如果你想确认真实位置，先接入本地相册或摄像头线索；未授权时不会读取真实数据。",
+            )
         else:
-            answer = "我还没有找到钥匙记录。可以先模拟一次相册或视频事件。"
+            answer = compose_chat_answer(
+                conclusion="我还没有找到钥匙记录。",
+                key_numbers=None,
+                evidence="当前事件湖里没有钥匙相关记录。",
+                boundary="没有记录时，我不会凭聊天记忆猜测位置。",
+                next_step="可以先看样例，或在本机环境里接入相册、视频或摄像头线索。",
+            )
     elif "光照" in message or "light" in message:
         light_events = [e for e in events if e["event_type"] == "light_score"]
         score = light_events[0]["score"] if light_events else None
         if score is None:
-            answer = "今天还没有光照评分。接入智能眼镜、视频流或相册后可以生成建议。"
+            answer = compose_chat_answer(
+                conclusion="今天还没有光照评分。",
+                key_numbers=None,
+                evidence="当前事件湖里没有光照评分记录。",
+                boundary="数据不足时，我不会判断环境是否适合阅读或工作。",
+                next_step="可以先看样例，或在本机环境里接入已授权的视觉线索。",
+            )
         elif score >= 75:
-            answer = f"今天光照充足，当前评分 {score}/100，适合阅读和拍摄。"
+            answer = compose_chat_answer(
+                conclusion="今天光照比较充足。",
+                key_numbers=f"当前评分 {score}/100。",
+                evidence="来自已授权的本地光照评分事件。",
+                boundary="这只是环境线索，不是健康或医学判断。",
+                next_step="如果准备阅读或拍摄，可以继续；如果眼睛不舒服，仍然以自己的感受为准。",
+            )
         else:
-            answer = f"今天光照偏低，当前评分 {score}/100。建议打开台灯，或把需要精细用眼的活动移到窗边。"
+            answer = compose_chat_answer(
+                conclusion="今天光照偏低。",
+                key_numbers=f"当前评分 {score}/100。",
+                evidence="来自已授权的本地光照评分事件。",
+                boundary="这只是环境线索，不是健康或医学判断。",
+                next_step="可以打开台灯，或把需要精细用眼的活动移到窗边。",
+            )
     elif "成就" in message or "总结" in message or "achievement" in message:
         achievements = [e for e in events if e["event_type"] == "achievement"]
         titles = "；".join(e["title"] for e in achievements[:3])
-        answer = f"本周已记录 {len(achievements)} 个小成就。代表性进展：{titles or '暂无'}。"
-    elif any(keyword in payload.message for keyword in ["值得注意", "应该先做", "深度工作", "上下文切换", "晚间复盘", "今晚复盘", "主动洞察", "开工恢复", "建议不准确", "以后少提醒", "今天我主要", "主要做了什么"]):
+        answer = compose_chat_answer(
+            conclusion="本周的小成就可以先看这些。",
+            key_numbers=f"已记录 {len(achievements)} 个小成就。",
+            evidence=f"代表性进展：{titles or '暂无可展示记录'}。",
+            boundary="这些来自本地事件湖记录，不代表外部系统的完成状态。",
+            next_step="如果要确认提交、部署或任务完成情况，请回到对应系统检查。",
+        )
+    elif any(keyword in payload.message for keyword in ["值得注意", "应该先做", "深度工作", "上下文切换", "晚间复盘", "今晚复盘", "生成复盘", "主动洞察", "开工恢复", "建议不准确", "以后少提醒", "今天我主要", "主要做了什么", "查看今日记录", "查时间线", "时间线", "解释依据", "依据是什么", "修改偏好", "提醒偏好", "少提醒", "不准确"]):
         butler = ButlerCoreService(DB_PATH, DATA_DIR / "minecontext_runtime")
         answer = render_proactive_butler_chat(payload.message, butler)
     elif any(keyword in payload.message for keyword in ["点", "几点", "什么时候", "打开过", "访问过", "小红书", "pc", "电脑", "主要在忙", "项目上花", "分心", "重复做", "上午写代码", "主要做了什么"]):
@@ -479,7 +550,13 @@ def chat(payload: ChatRequest) -> dict[str, Any]:
         else:
             answer = render_status_text(workstation.status())
     else:
-        answer = "这是原型管家回复。我目前能回答：我的钥匙在哪、今天光照够吗、本周成就总结、今天 9 点 10 分我做了什么、我什么时候打开过小红书网站。"
+        answer = compose_chat_answer(
+            conclusion="我现在最适合帮你回看今天、查时间线、解释提醒依据，或记录你的反馈。",
+            key_numbers="这个问题没有命中可查询的数据。",
+            evidence="我只检查 OpenButler 已授权的本地派生数据。",
+            boundary="我不会凭聊天记忆补事实，也不能确认远程仓库、部署、接口或任务系统的实时状态。",
+            next_step="你可以问“今天有什么值得注意？”、“查看今日记录”或“解释这条提醒的依据”。",
+        )
     return {
         "answer": answer,
         "privacy_mode": get_privacy_mode(),

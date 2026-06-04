@@ -1709,6 +1709,41 @@ h2 {
   gap: 10px;
 }
 
+.assistant-capabilities {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.assistant-capability {
+  display: grid;
+  gap: 7px;
+  min-height: 104px;
+  padding: 14px;
+  text-align: left;
+  color: #142033;
+  border: 1px solid rgb(15 23 42 / 8%);
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: 0 12px 32px rgb(15 23 42 / 7%);
+  cursor: pointer;
+}
+
+.assistant-capability:hover {
+  border-color: rgb(20 184 166 / 35%);
+  transform: translateY(-1px);
+}
+
+.assistant-capability strong {
+  font-size: 15px;
+}
+
+.assistant-capability span {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .messages {
   display: grid;
   align-content: start;
@@ -2369,6 +2404,17 @@ h2 {
 
   .messages {
     padding: 12px;
+  }
+
+  .assistant-capabilities {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .assistant-capability {
+    min-height: 96px;
+    padding: 13px;
+    border-radius: 18px;
   }
 
   .bubble {

@@ -844,4 +844,98 @@ tasks:
       - "docs/product/INSIGHT_FEEDBACK_POLICY.md"
       - "backend/app/modules/butler_core/service.py OB-GOAL-014 mapper"
 
+  - id: OB-TASK-150
+    title: "审计当前问管家入口和回答契约"
+    goal_id: OB-GOAL-015
+    priority: P0
+    status: done
+    done_when:
+      - "确认 /assistant 使用 Chat 组件"
+      - "确认 /api/chat 路由和 proactive chat tool"
+      - "确认现有问答测试覆盖范围"
+    evidence:
+      - "frontend/src/App.tsx Chat"
+      - "backend/app/main.py /api/chat"
+      - "backend/app/modules/butler_core/tools/proactive_chat_tool.py"
+
+  - id: OB-TASK-151
+    title: "统一问管家回答结构"
+    goal_id: OB-GOAL-015
+    priority: P0
+    status: done
+    done_when:
+      - "今日回看包含结论、关键数字、依据、边界说明、下一步"
+      - "复盘、下一步、时间线和依据解释保持同一结构"
+      - "数据不足时不编造结论"
+    evidence:
+      - "backend/app/modules/butler_core/tools/proactive_chat_tool.py"
+      - "backend/app/main.py compose_chat_answer"
+
+  - id: OB-TASK-152
+    title: "清理普通问答中的内部字段"
+    goal_id: OB-GOAL-015
+    priority: P0
+    status: done
+    done_when:
+      - "钥匙、光照、成就和兜底回答不暴露内部 source 字段"
+      - "普通回答不出现 mock、seed、phone_album、source_event_id"
+      - "不能确认远程事实时明确说明"
+    evidence:
+      - "backend/app/main.py user_facing_source"
+      - "backend/app/modules/butler_core/tests/test_chat_api_contract.py"
+
+  - id: OB-TASK-153
+    title: "优化问管家前端入口"
+    goal_id: OB-GOAL-015
+    priority: P0
+    status: done
+    done_when:
+      - "入口说明问管家能做什么"
+      - "快捷问题覆盖今日回看、查时间线、解释依据、复盘和反馈"
+      - "移动端入口不横向溢出"
+    evidence:
+      - "frontend/src/App.tsx Chat"
+      - "frontend/src/styles.css assistant-capabilities"
+
+  - id: OB-TASK-154
+    title: "新增问管家自然控制层 smoke"
+    goal_id: OB-GOAL-015
+    priority: P0
+    status: done
+    done_when:
+      - "390x844 打开 /assistant"
+      - "验证快捷问题和能力入口"
+      - "验证回答包含依据、边界说明和下一步"
+      - "验证不显示内部字段"
+    evidence:
+      - "frontend/scripts/smoke-assistant-natural-control.mjs"
+      - "frontend/package.json smoke:assistant-natural-control"
+
+  - id: OB-TASK-155
+    title: "补充问管家产品文档和 harness mapper"
+    goal_id: OB-GOAL-015
+    priority: P0
+    status: done
+    done_when:
+      - "说明问管家是自然语言控制层"
+      - "说明回答结构、边界和禁止术语"
+      - "Productization Harness 可识别 OB-GOAL-015"
+    evidence:
+      - "docs/product/ASSISTANT_NATURAL_CONTROL_LAYER.md"
+      - "backend/app/modules/butler_core/service.py OB-GOAL-015 mapper"
+
+  - id: OB-TASK-156
+    title: "验证问管家不破坏现有能力"
+    goal_id: OB-GOAL-015
+    priority: P0
+    status: done
+    done_when:
+      - "frontend build 通过"
+      - "assistant smoke 通过"
+      - "butler_core tests 通过"
+      - "pc_activity_context tests 通过"
+      - "Vercel 部署后线上 smoke 通过"
+    evidence:
+      - "Local validation before commit and Vercel deploy."
+
 blocked: []

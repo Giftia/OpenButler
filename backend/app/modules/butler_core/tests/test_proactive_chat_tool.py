@@ -97,7 +97,7 @@ class ProactiveChatToolTests(unittest.TestCase):
 
         answer = render_proactive_butler_chat("这个建议不准确", service)
 
-        self.assertIn("当前没有可反馈", answer)
+        self.assertIn("现在没有可反馈", answer)
         self.assertEqual(service.feedback_penalties(), {})
 
     def test_data_insufficient_overview_keeps_boundary(self) -> None:
@@ -105,8 +105,32 @@ class ProactiveChatToolTests(unittest.TestCase):
 
         answer = render_proactive_butler_chat("今天我主要做了什么", service)
 
-        self.assertIn("当前 PC 活动数据不足", answer)
+        self.assertIn("数据还不够", answer)
         self.assertIn("边界说明", answer)
+
+    def test_evidence_explanation_uses_user_language(self) -> None:
+        service = self.make_service()
+        service.rebuild_timeline()
+        service.generate_insights(force=True)
+
+        answer = render_proactive_butler_chat("解释这条提醒的依据", service)
+
+        self.assertIn("结论：", answer)
+        self.assertIn("关键数字", answer)
+        self.assertIn("依据：", answer)
+        self.assertIn("边界说明", answer)
+        self.assertIn("下一步：", answer)
+        self.assertNotIn("evidence_refs", answer)
+        self.assertNotIn("source_event_id", answer)
+
+    def test_preference_guidance_does_not_silently_change_settings(self) -> None:
+        service = self.make_service(with_events=False)
+
+        answer = render_proactive_butler_chat("修改提醒偏好", service)
+
+        self.assertIn("不会在没有确认时替你改设置", answer)
+        self.assertIn("边界说明", answer)
+        self.assertIn("下一步：", answer)
 
 
 if __name__ == "__main__":

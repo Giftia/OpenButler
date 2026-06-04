@@ -1619,9 +1619,9 @@ class ButlerCoreService:
                     criterion(
                         "assistant_proactive_summary",
                         "管家页提供主动摘要和下一步行动",
-                        "我已经为你整理好今天值得回看的 3 件事" in app_text
-                        and "帮我回看今天" in app_text
-                        and "提醒我下一步" in app_text,
+                        "你可以直接问我今天该看什么" in app_text
+                        and "回看今天" in app_text
+                        and "提醒下一步" in app_text,
                         [{"kind": "file", "path": "frontend/src/App.tsx"}],
                     ),
                     criterion(
@@ -1965,6 +1965,81 @@ class ButlerCoreService:
                         "后端核心测试通过",
                         (root / "current_state.md").exists() and "Ran 51 tests - OK" in (root / "current_state.md").read_text(encoding="utf-8"),
                         [{"kind": "file", "path": "current_state.md"}],
+                    ),
+            ],
+            "OB-GOAL-015": [
+                    criterion(
+                        "assistant_control_prompts_available",
+                        "问管家支持今日回看、下一步建议、解释依据、修改偏好、生成复盘、查时间线",
+                        "今天有什么值得注意？" in app_text
+                        and "我现在该先做什么？" in app_text
+                        and "查看今日记录" in app_text
+                        and "解释这条提醒的依据" in app_text
+                        and "这个建议不准确" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "assistant_answers_structured",
+                        "回答包含关键数字、依据、边界说明和下一步",
+                        "def _compose_answer" in (root / "backend" / "app" / "modules" / "butler_core" / "tools" / "proactive_chat_tool.py").read_text(encoding="utf-8")
+                        and "关键数字：" in (root / "backend" / "app" / "modules" / "butler_core" / "tools" / "proactive_chat_tool.py").read_text(encoding="utf-8")
+                        and "边界说明：" in (root / "backend" / "app" / "modules" / "butler_core" / "tools" / "proactive_chat_tool.py").read_text(encoding="utf-8")
+                        and "下一步：" in (root / "backend" / "app" / "modules" / "butler_core" / "tools" / "proactive_chat_tool.py").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "backend/app/modules/butler_core/tools/proactive_chat_tool.py"}],
+                    ),
+                    criterion(
+                        "assistant_no_internal_terms_guarded",
+                        "普通回答不出现 mock、seed、phone_album、source_event_id 等内部字段",
+                        (root / "frontend" / "scripts" / "smoke-assistant-natural-control.mjs").exists()
+                        and "forbiddenTerms" in (root / "frontend" / "scripts" / "smoke-assistant-natural-control.mjs").read_text(encoding="utf-8")
+                        and "phone_album" in (root / "frontend" / "scripts" / "smoke-assistant-natural-control.mjs").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "frontend/scripts/smoke-assistant-natural-control.mjs"}],
+                    ),
+                    criterion(
+                        "assistant_does_not_confirm_remote_facts",
+                        "不能确认远程仓库、部署、接口或任务系统实时状态",
+                        "不能确认远程" in (root / "backend" / "app" / "main.py").read_text(encoding="utf-8")
+                        and "回到对应系统确认" in (root / "backend" / "app" / "modules" / "butler_core" / "tools" / "proactive_chat_tool.py").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "backend/app/main.py"},
+                            {"kind": "file", "path": "backend/app/modules/butler_core/tools/proactive_chat_tool.py"},
+                        ],
+                    ),
+                    criterion(
+                        "assistant_frontend_smoke_available",
+                        "前端 build 和 assistant smoke 通过",
+                        "smoke:assistant-natural-control" in (root / "frontend" / "package.json").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "frontend/package.json"},
+                            {"kind": "file", "path": "frontend/scripts/smoke-assistant-natural-control.mjs"},
+                        ],
+                    ),
+                    criterion(
+                        "assistant_contract_tests_cover_boundaries",
+                        "后端核心测试通过",
+                        "test_key_answer_hides_internal_source_fields" in (root / "backend" / "app" / "modules" / "butler_core" / "tests" / "test_chat_api_contract.py").read_text(encoding="utf-8")
+                        and "test_unknown_question_does_not_answer_from_memory" in (root / "backend" / "app" / "modules" / "butler_core" / "tests" / "test_chat_api_contract.py").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "backend/app/modules/butler_core/tests/test_chat_api_contract.py"}],
+                    ),
+                    criterion(
+                        "assistant_data_insufficient_no_fabrication",
+                        "数据不足时明确说明，不凭聊天记忆编造",
+                        "数据还不够" in (root / "backend" / "app" / "modules" / "butler_core" / "tools" / "proactive_chat_tool.py").read_text(encoding="utf-8")
+                        and "不会凭聊天记忆" in (root / "backend" / "app" / "main.py").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "backend/app/modules/butler_core/tools/proactive_chat_tool.py"},
+                            {"kind": "file", "path": "backend/app/main.py"},
+                        ],
+                    ),
+                    criterion(
+                        "assistant_mobile_no_horizontal_overflow",
+                        "移动端问管家入口不横向溢出",
+                        "assistant-capabilities" in (root / "frontend" / "src" / "styles.css").read_text(encoding="utf-8")
+                        and "scrollWidth <= initial.width" in (root / "frontend" / "scripts" / "smoke-assistant-natural-control.mjs").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "frontend/src/styles.css"},
+                            {"kind": "file", "path": "frontend/scripts/smoke-assistant-natural-control.mjs"},
+                        ],
                     ),
             ],
         }

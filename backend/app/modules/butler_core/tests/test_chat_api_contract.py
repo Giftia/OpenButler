@@ -78,10 +78,13 @@ class ChatApiContractTests(unittest.TestCase):
 
         answer = self.ask("今天我主要做了什么？")
 
+        self.assertIn("结论：", answer)
         self.assertIn("关键数字", answer)
         self.assertIn("PC 活跃约 102 分钟", answer)
         self.assertIn("当前有", answer)
+        self.assertIn("依据：", answer)
         self.assertIn("边界说明", answer)
+        self.assertIn("下一步：", answer)
         self.assertIn("远程仓库", answer)
 
     def test_evening_review_uses_butler_briefing(self) -> None:
@@ -90,8 +93,10 @@ class ChatApiContractTests(unittest.TestCase):
         answer = self.ask("帮我生成晚间复盘")
 
         self.assertIn("晚间复盘", answer)
-        self.assertIn("深度工作约", answer)
+        self.assertIn("专注时段约", answer)
+        self.assertIn("依据：", answer)
         self.assertIn("边界说明", answer)
+        self.assertIn("下一步：", answer)
 
     def test_inaccurate_feedback_writes_to_butler_feedback(self) -> None:
         self.seed_pc_events()
@@ -104,14 +109,45 @@ class ChatApiContractTests(unittest.TestCase):
 
         self.assertIn("已记录", answer)
         self.assertIn("边界说明", answer)
+        self.assertIn("下一步：", answer)
         self.assertTrue(any(value["inaccurate_count"] == 1 for value in penalties.values()))
 
     def test_data_insufficient_does_not_fabricate_overview(self) -> None:
         answer = self.ask("今天我主要做了什么？")
 
-        self.assertIn("当前 PC 活动数据不足", answer)
+        self.assertIn("数据还不够", answer)
         self.assertIn("边界说明", answer)
         self.assertNotIn("关键数字", answer)
+
+    def test_timeline_lookup_keeps_evidence_boundary(self) -> None:
+        self.seed_pc_events()
+
+        answer = self.ask("查看今日记录")
+
+        self.assertIn("时间线", answer)
+        self.assertIn("关键数字", answer)
+        self.assertIn("依据：", answer)
+        self.assertIn("边界说明", answer)
+        self.assertIn("下一步：", answer)
+
+    def test_key_answer_hides_internal_source_fields(self) -> None:
+        answer = self.ask("我的钥匙在哪？")
+
+        self.assertIn("结论：", answer)
+        self.assertIn("依据：", answer)
+        self.assertIn("边界说明", answer)
+        self.assertNotIn("phone_album", answer)
+        self.assertNotIn("seed", answer)
+        self.assertNotIn("source_event_id", answer)
+        self.assertNotIn("mock", answer.lower())
+
+    def test_unknown_question_does_not_answer_from_memory(self) -> None:
+        answer = self.ask("我是不是已经部署成功了？")
+
+        self.assertIn("不会凭聊天记忆", answer)
+        self.assertIn("不能确认远程", answer)
+        self.assertIn("下一步：", answer)
+        self.assertNotIn("mock", answer.lower())
 
     def test_chat_contract_does_not_delete_minecontext_source(self) -> None:
         self.seed_pc_events()
