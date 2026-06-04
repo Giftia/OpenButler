@@ -33,6 +33,29 @@ The following insight types are protected from permanent suppression:
 
 They may be lowered in priority or cooled down, but they must not disappear permanently because they prevent fabricated conclusions and privacy boundary violations.
 
+## Inbox User States
+
+Inbox 普通页面只显示中文状态：
+
+| 用户看到 | 后端状态 |
+| --- | --- |
+| 待确认 | `new`, `seen` |
+| 稍后 | `snoozed` |
+| 已处理 | `accepted`, `resolved`, `dismissed` |
+| 不准确 | `marked_inaccurate` |
+
+普通路径不显示 `feedback_type`、`insight_id`、`evidence_refs`、`raw_ref`、`source_event_id` 或本地截图路径。
+
+## User-Facing Feedback Copy
+
+- `处理了`: records `accepted_action`.
+- `稍后再看`: snoozes the insight.
+- `不准确`: records `inaccurate`.
+- `少提醒类似内容`: records `too_frequent` and shows “已记录。类似提醒后面会少出现。”
+- `有用`: records `useful`.
+
+If saving feedback fails, keep the card in place and show “没有保存成功，再试一次。”
+
 ## Evidence Boundary
 
 Feedback scoring only uses local OpenButler feedback rows and insight types. It does not inspect MineContext source databases, screenshot bytes, raw godview output, remote repositories, CI, Yunxiao, deployments, or online services.

@@ -112,6 +112,8 @@ class ButlerCoreServiceTests(unittest.TestCase):
         self.assertEqual(updated["status"], "dismissed")
         inaccurate = service.submit_feedback(insight["id"], "inaccurate", "不准确")
         self.assertEqual(inaccurate["status"], "marked_inaccurate")
+        accepted = service.submit_feedback(insight["id"], "accepted_action", "处理了")
+        self.assertEqual(accepted["status"], "accepted")
 
     def test_repeated_dismiss_reduces_same_type_priority(self) -> None:
         service = self.make_service()

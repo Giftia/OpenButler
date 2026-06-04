@@ -43,6 +43,7 @@ import {
   getButlerDataInsufficientDrill,
   getButlerGoals,
   getButlerHome,
+  getButlerInsightNoiseEvaluation,
   getButlerInsights,
   getButlerLatestHarnessRuns,
   getButlerMetricsRange,
@@ -84,6 +85,14 @@ import {
   simulateEvents
 } from "./lib/api";
 import {buildTodayHomeViewModel, type ActivationMode} from "./lib/butlerUiAdapter";
+import {
+  inboxCountByState,
+  inboxStateLabels,
+  sortInboxCards,
+  toInboxDecisionCard,
+  type InboxDecisionCard,
+  type InboxDecisionState
+} from "./lib/inboxUiAdapter";
 import {
   groupTimelineByDate,
   timelineCategoryLabel,
@@ -1448,80 +1457,178 @@ function LifeTimelinePreview({items}: {items: TimelineMoment[]}) {
 
 function ButlerInbox() {
   const [insights, setInsights] = useState<Array<Record<string, any>>>([]);
+  const [noiseReport, setNoiseReport] = useState<Record<string, any> | null>(null);
+  const [activeState, setActiveState] = useState<InboxDecisionState>("pending");
+  const [message, setMessage] = useState("");
 
   async function refreshInbox() {
-    const result = await getButlerInsights();
+    const [result, noise] = await Promise.all([
+      getButlerInsights(),
+      getButlerInsightNoiseEvaluation().catch(() => null),
+    ]);
     setInsights(result.items);
+    setNoiseReport(noise);
   }
 
   useEffect(() => {
     refreshInbox().catch(() => undefined);
   }, []);
 
+  const cards = sortInboxCards(insights.map(toInboxDecisionCard));
+  const counts = inboxCountByState(cards);
+  const visibleCards = cards.filter((card) => card.state === activeState);
+  const noisyTypes = new Set<string>((noiseReport?.items ?? [])
+    .filter((item: Record<string, any>) => Number(item.cooldown_minutes ?? 0) > 0 || Number(item.priority_delta ?? 0) < 0)
+    .map((item: Record<string, any>) => String(item.insight_type)));
+
   return (
-    <section className="wide-panel">
-      <div className="section-title">
+    <section className="wide-panel decision-inbox">
+      <div className="section-title decision-inbox-head">
         <div>
-          <h2>管家提醒</h2>
-          <p>这里收纳 OpenButler 主动整理出的提醒、建议和复盘卡片。你可以反馈它是否有用。</p>
+          <p className="eyebrow">决策队列</p>
+          <h2>待确认的提醒</h2>
+          <p>先处理需要你决定的事。处理过的、稍后再看的、不准确的提醒都会分开放。</p>
         </div>
         <button className="secondary" onClick={refreshInbox}>刷新</button>
       </div>
-      <InsightList insights={insights} onChanged={refreshInbox} />
+      <div className="inbox-tabs" role="tablist" aria-label="提醒状态">
+        {(Object.keys(inboxStateLabels) as InboxDecisionState[]).map((state) => (
+          <button
+            key={state}
+            className={activeState === state ? "active" : ""}
+            onClick={() => setActiveState(state)}
+            role="tab"
+            aria-selected={activeState === state}
+          >
+            <span>{inboxStateLabels[state]}</span>
+            <strong>{counts[state]}</strong>
+          </button>
+        ))}
+      </div>
+      {message && <div className="inbox-feedback-message">{message}</div>}
+      <InsightList
+        insights={visibleCards}
+        onChanged={refreshInbox}
+        onMessage={setMessage}
+        onStateChange={setActiveState}
+        noisyTypes={noisyTypes}
+        activeState={activeState}
+      />
     </section>
   );
 }
 
-function InsightList({insights, onChanged}: {insights: Array<Record<string, any>>; onChanged: () => void}) {
+function InsightList({
+  insights,
+  onChanged,
+  onMessage,
+  onStateChange,
+  noisyTypes,
+  activeState = "pending",
+}: {
+  insights: Array<Record<string, any> | InboxDecisionCard>;
+  onChanged: () => void;
+  onMessage?: (message: string) => void;
+  onStateChange?: (state: InboxDecisionState) => void;
+  noisyTypes?: Set<string>;
+  activeState?: InboxDecisionState;
+}) {
   const [expandedInsightId, setExpandedInsightId] = useState<string | null>(null);
+  const [busyInsightId, setBusyInsightId] = useState<string | null>(null);
 
-  async function feedback(id: string, type: string) {
-    if (type === "dismissed") {
-      await dismissInsight(id);
-    } else if (type === "remind_later") {
-      await snoozeInsight(id, 60);
-    } else {
-      await submitInsightFeedback(id, type);
-    }
-    await onChanged();
+  const cards = sortInboxCards(insights.map((item) => "stateLabel" in item ? item as InboxDecisionCard : toInboxDecisionCard(item as Record<string, any>)));
+
+  function moveToState(type: string): InboxDecisionState {
+    if (type === "remind_later") return "later";
+    if (type === "inaccurate") return "inaccurate";
+    if (["accepted_action", "dismissed", "too_frequent"].includes(type)) return "done";
+    return activeState;
   }
 
-  if (!insights.length) {
-    return <div className="friendly-empty"><strong>暂无管家提醒</strong><span>数据不足时 OpenButler 不会编造结论。连接本地数据后会逐步出现提醒和依据。</span></div>;
+  async function feedback(card: InboxDecisionCard, type: string) {
+    setBusyInsightId(card.id);
+    onMessage?.("");
+    try {
+      if (type === "dismissed") {
+        await dismissInsight(card.id);
+      } else if (type === "remind_later") {
+        await snoozeInsight(card.id, 60);
+      } else {
+        await submitInsightFeedback(card.id, type);
+      }
+      const nextState = moveToState(type);
+      await onChanged();
+      onStateChange?.(nextState);
+      if (type === "too_frequent") {
+        onMessage?.("已记录。类似提醒后面会少出现。");
+      } else if (type === "inaccurate") {
+        onMessage?.("已标记为不准确。后面会少用这类判断。");
+      } else if (type === "remind_later") {
+        onMessage?.("已放到稍后。");
+      } else if (type === "accepted_action") {
+        onMessage?.("已处理。");
+      } else if (type === "useful") {
+        onMessage?.("已记录为有用。");
+      }
+    } catch {
+      onMessage?.("没有保存成功，再试一次。");
+    } finally {
+      setBusyInsightId(null);
+    }
+  }
+
+  if (!cards.length) {
+    const emptyCopy: Record<InboxDecisionState, string> = {
+      pending: "现在没有需要你处理的提醒。",
+      later: "没有稍后再看的提醒。",
+      done: "还没有处理过的提醒。",
+      inaccurate: "还没有被标记为不准确的提醒。",
+    };
+    return (
+      <div className="friendly-empty">
+        <strong>{emptyCopy[activeState]}</strong>
+        <span>数据不足时，OpenButler 不会编造结论。</span>
+      </div>
+    );
   }
   return (
-    <div className="friendly-suggestion-list">
-      {insights.map((insight) => (
-        <article className="friendly-insight-card" key={insight.id}>
+    <div className="friendly-suggestion-list decision-card-list">
+      {cards.map((card) => {
+        const loweredByFeedback = card.noiseAdjusted || noisyTypes?.has(card.type);
+        return (
+        <article className="friendly-insight-card decision-card" key={card.id}>
           <div className="friendly-card-head">
             <div>
-              <span>{insightTypeLabel(insight.type)} · {statusLabel(insight.status)}</span>
-              <strong>{userFacingDemoText(insight.title ?? insightTypeLabel(insight.type), insightTypeLabel(insight.type))}</strong>
+              <span>{card.typeLabel} · {card.stateLabel}</span>
+              <strong>{card.title}</strong>
             </div>
-            <small>{Math.round(Number(insight.confidence ?? 0) * 100)}%</small>
+            <small>{Math.round(card.confidence * 100)}%</small>
           </div>
-          <p>{userFacingDemoText(insight.summary ?? "这是一条管家提醒。")}</p>
-          {expandedInsightId === String(insight.id) && insight.detail && <p>{userFacingDemoText(insight.detail)}</p>}
+          <p>{card.summary}</p>
+          {loweredByFeedback && <div className="noise-hint">你标记过类似提醒，后面会少出现。</div>}
+          {card.protectedNotice && <small className="protected-note">隐私和数据质量提醒不会被永久关闭。</small>}
+          {expandedInsightId === card.id && card.raw.detail && <p>{userFacingDemoText(card.raw.detail)}</p>}
           <div className="friendly-actions">
             <button
               className="secondary evidence-toggle"
               aria-label="查看证据详情"
-              onClick={() => setExpandedInsightId(expandedInsightId === String(insight.id) ? null : String(insight.id))}
+              onClick={() => setExpandedInsightId(expandedInsightId === card.id ? null : card.id)}
             >
-              {expandedInsightId === String(insight.id) ? "收起依据" : "查看依据"}
+              {expandedInsightId === card.id ? "收起依据" : "查看依据"}
             </button>
-            <button className="ghost" onClick={() => feedback(String(insight.id), "useful")}>有用</button>
-            <button className="ghost" onClick={() => feedback(String(insight.id), "inaccurate")}>不准确</button>
-            <button className="ghost" onClick={() => feedback(String(insight.id), "remind_later")}>稍后再说</button>
-            <button className="ghost" onClick={() => feedback(String(insight.id), "too_frequent")}>不再提醒类似内容</button>
+            <button className="primary compact-action" disabled={busyInsightId === card.id} onClick={() => feedback(card, "accepted_action")}>处理了</button>
+            <button className="ghost" disabled={busyInsightId === card.id} onClick={() => feedback(card, "remind_later")}>稍后再看</button>
+            <button className="ghost" disabled={busyInsightId === card.id} onClick={() => feedback(card, "inaccurate")}>不准确</button>
+            <button className="ghost" disabled={busyInsightId === card.id} onClick={() => feedback(card, "too_frequent")}>少提醒类似内容</button>
+            <button className="ghost" disabled={busyInsightId === card.id} onClick={() => feedback(card, "useful")}>有用</button>
           </div>
-          {expandedInsightId === String(insight.id) && <InsightEvidenceDetails insight={insight} />}
+          {expandedInsightId === card.id && <InsightEvidenceDetails insight={card.raw} />}
           <div className="technical-card-fallback">
-            <strong>{insight.title}</strong>
-            <span>{insight.type} · {insight.status} · 置信度 {Math.round(Number(insight.confidence ?? 0) * 100)}%</span>
+            <strong>{card.raw.title}</strong>
+            <span>{card.raw.type} · {card.raw.status} · 置信度 {Math.round(card.confidence * 100)}%</span>
           </div>
         </article>
-      ))}
+      )})}
     </div>
   );
 }

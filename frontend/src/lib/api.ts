@@ -209,6 +209,10 @@ export function getButlerInsights() {
   return request<{items: Array<Record<string, any>>; count: number}>("/api/butler/insights");
 }
 
+export function getButlerInsightNoiseEvaluation() {
+  return request<Record<string, any>>("/api/butler/insights/noise-evaluation");
+}
+
 export function generateButlerInsights(force = false) {
   return request<{items: Array<Record<string, any>>; count: number}>("/api/butler/insights/generate", {
     method: "POST",

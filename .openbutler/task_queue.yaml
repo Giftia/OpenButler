@@ -746,4 +746,102 @@ tasks:
     evidence:
       - "Local validation before commit and Vercel deploy."
 
+  - id: OB-TASK-140
+    title: "审计当前 Butler Inbox 交互"
+    goal_id: OB-GOAL-014
+    priority: P0
+    status: done
+    done_when:
+      - "确认 /butler/inbox 使用 ButlerInbox 和 InsightList"
+      - "确认已有 feedback、dismiss、snooze API"
+      - "确认已有 noise-evaluation API"
+    evidence:
+      - "frontend/src/App.tsx ButlerInbox and InsightList"
+      - "frontend/src/lib/api.ts existing insight helpers"
+      - "backend/app/modules/butler_core/router.py /insights/noise-evaluation"
+
+  - id: OB-TASK-141
+    title: "建立 Inbox 决策状态模型"
+    goal_id: OB-GOAL-014
+    priority: P0
+    status: done
+    done_when:
+      - "new 和 seen 映射到待确认"
+      - "snoozed 映射到稍后"
+      - "accepted、resolved、dismissed 映射到已处理"
+      - "marked_inaccurate 映射到不准确"
+    evidence:
+      - "frontend/src/lib/inboxUiAdapter.ts"
+
+  - id: OB-TASK-142
+    title: "实现 Inbox 状态分组和低噪声排序"
+    goal_id: OB-GOAL-014
+    priority: P0
+    status: done
+    done_when:
+      - "Inbox 顶部有四个状态 Tab"
+      - "每个状态显示数量"
+      - "默认显示待确认"
+      - "被降噪的同类提醒下移"
+    evidence:
+      - "frontend/src/App.tsx decision inbox UI"
+      - "frontend/src/lib/inboxUiAdapter.ts sortInboxCards"
+
+  - id: OB-TASK-143
+    title: "实现反馈后即时移动卡片"
+    goal_id: OB-GOAL-014
+    priority: P0
+    status: done
+    done_when:
+      - "处理了调用 accepted_action"
+      - "稍后再看调用 snooze"
+      - "不准确调用 inaccurate"
+      - "少提醒类似内容调用 too_frequent"
+      - "失败时显示可读错误"
+    evidence:
+      - "frontend/src/App.tsx feedback handler"
+      - "backend/app/modules/butler_core/service.py accepted_action status mapping"
+
+  - id: OB-TASK-144
+    title: "展示同类提醒降频说明"
+    goal_id: OB-GOAL-014
+    priority: P0
+    status: done
+    done_when:
+      - "调用 noise-evaluation"
+      - "同类提醒被 too_frequent 后显示降噪提示"
+      - "data_quality_notice 和 privacy_notice 显示保护说明"
+    evidence:
+      - "frontend/src/App.tsx noise report usage"
+      - "frontend/src/lib/api.ts getButlerInsightNoiseEvaluation"
+
+  - id: OB-TASK-145
+    title: "新增 Inbox 决策队列 smoke"
+    goal_id: OB-GOAL-014
+    priority: P0
+    status: done
+    done_when:
+      - "390x844 打开 /butler/inbox"
+      - "验证四个状态 Tab"
+      - "验证稍后、不准确、少提醒类似内容"
+      - "验证依据展开不显示内部字段或本地路径"
+    evidence:
+      - "frontend/scripts/smoke-butler-inbox-decision-queue.mjs"
+      - "frontend/package.json smoke:butler-inbox-decision-queue"
+
+  - id: OB-TASK-146
+    title: "补充 Inbox 决策队列文档和 harness mapper"
+    goal_id: OB-GOAL-014
+    priority: P0
+    status: done
+    done_when:
+      - "说明 Inbox 为什么是决策队列"
+      - "说明用户可见状态和反馈影响"
+      - "说明保护类提醒不会永久静默"
+      - "Productization Harness 可识别 OB-GOAL-014"
+    evidence:
+      - "docs/product/BUTLER_INBOX_DECISION_QUEUE.md"
+      - "docs/product/INSIGHT_FEEDBACK_POLICY.md"
+      - "backend/app/modules/butler_core/service.py OB-GOAL-014 mapper"
+
 blocked: []

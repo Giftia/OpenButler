@@ -866,6 +866,88 @@
   width: fit-content;
 }
 
+.decision-inbox {
+  gap: 18px;
+}
+
+.decision-inbox-head {
+  align-items: flex-end;
+}
+
+.inbox-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid rgb(15 23 42 / 8%);
+  border-radius: 22px;
+  background: rgb(255 255 255 / 78%);
+}
+
+.inbox-tabs button {
+  display: grid;
+  gap: 5px;
+  min-height: 58px;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  padding: 10px;
+  color: #475569;
+  background: transparent;
+  text-align: left;
+}
+
+.inbox-tabs button.active {
+  color: #0f172a;
+  border-color: rgb(15 118 110 / 20%);
+  background: #ecfeff;
+  box-shadow: 0 12px 24px rgb(15 118 110 / 10%);
+}
+
+.inbox-tabs button span {
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.inbox-tabs button strong {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.inbox-feedback-message,
+.noise-hint,
+.protected-note {
+  width: fit-content;
+  border-radius: 999px;
+  padding: 8px 12px;
+  color: #0f766e;
+  background: #ccfbf1;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.noise-hint {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.protected-note {
+  color: #334155;
+  background: #f1f5f9;
+}
+
+.decision-card-list {
+  gap: 14px;
+}
+
+.decision-card {
+  border-color: rgb(15 23 42 / 7%);
+}
+
+.compact-action {
+  min-height: 44px;
+  padding-inline: 15px;
+}
+
 @media (max-width: 1120px) {
   .today-hero,
   .today-focus-layout,
@@ -914,6 +996,14 @@
   .today-status-card,
   .scene-card {
     min-height: 112px;
+  }
+
+  .decision-inbox-head {
+    align-items: flex-start;
+  }
+
+  .inbox-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .life-moment {

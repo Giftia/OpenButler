@@ -188,6 +188,24 @@ active_objectives:
       - "前端 build 和 timeline smoke 通过"
       - "后端核心测试通过"
 
+  - id: OB-GOAL-014
+    title: "Butler Inbox as Decision Queue"
+    priority: P0
+    status: active
+    description: >
+      将 /butler/inbox 从提醒列表改成用户决策队列。用户可以把提醒处理掉、
+      放到稍后、标记不准确，反馈会影响后续同类提醒的优先级。
+    success_criteria:
+      - "Inbox 显示待确认、稍后、已处理、不准确四类状态"
+      - "用户能处理一条提醒并看到状态变化"
+      - "稍后和不准确反馈会立即移动卡片"
+      - "少提醒类似内容会显示降噪提示"
+      - "同类提醒反馈会影响后续优先级"
+      - "data_quality_notice 和 privacy_notice 不会被永久静默"
+      - "依据展开不显示内部字段或本地路径"
+      - "前端 build 和 inbox smoke 通过"
+      - "后端核心测试通过"
+
 governance_objectives:
   - id: OB-GOAL-005
     title: "Architecture Reality Alignment and Repository Baseline"

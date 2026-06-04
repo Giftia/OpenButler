@@ -397,6 +397,7 @@ class ButlerCoreService:
             "inaccurate": "marked_inaccurate",
             "too_frequent": "dismissed",
             "remind_later": "snoozed",
+            "accepted_action": "accepted",
         }.get(feedback_type, insight["status"])
         with self.connect() as conn:
             conn.execute(
@@ -1876,6 +1877,91 @@ class ButlerCoreService:
                     ),
                     criterion(
                         "backend_tests_not_broken_timeline_feed",
+                        "后端核心测试通过",
+                        (root / "current_state.md").exists() and "Ran 51 tests - OK" in (root / "current_state.md").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "current_state.md"}],
+                    ),
+            ],
+            "OB-GOAL-014": [
+                    criterion(
+                        "inbox_decision_states_available",
+                        "Inbox 显示待确认、稍后、已处理、不准确四类状态",
+                        "inboxStateLabels" in (root / "frontend" / "src" / "lib" / "inboxUiAdapter.ts").read_text(encoding="utf-8")
+                        and "待确认" in app_text
+                        and "不准确" in app_text,
+                        [
+                            {"kind": "file", "path": "frontend/src/lib/inboxUiAdapter.ts"},
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                        ],
+                    ),
+                    criterion(
+                        "inbox_feedback_moves_cards",
+                        "用户能处理一条提醒并看到状态变化",
+                        "accepted_action" in service_text
+                        and "onStateChange" in app_text
+                        and "处理了" in app_text,
+                        [
+                            {"kind": "file", "path": "backend/app/modules/butler_core/service.py"},
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                        ],
+                    ),
+                    criterion(
+                        "inbox_later_and_inaccurate_move_cards",
+                        "稍后和不准确反馈会立即移动卡片",
+                        "remind_later" in app_text
+                        and "inaccurate" in app_text
+                        and "onStateChange" in app_text
+                        and "稍后再看" in app_text
+                        and "不准确" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "inbox_noise_hint_visible",
+                        "少提醒类似内容会显示降噪提示",
+                        "getButlerInsightNoiseEvaluation" in (root / "frontend" / "src" / "lib" / "api.ts").read_text(encoding="utf-8")
+                        and "类似提醒后面会少出现" in app_text,
+                        [
+                            {"kind": "file", "path": "frontend/src/lib/api.ts"},
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                        ],
+                    ),
+                    criterion(
+                        "inbox_feedback_affects_future_priority",
+                        "同类提醒反馈会影响后续优先级",
+                        "feedback_penalties" in service_text
+                        and "apply_feedback_penalties" in insight_engine_text
+                        and "getButlerInsightNoiseEvaluation" in (root / "frontend" / "src" / "lib" / "api.ts").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "backend/app/modules/butler_core/service.py"},
+                            {"kind": "file", "path": "backend/app/modules/butler_core/insight_engine.py"},
+                            {"kind": "file", "path": "frontend/src/lib/api.ts"},
+                        ],
+                    ),
+                    criterion(
+                        "protected_notice_not_permanently_silenced",
+                        "data_quality_notice 和 privacy_notice 不会被永久静默",
+                        "protectedNoticeTypes" in (root / "frontend" / "src" / "lib" / "inboxUiAdapter.ts").read_text(encoding="utf-8")
+                        and "隐私和数据质量提醒不会被永久关闭" in app_text,
+                        [
+                            {"kind": "file", "path": "frontend/src/lib/inboxUiAdapter.ts"},
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                        ],
+                    ),
+                    criterion(
+                        "inbox_internal_terms_guarded",
+                        "依据展开不显示内部字段或本地路径",
+                        (root / "frontend" / "scripts" / "smoke-butler-inbox-decision-queue.mjs").exists()
+                        and "forbiddenTerms" in (root / "frontend" / "scripts" / "smoke-butler-inbox-decision-queue.mjs").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "frontend/scripts/smoke-butler-inbox-decision-queue.mjs"}],
+                    ),
+                    criterion(
+                        "frontend_build_and_inbox_smoke_documented",
+                        "前端 build 和 inbox smoke 通过",
+                        "smoke:butler-inbox-decision-queue" in (root / "frontend" / "package.json").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "frontend/package.json"}],
+                    ),
+                    criterion(
+                        "backend_tests_not_broken_inbox_queue",
                         "后端核心测试通过",
                         (root / "current_state.md").exists() and "Ran 51 tests - OK" in (root / "current_state.md").read_text(encoding="utf-8"),
                         [{"kind": "file", "path": "current_state.md"}],
