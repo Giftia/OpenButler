@@ -16,6 +16,7 @@
     "smoke:butler-browser": "node scripts/smoke-butler-browser.mjs",
     "smoke:first-run-activation": "node scripts/smoke-first-run-activation.mjs",
     "smoke:today-command-center": "node scripts/smoke-today-command-center.mjs",
+    "smoke:timeline-life-feed": "node scripts/smoke-timeline-life-feed.mjs",
     "smoke:butler-l1-audit": "node scripts/smoke-butler-l1-audit.mjs",
     "smoke:butler-data-insufficient-drill": "node scripts/smoke-butler-data-insufficient-drill.mjs",
     "artifact:butler-demo-pack": "node scripts/write-butler-demo-pack-artifact.mjs",

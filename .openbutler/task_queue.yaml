@@ -657,4 +657,93 @@ tasks:
     evidence:
       - "docs/product/TODAY_COMMAND_CENTER.md"
 
+  - id: OB-TASK-130
+    title: "审计当前 Timeline 事件流和筛选"
+    goal_id: OB-GOAL-013
+    priority: P0
+    status: done
+    done_when:
+      - "确认 /timeline 使用 UnifiedTimeline"
+      - "确认已有时间、分类、重要性筛选"
+      - "确认已有右侧缩略图或占位策略"
+      - "确认最小改动为事件状态、依据抽屉、文案和 smoke"
+    evidence:
+      - "frontend/src/App.tsx UnifiedTimeline"
+      - "frontend/src/lib/timelineUiAdapter.ts TimelineMoment"
+
+  - id: OB-TASK-131
+    title: "实现 Timeline 事件状态"
+    goal_id: OB-GOAL-013
+    priority: P0
+    status: done
+    done_when:
+      - "每条事件显示待处理、可复核或已记录"
+      - "状态不替代事件标题"
+      - "状态来自重要性和依据可用性"
+    evidence:
+      - "frontend/src/lib/timelineUiAdapter.ts adds stateLabel and stateTone."
+
+  - id: OB-TASK-132
+    title: "优化米家式事件卡信息层级"
+    goal_id: OB-GOAL-013
+    priority: P0
+    status: done
+    done_when:
+      - "事件标题和摘要是视觉重点"
+      - "时间、来源、可信度被弱化"
+      - "右侧缩略图或占位保持稳定尺寸"
+    evidence:
+      - "frontend/src/App.tsx renders moment title row, tags, and TimelineThumbnail."
+      - "frontend/src/styles.css styles event-feed-card and event-thumb."
+
+  - id: OB-TASK-133
+    title: "实现依据抽屉用户语言"
+    goal_id: OB-GOAL-013
+    priority: P0
+    status: done
+    done_when:
+      - "依据展开显示来源、可信度、边界说明和隐私说明"
+      - "不显示 raw refs、本地截图路径或 source_event_id"
+      - "明确外部系统状态需要回源确认"
+    evidence:
+      - "frontend/src/App.tsx evidence drawer copy."
+
+  - id: OB-TASK-134
+    title: "补充 Timeline Life Event Feed smoke"
+    goal_id: OB-GOAL-013
+    priority: P0
+    status: done
+    done_when:
+      - "390x844 视口验证 /timeline"
+      - "验证筛选、事件卡、缩略图占位、依据抽屉"
+      - "验证不显示本地截图路径和内部字段"
+    evidence:
+      - "frontend/scripts/smoke-timeline-life-feed.mjs"
+      - "frontend/package.json smoke:timeline-life-feed"
+
+  - id: OB-TASK-135
+    title: "补充 Timeline as Life Event Feed 文档"
+    goal_id: OB-GOAL-013
+    priority: P0
+    status: done
+    done_when:
+      - "说明时间线为什么是信任资产"
+      - "说明筛选、缩略图、依据抽屉和隐私策略"
+      - "说明本轮不读取真实 MineContext 数据"
+    evidence:
+      - "docs/product/TIMELINE_AS_LIFE_EVENT_FEED.md"
+
+  - id: OB-TASK-136
+    title: "验证 Timeline V2 不破坏后端核心能力"
+    goal_id: OB-GOAL-013
+    priority: P0
+    status: done
+    done_when:
+      - "frontend build 通过"
+      - "timeline smoke 通过"
+      - "butler_core tests 通过"
+      - "pc_activity_context tests 通过"
+    evidence:
+      - "Local validation before commit and Vercel deploy."
+
 blocked: []

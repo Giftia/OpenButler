@@ -1469,7 +1469,7 @@ class ButlerCoreService:
                         )
                         and (
                             "一次本地验证被记录了" in (root / "frontend" / "src" / "lib" / "timelineUiAdapter.ts").read_text(encoding="utf-8")
-                            or "该活动肩颈休息一下了" in (root / "frontend" / "src" / "lib" / "timelineUiAdapter.ts").read_text(encoding="utf-8")
+                            or "该起身活动一下了" in (root / "frontend" / "src" / "lib" / "timelineUiAdapter.ts").read_text(encoding="utf-8")
                         ),
                         [{"kind": "file", "path": "frontend/src/lib/timelineUiAdapter.ts"}],
                     ),
@@ -1793,6 +1793,89 @@ class ButlerCoreService:
                     ),
                     criterion(
                         "backend_tests_not_broken_today_command_center",
+                        "后端核心测试通过",
+                        (root / "current_state.md").exists() and "Ran 51 tests - OK" in (root / "current_state.md").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "current_state.md"}],
+                    ),
+            ],
+            "OB-GOAL-013": [
+                    criterion(
+                        "timeline_filters_available",
+                        "时间线支持时间、分类、重要性筛选",
+                        "timelineTimeFilters" in app_text
+                        and "timelineCategoryFilters" in app_text
+                        and "timelineImportanceFilters" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "event_title_and_summary_prioritized",
+                        "事件标题和摘要是视觉重点",
+                        "moment-title-row" in app_text
+                        and "event-feed-card" in (root / "frontend" / "src" / "styles.css").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                            {"kind": "file", "path": "frontend/src/styles.css"},
+                        ],
+                    ),
+                    criterion(
+                        "timeline_thumbnail_or_placeholder",
+                        "事件卡片支持右侧缩略图或证据占位",
+                        "TimelineThumbnail" in app_text
+                        and "event-thumb" in (root / "frontend" / "src" / "styles.css").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                            {"kind": "file", "path": "frontend/src/styles.css"},
+                        ],
+                    ),
+                    criterion(
+                        "local_screenshot_paths_not_shown",
+                        "不展示本地截图路径",
+                        "不会显示本地截图路径" in app_text
+                        and "isSafeImageUrl" in (root / "frontend" / "src" / "lib" / "timelineUiAdapter.ts").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                            {"kind": "file", "path": "frontend/src/lib/timelineUiAdapter.ts"},
+                        ],
+                    ),
+                    criterion(
+                        "timeline_evidence_drawer",
+                        "每条事件可解释来源和边界",
+                        "evidence-drawer" in app_text
+                        and "外部系统状态需要回到原处确认" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "timeline_event_state_visible",
+                        "事件显示待处理、可复核或已记录状态",
+                        "stateLabel" in (root / "frontend" / "src" / "lib" / "timelineUiAdapter.ts").read_text(encoding="utf-8")
+                        and "moment-state" in (root / "frontend" / "src" / "styles.css").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "frontend/src/lib/timelineUiAdapter.ts"},
+                            {"kind": "file", "path": "frontend/src/styles.css"},
+                        ],
+                    ),
+                    criterion(
+                        "timeline_empty_state_friendly",
+                        "筛选无结果时有友好空状态",
+                        "这个筛选下暂时没有事件" in app_text
+                        and "可以放宽时间、分类或重要性条件" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "timeline_internal_terms_guarded",
+                        "普通 UI 不出现内部字段和开发者术语",
+                        (root / "frontend" / "scripts" / "smoke-timeline-life-feed.mjs").exists()
+                        and "forbiddenTerms" in (root / "frontend" / "scripts" / "smoke-timeline-life-feed.mjs").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "frontend/scripts/smoke-timeline-life-feed.mjs"}],
+                    ),
+                    criterion(
+                        "frontend_build_and_timeline_smoke_documented",
+                        "前端 build 和 timeline smoke 通过",
+                        "smoke:timeline-life-feed" in (root / "frontend" / "package.json").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "frontend/package.json"}],
+                    ),
+                    criterion(
+                        "backend_tests_not_broken_timeline_feed",
                         "后端核心测试通过",
                         (root / "current_state.md").exists() and "Ran 51 tests - OK" in (root / "current_state.md").read_text(encoding="utf-8"),
                         [{"kind": "file", "path": "current_state.md"}],

@@ -24,6 +24,8 @@ export type TimelineMoment = {
   importanceKey: string;
   eventKey: string;
   eventLabel: string;
+  stateLabel: string;
+  stateTone: "action" | "review" | "quiet";
   confidenceLabel: string;
   evidenceAvailable: boolean;
   evidenceBoundary: string;
@@ -56,7 +58,7 @@ function friendlyTitle(event: Record<string, any>): string {
   if (isDemoLike(event)) {
     const title = String(event.title ?? "").toLowerCase();
     if (title.includes("inbox")) return "有一条管家提醒被整理出来";
-    if (title.includes("verification") || title.includes("terminal")) return "该活动肩颈休息一下了";
+    if (title.includes("verification") || title.includes("terminal")) return "该起身活动一下了";
     if (title.includes("coding") || title.includes("vscode")) return "钥匙可能在玄关托盘附近";
     if (title.includes("docs") || title.includes("chrome")) return "会议后有一项待办适合收尾";
   }
@@ -140,6 +142,12 @@ function importanceKeyFor(event: Record<string, any>, eventKey: string): string 
   if (["object_location", "workflow_candidate", "data_quality_notice", "insight", "daily_overview"].includes(eventKey)) return "actionable";
   if (hasEvidence) return "has_evidence";
   return "record_only";
+}
+
+function stateFor(importanceKey: string, evidenceAvailable: boolean): {stateLabel: string; stateTone: "action" | "review" | "quiet"} {
+  if (importanceKey === "actionable") return {stateLabel: "待处理", stateTone: "action"};
+  if (evidenceAvailable || importanceKey === "has_evidence") return {stateLabel: "可复核", stateTone: "review"};
+  return {stateLabel: "已记录", stateTone: "quiet"};
 }
 
 export function timelineSourceLabel(key: string): string {
@@ -274,6 +282,8 @@ export function toTimelineMoment(event: Record<string, any>): TimelineMoment {
           : "reminders"
   ) : categoryKeyFor(event, eventKey);
   const importanceKey = demo ? "actionable" : importanceKeyFor(event, eventKey);
+  const evidenceAvailable = refs.length > 0 || Boolean(event.evidence_boundary);
+  const state = stateFor(importanceKey, evidenceAvailable);
   return {
     id: String(event.id ?? `${event.started_at}-${event.title}`),
     icon: iconFor(category),
@@ -292,8 +302,9 @@ export function toTimelineMoment(event: Record<string, any>): TimelineMoment {
     importanceKey,
     eventKey,
     eventLabel: timelineEventLabel(eventKey),
+    ...state,
     confidenceLabel: confidence > 0 ? `可信度 ${confidence}%` : "可信度待确认",
-    evidenceAvailable: refs.length > 0 || Boolean(event.evidence_boundary),
+    evidenceAvailable,
     evidenceBoundary: demo
       ? "这是样例线索，只说明管家会如何解释依据；不代表你的真实生活记录。"
       : userFacingDemoText(event.evidence_boundary ?? "这条记录只代表本地线索，外部服务状态需要你回到原处确认。"),

@@ -1,7 +1,7 @@
 product_goal:
   name: "OpenButler 主动全场景感知 AI 管家"
   mission: "让用户的生活更加清晰高效可量化"
-  current_stage: "Today as Command Center"
+  current_stage: "Timeline as Life Event Feed"
   north_star: "用户每天 60 秒内理解今天发生了什么、什么值得注意、下一步应该做什么"
 
 active_objectives:
@@ -167,6 +167,25 @@ active_objectives:
       - "普通 UI 不出现内部字段和开发者术语"
       - "首次激活流仍可用"
       - "前端 build 和 today smoke 通过"
+      - "后端核心测试通过"
+
+  - id: OB-GOAL-013
+    title: "Timeline as Life Event Feed"
+    priority: P0
+    status: active
+    description: >
+      将 /timeline 打磨为可筛选、可扫读、可复核的生活事件流。
+      时间和来源作为辅助信息，事件标题、摘要和右侧证据占位成为主要浏览对象。
+    success_criteria:
+      - "时间线支持时间、分类、重要性筛选"
+      - "事件标题和摘要是视觉重点"
+      - "事件卡片支持右侧缩略图或证据占位"
+      - "不展示本地截图路径"
+      - "每条事件可解释来源和边界"
+      - "事件显示待处理、可复核或已记录状态"
+      - "筛选无结果时有友好空状态"
+      - "普通 UI 不出现内部字段和开发者术语"
+      - "前端 build 和 timeline smoke 通过"
       - "后端核心测试通过"
 
 governance_objectives:

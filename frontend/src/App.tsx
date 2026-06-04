@@ -1693,6 +1693,42 @@ const timelineImportanceFilters = [
   "has_evidence",
 ];
 
+const timelineSampleEvents = [
+  {
+    id: "timeline-demo-key",
+    source: "phone_album_demo",
+    event_type: "object_location",
+    title: "钥匙可能在玄关托盘附近",
+    summary: "样例线索显示钥匙最后出现在玄关左侧托盘。",
+    started_at: new Date().toISOString(),
+    confidence: 0.78,
+    evidence_boundary: "这是样例线索，只说明管家会如何解释依据；不代表你的真实生活记录。",
+    evidence_refs: [{source: "phone_album_demo", evidence_level: "demo_reference"}],
+  },
+  {
+    id: "timeline-demo-follow-up",
+    source: "butler_demo",
+    event_type: "insight",
+    title: "会议后有一项待办适合收尾",
+    summary: "一条会议后事项被整理出来，适合稍后确认。",
+    started_at: new Date().toISOString(),
+    confidence: 0.72,
+    evidence_boundary: "这是样例提醒，用来展示 OpenButler 如何保留依据和边界。",
+    evidence_refs: [{source: "butler_demo", evidence_level: "demo_reference"}],
+  },
+  {
+    id: "timeline-demo-rest",
+    source: "workstation_demo",
+    event_type: "lighting_context",
+    title: "该起身活动一下了",
+    summary: "样例节律显示你已经连续坐了一段时间，适合短暂活动肩颈。",
+    started_at: new Date().toISOString(),
+    confidence: 0.7,
+    evidence_boundary: "这是样例节律提醒，不代表医学或心理判断。",
+    evidence_refs: [{source: "workstation_demo", evidence_level: "demo_reference"}],
+  },
+];
+
 function isInTimeFilter(moment: TimelineMoment, filter: TimelineTimeFilter): boolean {
   if (filter === "all") return true;
   const started = new Date(moment.startedAt);
@@ -1757,15 +1793,21 @@ function UnifiedTimeline() {
   const [importanceFilter, setImportanceFilter] = useState("all");
 
   async function refreshTimeline() {
-    const result = await getButlerTimeline();
-    setItems(result.items);
+    try {
+      const result = await getButlerTimeline();
+      setItems(result.items);
+    } catch {
+      setItems([]);
+    }
   }
 
   useEffect(() => {
     refreshTimeline().catch(() => undefined);
   }, []);
 
-  const moments = items.map(toTimelineMoment);
+  const sampleMode = readActivationStatus() === "demo_selected";
+  const displayItems = items.length ? items : sampleMode ? timelineSampleEvents : [];
+  const moments = displayItems.map(toTimelineMoment);
   const filteredMoments = filterTimelineMoments(moments, timeFilter, categoryFilter, importanceFilter);
   const groups = groupTimelineByDate(filteredMoments);
   const activeFilterSummary = `${timelineTimeFilters.find((item) => item.value === timeFilter)?.label ?? "今天"} · ${timelineCategoryLabel(categoryFilter)} · ${timelineImportanceLabel(importanceFilter)}`;
@@ -1774,9 +1816,9 @@ function UnifiedTimeline() {
     <section className="life-timeline-page">
       <div className="timeline-feed-hero">
         <div>
-          <p className="eyebrow">全场景事件流</p>
+          <p className="eyebrow">生活事件流</p>
           <h2>时间线</h2>
-          <p>这里按生活场景整理发生过的事。技术来源只在你展开依据时说明。</p>
+          <p>先看发生了什么。时间、来源和可信度放轻一点，需要时再展开依据。</p>
         </div>
         <button className="secondary" onClick={refreshTimeline}>刷新</button>
       </div>
@@ -1801,7 +1843,7 @@ function UnifiedTimeline() {
         </label>
       </div>
       <p className="timeline-result-note">
-        已显示 {filteredMoments.length} 条事件 · {activeFilterSummary}
+        已显示 {filteredMoments.length} 条事件 · {activeFilterSummary}{sampleMode && !items.length ? " · 样例体验" : ""}
       </p>
       {groups.length ? (
         <div className="life-timeline event-feed">
@@ -1812,29 +1854,36 @@ function UnifiedTimeline() {
                 <article className="life-moment event-feed-card" key={moment.id}>
                   <time dateTime={moment.startedAt}>{moment.time}</time>
                   <div className="moment-body">
-                    <strong>{moment.title}</strong>
+                    <div className="moment-title-row">
+                      <strong>{moment.title}</strong>
+                      <span className={`moment-state ${moment.stateTone}`}>{moment.stateLabel}</span>
+                    </div>
                     <p>{moment.summary}</p>
                     <div className="moment-tags">
                       <small>{moment.valueTag}</small>
-                      <small>{moment.sourceLabel}</small>
+                      <small>来源：{moment.sourceLabel}</small>
                       <small>{moment.eventLabel}</small>
-                      <small>{moment.evidenceAvailable ? "可查看依据" : "依据不足"}</small>
+                      <small>{moment.thumbnail.privacyLabel ?? "未展示原始路径"}</small>
                     </div>
                     <button
-                      className="ghost"
+                      className="ghost timeline-evidence-button"
                       onClick={() => setExpandedId(expandedId === moment.id ? null : moment.id)}
                     >
-                      {expandedId === moment.id ? "收起" : "查看依据"}
+                      {expandedId === moment.id ? "收起依据" : moment.evidenceAvailable ? "查看依据" : "说明来源"}
                     </button>
                     {expandedId === moment.id && (
-                      <div className="moment-evidence">
-                        <strong>依据与边界</strong>
-                        <span>{moment.evidenceBoundary}</span>
+                      <div className="moment-evidence evidence-drawer">
+                        <div className="evidence-drawer-head">
+                          <strong>这条记录的依据</strong>
+                          <span>{moment.stateLabel}</span>
+                        </div>
+                        <p>{moment.evidenceBoundary}</p>
                         <div className="evidence">
-                          <small>依据来源：{moment.sourceLabel}</small>
+                          <small>来源：{moment.sourceLabel}</small>
                           <small>{moment.confidenceLabel}</small>
-                          <small>{moment.thumbnail.privacyLabel ?? "未展示原始路径"}</small>
-                          <small>这只是线索，不代表外部服务的真实状态。</small>
+                          <small>{moment.thumbnail.privacyLabel ?? "没有可展示图片"}</small>
+                          <small>不会显示本地截图路径。</small>
+                          <small>外部系统状态需要回到原处确认。</small>
                         </div>
                       </div>
                     )}
@@ -1847,8 +1896,8 @@ function UnifiedTimeline() {
         </div>
       ) : (
         <div className="friendly-empty">
-          <strong>{items.length ? "这个筛选下暂时没有事件" : "时间线还没有记录"}</strong>
-          <span>{items.length ? "可以放宽时间、分类或重要性条件，查看更完整的生活记录。" : "连接本地数据源后，这里会按时间整理工作、生活、提醒和自动化候选。"}</span>
+          <strong>{displayItems.length ? "这个筛选下暂时没有事件" : "时间线还没有记录"}</strong>
+          <span>{displayItems.length ? "可以放宽时间、分类或重要性条件，再看看。" : "连接本地数据源后，这里会按时间整理工作、生活、提醒和可自动化流程。"}</span>
         </div>
       )}
     </section>
