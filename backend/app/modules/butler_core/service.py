@@ -1386,7 +1386,8 @@ class ButlerCoreService:
                     criterion(
                         "progressive_onboarding_available",
                         "提供渐进式上手流程",
-                        "ProgressiveOnboarding" in app_text and "3 步开始" in app_text,
+                        "ProgressiveOnboarding" in app_text
+                        and ("3 步开始" in app_text or "选择一种方式开始今天" in app_text),
                         [{"kind": "file", "path": "frontend/src/App.tsx"}],
                     ),
                     criterion(
@@ -1645,6 +1646,153 @@ class ButlerCoreService:
                     ),
                     criterion(
                         "backend_tests_not_broken_product_v3",
+                        "后端核心测试通过",
+                        (root / "current_state.md").exists() and "Ran 51 tests - OK" in (root / "current_state.md").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "current_state.md"}],
+                    ),
+            ],
+            "OB-GOAL-011": [
+                    criterion(
+                        "first_run_understands_private_butler",
+                        "新用户 30 秒内理解 OpenButler 是私人 AI 管家",
+                        "先选择 OpenButler 怎么认识你的一天" in app_text
+                        and "OpenButler 会整理你主动授权的本地线索" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "activation_choices_available",
+                        "首次进入可以选择先看样例、连接本地数据源或稍后配置",
+                        "先看样例" in app_text
+                        and "连接本地数据源" in app_text
+                        and "稍后配置" in app_text
+                        and "openbutler:first_run_activation:v1" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "sample_mode_no_real_data",
+                        "样例体验明确说明不会读取真实数据",
+                        "样例不会读取真实数据" in app_text
+                        or "不会读取你的真实数据" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "real_local_requires_authorization",
+                        "真实本地模式明确说明需要用户主动授权",
+                        "真实模式需要你主动授权" in app_text
+                        or "真实本地模式需要你主动连接本机数据源" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "no_empty_console_before_authorization",
+                        "未授权时不会出现空控制台",
+                        "选择一种方式开始今天" in app_text
+                        and "OpenButler 不会用空数据编造结论" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "connection_results_explained",
+                        "用户能明确知道连接后会得到什么",
+                        "连接后，你会得到什么" in app_text
+                        and "今日概览" in app_text
+                        and "管家提醒" in app_text
+                        and "可复核依据" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "me_can_reopen_activation",
+                        "/me 可以重新打开激活引导",
+                        "重新选择开始方式" in app_text
+                        and "activation-settings-panel" in (root / "frontend" / "src" / "styles.css").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                            {"kind": "file", "path": "frontend/src/styles.css"},
+                        ],
+                    ),
+                    criterion(
+                        "frontend_build_documented_first_run_activation",
+                        "frontend build 通过",
+                        (root / "current_state.md").exists() and "Frontend build passes" in (root / "current_state.md").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "current_state.md"}],
+                    ),
+                    criterion(
+                        "backend_tests_not_broken_first_run_activation",
+                        "后端核心测试通过",
+                        (root / "current_state.md").exists() and "Ran 51 tests - OK" in (root / "current_state.md").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "current_state.md"}],
+                    ),
+            ],
+            "OB-GOAL-012": [
+                    criterion(
+                        "today_first_screen_value_status_action",
+                        "移动端打开 /butler，第一屏完整看到价值、状态、主行动",
+                        "TodayCommandCenter" in (root / "frontend" / "src" / "lib" / "butlerUiAdapter.ts").read_text(encoding="utf-8")
+                        and "今天先看这几件事" in (root / "frontend" / "src" / "lib" / "butlerUiAdapter.ts").read_text(encoding="utf-8")
+                        and "handleCommandPrimary" in app_text,
+                        [
+                            {"kind": "file", "path": "frontend/src/lib/butlerUiAdapter.ts"},
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                        ],
+                    ),
+                    criterion(
+                        "home_no_longer_module_entry_page",
+                        "首页不再像模块入口页，也不展示技术能力列表",
+                        "更多今日信息" in app_text
+                        and "高级与实验室" in app_text
+                        and "today-more-status" in (root / "frontend" / "src" / "styles.css").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                            {"kind": "file", "path": "frontend/src/styles.css"},
+                        ],
+                    ),
+                    criterion(
+                        "today_summary_card_result_focused",
+                        "今日摘要主卡只讲用户关心的结果",
+                        "oneLineStatus" in (root / "frontend" / "src" / "lib" / "butlerUiAdapter.ts").read_text(encoding="utf-8")
+                        and "有 3 条样例记录值得回看" in (root / "frontend" / "src" / "lib" / "butlerUiAdapter.ts").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "frontend/src/lib/butlerUiAdapter.ts"}],
+                    ),
+                    criterion(
+                        "top_suggestion_visible_in_hero",
+                        "最高优先级建议在首屏或首屏下沿可见",
+                        "command.topSuggestion" in app_text
+                        and "command-suggestion-card" in (root / "frontend" / "src" / "styles.css").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                            {"kind": "file", "path": "frontend/src/styles.css"},
+                        ],
+                    ),
+                    criterion(
+                        "privacy_hint_lightweight",
+                        "隐私状态轻提示存在，但不抢主视觉",
+                        "privacyHint" in (root / "frontend" / "src" / "lib" / "butlerUiAdapter.ts").read_text(encoding="utf-8")
+                        and "样例体验，未读取你的真实数据" in (root / "frontend" / "src" / "lib" / "butlerUiAdapter.ts").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "frontend/src/lib/butlerUiAdapter.ts"}],
+                    ),
+                    criterion(
+                        "ordinary_ui_internal_terms_guarded",
+                        "普通 UI 不出现内部字段和开发者术语",
+                        (root / "frontend" / "scripts" / "smoke-today-command-center.mjs").exists()
+                        and "forbiddenTerms" in (root / "frontend" / "scripts" / "smoke-today-command-center.mjs").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "frontend/scripts/smoke-today-command-center.mjs"}],
+                    ),
+                    criterion(
+                        "first_run_still_available_today_command_center",
+                        "首次激活流仍可用",
+                        "smoke:first-run-activation" in (root / "frontend" / "package.json").read_text(encoding="utf-8")
+                        and "FirstRunGuide" in app_text,
+                        [
+                            {"kind": "file", "path": "frontend/package.json"},
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                        ],
+                    ),
+                    criterion(
+                        "frontend_build_and_today_smoke_documented",
+                        "前端 build 和 today smoke 通过",
+                        "smoke:today-command-center" in (root / "frontend" / "package.json").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "frontend/package.json"}],
+                    ),
+                    criterion(
+                        "backend_tests_not_broken_today_command_center",
                         "后端核心测试通过",
                         (root / "current_state.md").exists() and "Ran 51 tests - OK" in (root / "current_state.md").read_text(encoding="utf-8"),
                         [{"kind": "file", "path": "current_state.md"}],

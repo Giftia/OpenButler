@@ -1,7 +1,7 @@
 product_goal:
   name: "OpenButler 主动全场景感知 AI 管家"
   mission: "让用户的生活更加清晰高效可量化"
-  current_stage: "Product Experience V3"
+  current_stage: "Today as Command Center"
   north_star: "用户每天 60 秒内理解今天发生了什么、什么值得注意、下一步应该做什么"
 
 active_objectives:
@@ -130,6 +130,43 @@ active_objectives:
       - "我的页第一层是授权、读取范围和提醒偏好"
       - "普通路径不暴露技术控制台术语"
       - "frontend build 通过"
+      - "后端核心测试通过"
+
+  - id: OB-GOAL-011
+    title: "First-Run Activation Flow"
+    priority: P0
+    status: active
+    description: >
+      将首次进入体验从产品说明升级为激活流。新用户需要在 30 秒内理解
+      OpenButler 的用途、样例体验与真实本地模式的区别，以及连接后会得到
+      今日概览、时间线、管家提醒和可复核依据。
+    success_criteria:
+      - "新用户 30 秒内理解 OpenButler 是私人 AI 管家"
+      - "首次进入可以选择先看样例、连接本地数据源或稍后配置"
+      - "样例体验明确说明不会读取真实数据"
+      - "真实本地模式明确说明需要用户主动授权"
+      - "未授权时不会出现空控制台"
+      - "用户能明确知道连接后会得到什么"
+      - "/me 可以重新打开激活引导"
+      - "frontend build 通过"
+      - "后端核心测试通过"
+
+  - id: OB-GOAL-012
+    title: "Today as Command Center"
+    priority: P0
+    status: active
+    description: >
+      将 /butler 首页收敛成今日中控。第一屏优先展示今天的状态、
+      最高优先级建议、少量关键数字和下一步行动，而不是模块列表或技术能力清单。
+    success_criteria:
+      - "移动端打开 /butler，第一屏完整看到价值、状态、主行动"
+      - "首页不再像模块入口页，也不展示技术能力列表"
+      - "今日摘要主卡只讲用户关心的结果"
+      - "最高优先级建议在首屏或首屏下沿可见"
+      - "隐私状态轻提示存在，但不抢主视觉"
+      - "普通 UI 不出现内部字段和开发者术语"
+      - "首次激活流仍可用"
+      - "前端 build 和 today smoke 通过"
       - "后端核心测试通过"
 
 governance_objectives:

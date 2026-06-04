@@ -14,6 +14,8 @@
     "smoke:butler-mvp-report": "node scripts/smoke-butler-mvp-report.mjs",
     "smoke:butler-demo-pack": "node scripts/smoke-butler-demo-pack.mjs",
     "smoke:butler-browser": "node scripts/smoke-butler-browser.mjs",
+    "smoke:first-run-activation": "node scripts/smoke-first-run-activation.mjs",
+    "smoke:today-command-center": "node scripts/smoke-today-command-center.mjs",
     "smoke:butler-l1-audit": "node scripts/smoke-butler-l1-audit.mjs",
     "smoke:butler-data-insufficient-drill": "node scripts/smoke-butler-data-insufficient-drill.mjs",
     "artifact:butler-demo-pack": "node scripts/write-butler-demo-pack-artifact.mjs",

@@ -83,7 +83,7 @@ import {
   updateWorkstationSettings,
   simulateEvents
 } from "./lib/api";
-import {buildTodayHomeViewModel} from "./lib/butlerUiAdapter";
+import {buildTodayHomeViewModel, type ActivationMode} from "./lib/butlerUiAdapter";
 import {
   groupTimelineByDate,
   timelineCategoryLabel,
@@ -127,7 +127,39 @@ const advancedNavItems: Array<{key: PageKey; label: string; icon: typeof Home}> 
 ];
 
 const navItems = [...primaryNavItems, ...advancedNavItems];
-const FIRST_RUN_GUIDE_STORAGE_KEY = "openbutler:first_run_guide:v1";
+const FIRST_RUN_ACTIVATION_STORAGE_KEY = "openbutler:first_run_activation:v1";
+
+type ActivationStatus = "unseen" | "demo_selected" | "real_setup_started" | "dismissed" | "completed";
+
+function readActivationStatus(): ActivationStatus {
+  try {
+    const value = window.localStorage.getItem(FIRST_RUN_ACTIVATION_STORAGE_KEY);
+    return value === "demo_selected" ||
+      value === "real_setup_started" ||
+      value === "dismissed" ||
+      value === "completed"
+      ? value
+      : "unseen";
+  } catch {
+    return "unseen";
+  }
+}
+
+function activationModeFor(status: ActivationStatus): ActivationMode {
+  if (status === "demo_selected") return "demo";
+  if (status === "real_setup_started" || status === "completed") return "real_local";
+  return "not_started";
+}
+
+function activationStatusLabel(status: ActivationStatus) {
+  return {
+    unseen: "尚未开始",
+    demo_selected: "样例体验",
+    real_setup_started: "真实本地模式未连接",
+    dismissed: "稍后配置",
+    completed: "已完成设置"
+  }[status];
+}
 
 function routeForPage(key: PageKey) {
   return {
@@ -215,13 +247,8 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [showFirstRunGuide, setShowFirstRunGuide] = useState(() => {
-    try {
-      return window.localStorage.getItem(FIRST_RUN_GUIDE_STORAGE_KEY) !== "done";
-    } catch {
-      return false;
-    }
-  });
+  const [activationStatus, setActivationStatus] = useState<ActivationStatus>(() => readActivationStatus());
+  const [showFirstRunGuide, setShowFirstRunGuide] = useState(() => readActivationStatus() === "unseen");
 
   async function refresh(q = search) {
     setError(null);
@@ -268,12 +295,17 @@ function App() {
     await refresh();
   }
 
-  function completeFirstRunGuide() {
+  function updateActivation(status: ActivationStatus) {
     try {
-      window.localStorage.setItem(FIRST_RUN_GUIDE_STORAGE_KEY, "done");
+      window.localStorage.setItem(FIRST_RUN_ACTIVATION_STORAGE_KEY, status);
     } catch {
       // Local storage can be unavailable in restricted browser modes.
     }
+    setActivationStatus(status);
+  }
+
+  function closeActivation(status: ActivationStatus) {
+    updateActivation(status);
     setShowFirstRunGuide(false);
   }
 
@@ -290,7 +322,7 @@ function App() {
   }, [events]);
 
   const CurrentPage = {
-    butler: <ButlerHome />,
+    butler: <ButlerHome activationStatus={activationStatus} onActivation={updateActivation} />,
     dashboard: (
       <Dashboard
         events={events}
@@ -315,6 +347,7 @@ function App() {
         mode={privacyMode}
         onChange={handlePrivacy}
         plugins={plugins}
+        activationStatus={activationStatus}
         onOpenGuide={() => setShowFirstRunGuide(true)}
       />
     )
@@ -391,18 +424,25 @@ function App() {
               <span>生成演示记录</span>
             </button>
           </header>}
-          {error && <div className="error">API 连接失败：{error}</div>}
+          {error && <div className="error" title={error}>本地服务暂时没连上，页面会先展示样例内容。</div>}
           {CurrentPage}
         </main>
       </div>
       {showFirstRunGuide && (
         <FirstRunGuide
-          onPrimary={() => {
-            completeFirstRunGuide();
+          status={activationStatus}
+          onChooseDemo={() => {
+            closeActivation("demo_selected");
             setPage("butler");
             window.history.replaceState(null, "", routeForPage("butler"));
           }}
-          onDismiss={completeFirstRunGuide}
+          onChooseReal={() => {
+            closeActivation("real_setup_started");
+            setPage("pcActivity");
+            window.history.replaceState(null, "", routeForPage("pcActivity"));
+          }}
+          onDismiss={() => closeActivation("dismissed")}
+          onComplete={() => closeActivation("completed")}
         />
       )}
     </>
@@ -585,7 +625,13 @@ function Timeline({
   );
 }
 
-function ButlerHome() {
+function ButlerHome({
+  activationStatus,
+  onActivation
+}: {
+  activationStatus: ActivationStatus;
+  onActivation: (status: ActivationStatus) => void;
+}) {
   const [home, setHome] = useState<Record<string, any> | null>(null);
   const [readiness, setReadiness] = useState<Record<string, any> | null>(null);
   const [mvpReport, setMvpReport] = useState<Record<string, any> | null>(null);
@@ -600,8 +646,6 @@ function ButlerHome() {
   const [drillBusy, setDrillBusy] = useState(false);
   const [drillMessage, setDrillMessage] = useState("");
   const [resetBusy, setResetBusy] = useState(false);
-  const [importBusy, setImportBusy] = useState(false);
-  const [importMessage, setImportMessage] = useState("");
   const [mvpActionBusy, setMvpActionBusy] = useState("");
   const [mvpActionMessage, setMvpActionMessage] = useState("");
   const [timelineItems, setTimelineItems] = useState<Array<Record<string, any>>>([]);
@@ -639,20 +683,6 @@ function ButlerHome() {
       await refreshHome();
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function importTodayForButler() {
-    setImportBusy(true);
-    setImportMessage("");
-    try {
-      const result = await importPCActivities({lookback_hours: 24, limit: 200});
-      setImportMessage(`已导入 ${result.count ?? result.created?.length ?? 0} 条 PC 活动线索。`);
-      await refreshHome();
-    } catch (error) {
-      setImportMessage("MineContext 暂不可用，无法导入今日 PC 活动。");
-    } finally {
-      setImportBusy(false);
     }
   }
 
@@ -768,53 +798,84 @@ function ButlerHome() {
   const metrics = home?.metrics ?? {};
   const insights = home?.insights ?? [];
   const dataInsufficient = Number(metrics.source_event_count ?? 0) === 0 || insights.some((item: Record<string, any>) => item.type === "data_quality_notice");
-  const view = buildTodayHomeViewModel(home, timelineItems);
+  const activationMode = activationModeFor(activationStatus);
+  const view = buildTodayHomeViewModel(home, timelineItems, activationMode);
   const primarySuggestion = view.topSuggestions[0];
+  const command = view.commandCenter;
+
+  function handleCommandPrimary() {
+    if (view.mode === "new_user") {
+      onActivation("demo_selected");
+      return;
+    }
+    if (command.topSuggestion) {
+      document.getElementById("today-suggestions")?.scrollIntoView({behavior: "smooth"});
+      return;
+    }
+    navigateTo("/timeline");
+  }
+
   return (
     <div className="today-page">
       <section className="today-hero" aria-label="OpenButler 主动 AI 管家">
         <div className="today-hero-copy">
-          <p className="eyebrow">私人 AI 管家 · {view.demoMode ? "样例体验" : "本地数据"} · {privacyModeLabel("strict")}</p>
-          <h1>{view.headline}</h1>
-          <p className="hero-summary">{view.subheadline}</p>
-          <p>{view.demoMode ? "这是样例体验，用来展示它如何照看物品、待办和生活节律。" : "OpenButler 会把授权的本地线索整理成今日概览、提醒和可复核依据。"}</p>
+          <p className="eyebrow">{command.dataMode === "sample" ? "样例体验" : command.dataMode === "local" ? "本地整理" : "还未连接"} · {command.privacyHint}</p>
+          <h1>{command.headline}</h1>
+          <p className="hero-summary">{command.oneLineStatus}</p>
           <div className="hero-actions primary-action-row">
-            <button className="primary" onClick={() => document.getElementById("today-suggestions")?.scrollIntoView({behavior: "smooth"})}>
+            <button className="primary" onClick={handleCommandPrimary}>
               <CheckCircle2 size={17} />
-              <span>{view.primaryAction}</span>
+              <span>{command.primaryAction}</span>
             </button>
+            {view.mode === "new_user" && (
+              <button className="secondary" onClick={() => navigateTo("/pc-activity-context")}>连接本地数据源</button>
+            )}
           </div>
           <div className="hero-quiet-links" aria-label="首页快捷入口">
             <button className="text-link" onClick={() => navigateTo("/assistant")}>问管家</button>
             <button className="text-link" onClick={() => navigateTo("/timeline")}>查看全部记录</button>
           </div>
-          <div className="summary-chips">
-            <span>{view.statusCards[0]?.value ?? "0 条"}信号</span>
-            <span>{view.statusCards[1]?.value ?? "0 条"}提醒</span>
-            <span>{view.statusCards[2]?.value ?? "0 分钟"}专注</span>
-            <span>{view.demoMode ? "样例体验" : privacyModeLabel("strict")}</span>
+          <div className="summary-chips command-key-numbers">
+            {command.keyNumbers.map((item) => (
+              <span key={item.label}>
+                <strong>{item.value}</strong>
+                <small>{item.label} · {item.description}</small>
+              </span>
+            ))}
           </div>
         </div>
-        <div className="today-hero-status">
-          <span className="privacy-chip">{view.demoMode ? "样例体验" : privacyModeLabel("strict")}</span>
-          <strong>今日摘要</strong>
-          <span>{view.summaryLine}</span>
-          <small>{view.dataQualityText}</small>
+        <div className="today-hero-status command-suggestion-card">
+          <span className="privacy-chip">{command.privacyHint}</span>
+          <strong>{command.topSuggestion?.title ?? (view.mode === "new_user" ? "先看一个样例" : "今天没有紧急提醒")}</strong>
+          <span>
+            {command.topSuggestion?.summary
+              ?? (view.mode === "new_user"
+                ? "样例能让你先看到今日概览、时间线和依据是什么样。"
+                : "你可以继续查看时间线，或者稍后再回来。")}
+          </span>
+          <button className="secondary" onClick={command.topSuggestion ? () => document.getElementById("today-suggestions")?.scrollIntoView({behavior: "smooth"}) : handleCommandPrimary}>
+            {command.topSuggestion ? "看这条建议" : command.primaryAction}
+          </button>
         </div>
       </section>
 
       {view.mode === "new_user" && (
         <ProgressiveOnboarding
-          onImport={importTodayForButler}
-          importBusy={importBusy}
-          importMessage={importMessage}
+          activationStatus={activationStatus}
+          onDemo={() => {
+            onActivation("demo_selected");
+            document.getElementById("today-suggestions")?.scrollIntoView({behavior: "smooth"});
+          }}
           onOpenAdvanced={() => navigateTo("/pc-activity-context")}
         />
       )}
 
-      <section className="today-status-grid compact-home-stats">
-        {view.statusCards.map((card) => <TodayStatusTile card={card} key={card.title} />)}
-      </section>
+      <details className="today-panel today-more-status">
+        <summary>更多今日信息</summary>
+        <section className="today-status-grid compact-home-stats">
+          {view.statusCards.map((card) => <TodayStatusTile card={card} key={card.title} />)}
+        </section>
+      </details>
 
       <section className="today-focus-layout">
         <div className="today-main-column">
@@ -869,8 +930,17 @@ function ButlerHome() {
             <div className="next-action-card">
               <strong>{primarySuggestion?.title ?? (dataInsufficient ? "先连接一个本地数据源" : "查看今天整理好的时间线")}</strong>
               <span>{primarySuggestion?.summary ?? (dataInsufficient ? "连接电脑活动后，OpenButler 会开始整理今日概览和依据。" : "当前没有紧急提醒，可以从完整时间线继续回看。")}</span>
-              <button className="secondary" onClick={() => navigateTo(dataInsufficient ? "/pc-activity-context" : "/timeline")}>
-                {dataInsufficient ? "去连接" : "去查看"}
+              <button
+                className="secondary"
+                onClick={() => {
+                  if (primarySuggestion) {
+                    document.getElementById("today-suggestions")?.scrollIntoView({behavior: "smooth"});
+                    return;
+                  }
+                  navigateTo(dataInsufficient ? "/pc-activity-context" : "/timeline");
+                }}
+              >
+                {primarySuggestion ? "看建议" : dataInsufficient ? "去连接" : "去查看"}
               </button>
             </div>
           </section>
@@ -1259,36 +1329,35 @@ function SceneSignalCard({card}: {card: {title: string; value: string; descripti
 }
 
 function ProgressiveOnboarding({
-  onImport,
-  importBusy,
-  importMessage,
+  activationStatus,
+  onDemo,
   onOpenAdvanced
 }: {
-  onImport: () => void;
-  importBusy: boolean;
-  importMessage: string;
+  activationStatus: ActivationStatus;
+  onDemo: () => void;
   onOpenAdvanced: () => void;
 }) {
   return (
     <section className="onboarding-panel">
       <div>
-        <p className="eyebrow">3 步开始</p>
-        <h2>先建立今天的第一条本地线索</h2>
-        <p>OpenButler 默认不会编造结论。连接本机观察后，它会整理时间线、生成今日概览，并把依据留给你复核。</p>
+        <p className="eyebrow">开始设置 · {activationStatusLabel(activationStatus)}</p>
+        <h2>选择一种方式开始今天</h2>
+        <p>你可以先用样例理解产品，也可以前往本地数据源设置。样例不会读取真实数据，真实模式需要你主动授权。</p>
       </div>
       <div className="onboarding-steps">
-        <article><strong>1</strong><span>连接本机观察</span></article>
-        <article><strong>2</strong><span>生成今日概览</span></article>
-        <article><strong>3</strong><span>查看时间线与依据</span></article>
+        <article><strong>1</strong><span>连接后生成今日概览</span></article>
+        <article><strong>2</strong><span>把重要片段整理成时间线</span></article>
+        <article><strong>3</strong><span>每条提醒都能查看依据</span></article>
       </div>
       <div className="hero-actions">
-        <button className="primary" onClick={onImport} disabled={importBusy}>
-          {importBusy ? <Loader2 className="spin" size={17} /> : <Database size={17} />}
-          <span>连接电脑活动</span>
+        <button className="primary" onClick={onDemo}>
+          <CheckCircle2 size={17} />
+          <span>先看样例</span>
         </button>
-        <button className="secondary" onClick={onOpenAdvanced}>稍后配置</button>
+        <button className="secondary" onClick={onOpenAdvanced}>连接本地数据源</button>
+        <button className="ghost" onClick={() => document.getElementById("today-suggestions")?.scrollIntoView({behavior: "smooth"})}>稍后配置</button>
       </div>
-      {importMessage && <small>{importMessage}</small>}
+      <small>线上样例只展示产品效果；本地模式会在你确认后读取授权线索。</small>
     </section>
   );
 }
@@ -2486,25 +2555,31 @@ function Chat() {
 }
 
 function FirstRunGuide({
-  onPrimary,
-  onDismiss
+  status,
+  onChooseDemo,
+  onChooseReal,
+  onDismiss,
+  onComplete
 }: {
-  onPrimary: () => void;
+  status: ActivationStatus;
+  onChooseDemo: () => void;
+  onChooseReal: () => void;
   onDismiss: () => void;
+  onComplete: () => void;
 }) {
-  const guideSteps = [
+  const resultCards = [
     {
-      title: "整理今天",
-      text: "把你授权的本机线索整理成一条可回看的时间线。",
+      title: "今日概览",
+      text: "把授权线索整理成一句能看懂的今日状态。",
       icon: CalendarDays,
     },
     {
-      title: "提醒重点",
-      text: "只把值得你决定、回看或稍后处理的事情放到前面。",
+      title: "管家提醒",
+      text: "只把值得你决定、回看或稍后处理的事放到前面。",
       icon: Lightbulb,
     },
     {
-      title: "保留依据",
+      title: "可复核依据",
       text: "每条提醒都能展开查看来源、可信度和边界说明。",
       icon: ShieldCheck,
     },
@@ -2520,23 +2595,33 @@ function FirstRunGuide({
     <div className="first-run-backdrop" role="dialog" aria-modal="true" aria-labelledby="first-run-title">
       <section className="first-run-guide">
         <div className="first-run-copy">
-          <p className="eyebrow">首次使用说明</p>
-          <h2 id="first-run-title">先认识一下你的私人管家</h2>
+          <p className="eyebrow">首次激活 · {activationStatusLabel(status)}</p>
+          <h2 id="first-run-title">先选择 OpenButler 怎么认识你的一天</h2>
           <p>
-            OpenButler 会把你授权的本机线索整理成今日概览、管家提醒和可复核依据。
-            它不会替你做最终判断，也不会在未授权时读取真实数据。
+            OpenButler 会整理你主动授权的本地线索，生成今日概览、管家提醒和可复核依据。
+            你可以先看样例，也可以进入真实本地模式设置；未授权时不会读取真实数据。
           </p>
-          <div className="first-run-actions">
-            <button className="primary" onClick={onPrimary}>
+          <div className="activation-choice-grid" aria-label="选择开始方式">
+            <button className="activation-choice primary-choice" onClick={onChooseDemo}>
               <CheckCircle2 size={17} />
-              <span>开始看今天</span>
+              <strong>先看样例</strong>
+              <span>立即理解产品效果，不读取你的真实数据。</span>
             </button>
-            <button className="ghost" onClick={onDismiss}>稍后了解</button>
+            <button className="activation-choice" onClick={onChooseReal}>
+              <Database size={17} />
+              <strong>连接本地数据源</strong>
+              <span>前往本机观察设置，真实模式需要你主动授权。</span>
+            </button>
+            <button className="activation-choice quiet-choice" onClick={onDismiss}>
+              <CalendarDays size={17} />
+              <strong>稍后配置</strong>
+              <span>先进入首页，之后可以在“我的”里重新打开。</span>
+            </button>
           </div>
         </div>
 
         <div className="first-run-cards">
-          {guideSteps.map((step) => {
+          {resultCards.map((step) => {
             const Icon = step.icon;
             return (
               <article className="first-run-card" key={step.title}>
@@ -2550,7 +2635,8 @@ function FirstRunGuide({
 
         <div className="first-run-preview" aria-label="OpenButler 整理结果示例">
           <span className="privacy-chip">样例体验</span>
-          <strong>你会看到这样的今日记录</strong>
+          <strong>连接后，你会得到什么</strong>
+          <p>真实模式会在你授权后整理本地线索；线上样例只展示效果，不读取你的相册、电脑活动或本地截图。</p>
           <div>
             {previewItems.map((item) => (
               <article key={`${item.time}-${item.title}`}>
@@ -2563,6 +2649,7 @@ function FirstRunGuide({
             ))}
           </div>
           <small>样例只用于说明产品效果，不代表你的真实生活记录。</small>
+          <button className="secondary light-on-dark" onClick={onComplete}>我知道了</button>
         </div>
 
         <button className="first-run-close" onClick={onDismiss}>关闭</button>
@@ -2575,16 +2662,39 @@ function Privacy({
   mode,
   onChange,
   plugins,
+  activationStatus,
   onOpenGuide
 }: {
   mode: PrivacyMode;
   onChange: (mode: PrivacyMode) => void;
   plugins: PluginManifest[];
+  activationStatus: ActivationStatus;
   onOpenGuide: () => void;
 }) {
   const blocked = plugins.filter((plugin) => !plugin.runtime.available).length;
   return (
     <div className="me-page">
+      <section className="today-panel activation-settings-panel">
+        <div className="section-title">
+          <div>
+            <p className="eyebrow">开始设置</p>
+            <h2>当前状态：{activationStatusLabel(activationStatus)}</h2>
+            <p>
+              样例体验只展示产品效果；真实本地模式需要你主动连接本机数据源。
+              你可以随时重新打开引导，确认连接后会得到什么。
+            </p>
+          </div>
+          <button className="secondary" onClick={onOpenGuide}>重新选择开始方式</button>
+        </div>
+        <div className="activation-status-grid">
+          <StatusItem label="样例体验" value={activationStatus === "demo_selected" ? "已选择" : "可查看"} />
+          <StatusItem label="真实本地模式" value={activationStatus === "real_setup_started" || activationStatus === "completed" ? "待连接" : "未开始"} />
+          <StatusItem label="连接后得到" value="概览/提醒/依据" />
+          <StatusItem label="真实数据读取" value="需授权" />
+        </div>
+        <p className="policy-note">线上版本不会自动读取你的真实本机活动；连接入口只会带你进入现有本地数据源设置。</p>
+      </section>
+
       <section className="today-panel">
         <div className="section-title">
           <div>

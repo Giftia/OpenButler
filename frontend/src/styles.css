@@ -371,6 +371,62 @@
   min-height: 46px;
 }
 
+.activation-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.activation-choice {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 5px 9px;
+  min-height: 118px;
+  padding: 14px;
+  text-align: left;
+  color: #0f172a;
+  border: 1px solid rgb(15 23 42 / 10%);
+  border-radius: 20px;
+  background: rgb(255 255 255 / 82%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 72%);
+}
+
+.activation-choice svg {
+  color: #0f766e;
+}
+
+.activation-choice strong,
+.activation-choice span {
+  grid-column: 2;
+}
+
+.activation-choice strong {
+  font-size: 15px;
+}
+
+.activation-choice span {
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.activation-choice.primary-choice {
+  color: #ffffff;
+  border-color: #0f766e;
+  background: linear-gradient(135deg, #0f766e, #2563eb);
+  box-shadow: 0 16px 34px rgb(15 118 110 / 20%);
+}
+
+.activation-choice.primary-choice svg,
+.activation-choice.primary-choice span,
+.activation-choice.primary-choice strong {
+  color: #ffffff;
+}
+
+.activation-choice.quiet-choice {
+  background: #f8fafc;
+}
+
 .first-run-cards {
   grid-area: cards;
   display: grid;
@@ -434,6 +490,12 @@
   line-height: 1.1;
 }
 
+.first-run-preview p {
+  margin: 0;
+  color: #c8d7e5;
+  line-height: 1.55;
+}
+
 .first-run-preview .privacy-chip {
   color: #bff6e8;
   background: rgb(20 184 166 / 18%);
@@ -467,6 +529,13 @@
 .first-run-preview small {
   color: #b7c8d8;
   line-height: 1.5;
+}
+
+.light-on-dark {
+  width: fit-content;
+  color: #0f172a;
+  background: #ffffff;
+  border-color: rgb(255 255 255 / 54%);
 }
 
 .first-run-close {
@@ -739,7 +808,8 @@
   }
 
   .today-status-grid,
-  .scene-card-grid {
+  .scene-card-grid,
+  .activation-status-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -770,7 +840,8 @@
   }
 
   .today-status-grid,
-  .scene-card-grid {
+  .scene-card-grid,
+  .activation-status-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1538,6 +1609,16 @@ h2 {
   color: #475569;
 }
 
+.activation-settings-panel {
+  border-color: rgb(15 118 110 / 18%);
+}
+
+.activation-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .topology {
   display: grid;
   gap: 10px;
@@ -2220,6 +2301,48 @@ h2 {
   font-weight: 700;
 }
 
+.command-key-numbers span {
+  display: grid;
+  gap: 2px;
+  min-width: 118px;
+  padding: 10px 12px;
+}
+
+.command-key-numbers strong {
+  color: #0f172a;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.command-key-numbers small {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.command-suggestion-card {
+  align-content: center;
+}
+
+.command-suggestion-card > span:not(.privacy-chip) {
+  color: #475569;
+  line-height: 1.55;
+}
+
+.today-more-status {
+  padding: 14px 16px;
+}
+
+.today-more-status summary {
+  cursor: pointer;
+  color: #334155;
+  font-weight: 800;
+}
+
+.today-more-status .compact-home-stats {
+  margin-top: 14px;
+}
+
 .hero-summary {
   color: #0f172a !important;
   font-weight: 800;
@@ -2318,6 +2441,15 @@ h2 {
   .first-run-actions button {
     width: 100%;
     min-height: 46px;
+  }
+
+  .activation-choice-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .activation-choice {
+    min-height: 0;
+    padding: 12px;
   }
 
   .first-run-cards {
@@ -2485,10 +2617,44 @@ h2 {
     display: none;
   }
 
+  .command-suggestion-card {
+    display: grid;
+    min-height: 0;
+    padding: 14px;
+    gap: 9px;
+    border-radius: 20px;
+  }
+
+  .command-suggestion-card strong {
+    font-size: 18px;
+    line-height: 1.18;
+  }
+
   .summary-chips span {
     padding: 7px 10px;
     border-radius: 999px;
     font-size: 12px;
+  }
+
+  .command-key-numbers {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .command-key-numbers span {
+    min-width: 0;
+    padding: 9px 8px;
+    border-radius: 16px;
+  }
+
+  .command-key-numbers strong {
+    font-size: 15px;
+  }
+
+  .command-key-numbers small {
+    font-size: 11px;
+    line-height: 1.22;
   }
 
   .compact-home-stats {

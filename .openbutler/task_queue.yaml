@@ -476,4 +476,185 @@ tasks:
       - "frontend/src/lib/timelineUiAdapter.ts shifts demo display dates to today and simplifies evidence boundaries."
       - "frontend/src/App.tsx simplifies ordinary wording and sanitizes chat answers."
 
+  - id: OB-TASK-110
+    title: "审计当前首次引导与无数据路径"
+    goal_id: OB-GOAL-011
+    priority: P0
+    status: done
+    done_when:
+      - "确认当前 FirstRunGuide 仅是说明弹层"
+      - "确认 ProgressiveOnboarding 承担无数据路径"
+      - "确认 /me 已有产品引导入口"
+      - "确定最小改动方案为前端激活状态和 UI 合并"
+    evidence:
+      - "frontend/src/App.tsx contains FirstRunGuide, ProgressiveOnboarding, and /me product guide entry."
+
+  - id: OB-TASK-111
+    title: "建立激活状态模型与本地存储"
+    goal_id: OB-GOAL-011
+    priority: P0
+    status: done
+    done_when:
+      - "本地存储 key 为 openbutler:first_run_activation:v1"
+      - "支持 unseen / demo_selected / real_setup_started / dismissed / completed"
+      - "状态不写入后端"
+      - "状态不触发真实导入"
+    evidence:
+      - "frontend/src/App.tsx defines ActivationStatus and read/update helpers."
+
+  - id: OB-TASK-112
+    title: "实现 First-Run Activation Flow UI"
+    goal_id: OB-GOAL-011
+    priority: P0
+    status: done
+    done_when:
+      - "首次弹层包含看懂产品、选择开始方式、连接后结果说明"
+      - "提供先看样例、连接本地数据源、稍后配置"
+      - "移动端弹层可读且不横向溢出"
+    evidence:
+      - "FirstRunGuide now renders activation choices and result cards."
+      - "frontend/src/styles.css adds activation choice styles."
+
+  - id: OB-TASK-113
+    title: "明确样例模式与真实模式切换说明"
+    goal_id: OB-GOAL-011
+    priority: P0
+    status: done
+    done_when:
+      - "样例体验说明不会读取真实数据"
+      - "真实本地模式说明需要主动授权"
+      - "首页无数据状态不再像空控制台"
+      - "样例 fallback 不依赖后端写入"
+    evidence:
+      - "frontend/src/lib/butlerUiAdapter.ts supports demo activation fallback suggestions and timeline."
+      - "ProgressiveOnboarding presents demo/local mode choices in user language."
+
+  - id: OB-TASK-114
+    title: "打通授权向导 CTA 与现有数据源入口"
+    goal_id: OB-GOAL-011
+    priority: P0
+    status: done
+    done_when:
+      - "连接本地数据源 CTA 进入现有 PC Activity / 数据源设置路径"
+      - "CTA 不直接运行真实导入"
+      - "/me 可以重新打开激活引导"
+    evidence:
+      - "FirstRunGuide and ProgressiveOnboarding navigate to /pc-activity-context for real local setup."
+      - "/me Start Settings section exposes reopen activation guide."
+
+  - id: OB-TASK-115
+    title: "补充移动端首屏和点击 smoke"
+    goal_id: OB-GOAL-011
+    priority: P0
+    status: done
+    done_when:
+      - "首次进入 /butler 出现激活流"
+      - "先看样例后进入首页"
+      - "连接本地数据源后进入配置路径"
+      - "稍后配置后首页仍有下一步"
+      - "移动端没有横向溢出"
+    evidence:
+      - "npm run smoke:first-run-activation passed on local headless Chromium/Edge with a 390x844-style mobile window."
+      - "Verified first-run dialog, sample choice, local data source route, later configuration state, /me reopen action, and no horizontal overflow."
+
+  - id: OB-TASK-116
+    title: "更新产品文档和验收说明"
+    goal_id: OB-GOAL-011
+    priority: P0
+    status: done
+    done_when:
+      - "新增 First-Run Activation Flow 文档"
+      - "更新 Onboarding Flow"
+      - "记录不新增后端、不读取真实数据、不调用外部模型"
+    evidence:
+      - "docs/product/FIRST_RUN_ACTIVATION_FLOW.md"
+      - "docs/product/ONBOARDING_FLOW.md"
+
+  - id: OB-TASK-120
+    title: "审计当前 /butler 首页首屏和重复信息"
+    goal_id: OB-GOAL-012
+    priority: P0
+    status: done
+    done_when:
+      - "确认 ButlerHome 当前首屏包含 hero、摘要、状态卡和建议区"
+      - "确认今日整理、提醒、专注等指标存在重复表达"
+      - "确定最小改动为前端 Today ViewModel 与首页布局收敛"
+    evidence:
+      - "frontend/src/App.tsx ButlerHome"
+      - "frontend/src/lib/butlerUiAdapter.ts TodayHomeViewModel"
+
+  - id: OB-TASK-121
+    title: "建立 Today Command Center ViewModel"
+    goal_id: OB-GOAL-012
+    priority: P0
+    status: done
+    done_when:
+      - "ViewModel 包含 headline、oneLineStatus、primaryAction"
+      - "ViewModel 包含 topSuggestion、keyNumbers、privacyHint、dataMode"
+      - "不改变后端 API 响应契约"
+    evidence:
+      - "frontend/src/lib/butlerUiAdapter.ts adds TodayCommandCenter."
+
+  - id: OB-TASK-122
+    title: "重排 /butler 首页为今日中控"
+    goal_id: OB-GOAL-012
+    priority: P0
+    status: done
+    done_when:
+      - "第一屏展示轻量隐私提示、今日摘要、一个主行动"
+      - "最高优先级建议在主卡中可见"
+      - "重复状态卡下沉到更多今日信息"
+      - "高级能力保持折叠"
+    evidence:
+      - "frontend/src/App.tsx Today hero now renders command center and top suggestion."
+
+  - id: OB-TASK-123
+    title: "用自然中文收敛首页文案"
+    goal_id: OB-GOAL-012
+    priority: P0
+    status: done
+    done_when:
+      - "首页主文案避免口号化和技术说明"
+      - "样例体验说明短而明确"
+      - "普通首屏不出现 MineContext、PCActivity、mock、seed、Provider、Webhook"
+    evidence:
+      - "frontend/src/lib/butlerUiAdapter.ts uses 今天先看这几件事 and concise privacy hints."
+
+  - id: OB-TASK-124
+    title: "补充 Today Command Center 移动端样式"
+    goal_id: OB-GOAL-012
+    priority: P0
+    status: done
+    done_when:
+      - "移动端关键数字变为紧凑 chips"
+      - "首要建议卡在移动端可见"
+      - "页面不横向溢出"
+    evidence:
+      - "frontend/src/styles.css adds command-key-numbers and command-suggestion-card mobile rules."
+
+  - id: OB-TASK-125
+    title: "新增 Today Command Center smoke"
+    goal_id: OB-GOAL-012
+    priority: P0
+    status: done
+    done_when:
+      - "390x844 视口验证 /butler 首屏"
+      - "验证主行动、今日状态、建议和无横向溢出"
+      - "验证普通首屏不出现内部技术词"
+    evidence:
+      - "frontend/scripts/smoke-today-command-center.mjs"
+      - "frontend/package.json smoke:today-command-center"
+
+  - id: OB-TASK-126
+    title: "补充 Today Command Center 产品文档"
+    goal_id: OB-GOAL-012
+    priority: P0
+    status: done
+    done_when:
+      - "说明今日中控信息层级"
+      - "说明移动端第一屏验收"
+      - "说明文案规则和隐私提示"
+    evidence:
+      - "docs/product/TODAY_COMMAND_CENTER.md"
+
 blocked: []
