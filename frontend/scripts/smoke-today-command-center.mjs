@@ -209,6 +209,17 @@ async function navigate(cdp, path) {
   await new Promise((resolveWait) => setTimeout(resolveWait, 500));
 }
 
+async function waitForCondition(cdp, expression, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastValue;
+  while (Date.now() < deadline) {
+    lastValue = await evaluate(cdp, expression);
+    if (lastValue) return lastValue;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 250));
+  }
+  return lastValue;
+}
+
 let browser;
 let cdp;
 
@@ -238,7 +249,7 @@ try {
 
   await navigate(cdp, "/butler");
   await evaluate(cdp, `localStorage.setItem('${storageKey}', 'demo_selected'); location.reload(); true`);
-  await new Promise((resolveWait) => setTimeout(resolveWait, 900));
+  await waitForCondition(cdp, "document.body.innerText.includes('今天先看这几件事') || document.body.innerText.includes('先选择 OpenButler 怎么认识你的一天')", 10000);
 
   const result = await evaluate(cdp, `(() => {
     const text = document.body.innerText;
