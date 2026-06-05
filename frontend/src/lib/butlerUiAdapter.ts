@@ -188,7 +188,7 @@ export function buildTodayHomeViewModel(
     keyNumbers: mode === "new_user"
       ? [
         {label: "样例", value: "可查看", description: "不读真实数据"},
-        {label: "连接", value: "需授权", description: "你确认后才读取"},
+        {label: "授权", value: "需确认", description: "你确认后才读取"},
         {label: "依据", value: "会保留", description: "每条提醒可复核"},
       ]
       : demoMode
@@ -242,7 +242,7 @@ export function buildTodayHomeViewModel(
       },
       {
         title: "数据质量",
-        value: mode === "new_user" ? "待连接" : "可用",
+        value: mode === "new_user" ? "待授权" : "可用",
         description: mode === "new_user" ? "授权后才开始整理" : "当前结论带有边界说明",
         tone: "amber",
       },

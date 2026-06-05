@@ -164,7 +164,7 @@ function activationStatusLabel(status: ActivationStatus) {
   return {
     unseen: "尚未开始",
     demo_selected: "样例体验",
-    real_setup_started: "真实本地模式未连接",
+    real_setup_started: "本地模式待授权",
     dismissed: "稍后配置",
     completed: "已完成设置"
   }[status];
@@ -828,7 +828,7 @@ function ButlerHome({
     <div className="today-page">
       <section className="today-hero" aria-label="OpenButler 主动 AI 管家">
         <div className="today-hero-copy">
-          <p className="eyebrow">{command.dataMode === "sample" ? "样例体验" : command.dataMode === "local" ? "本地整理" : "还未连接"} · {command.privacyHint}</p>
+          <p className="eyebrow">{command.dataMode === "sample" ? "样例体验" : command.dataMode === "local" ? "本地整理" : "还未授权"} · {command.privacyHint}</p>
           <h1>{command.headline}</h1>
           <p className="hero-summary">{command.oneLineStatus}</p>
           <div className="hero-actions primary-action-row">
@@ -909,7 +909,7 @@ function ButlerHome({
             ) : (
               <div className="friendly-empty">
                 <strong>{dataInsufficient ? "还没有足够信号" : "暂时没有需要打扰你的事"}</strong>
-                <span>{dataInsufficient ? "OpenButler 不会用空数据编造结论。你可以先连接本机观察或查看高级入口。" : "已连接数据源，但目前没有高优先级提醒。"}</span>
+                <span>{dataInsufficient ? "OpenButler 不会用空数据编造结论。你可以先了解本地模式，或查看高级入口。" : "已授权线索已整理，目前没有高优先级提醒。"}</span>
               </div>
             )}
           </section>
@@ -1354,7 +1354,7 @@ function ProgressiveOnboarding({
         <p>你可以先看样例，也可以了解本地模式。样例不会读取真实数据；本地模式需要你在自己的电脑上运行，并主动授权。</p>
       </div>
       <div className="onboarding-steps">
-        <article><strong>1</strong><span>连接后生成今日概览</span></article>
+        <article><strong>1</strong><span>授权后生成今日概览</span></article>
         <article><strong>2</strong><span>把重要片段整理成时间线</span></article>
         <article><strong>3</strong><span>每条提醒都能查看依据</span></article>
       </div>
@@ -1366,7 +1366,7 @@ function ProgressiveOnboarding({
         <button className="secondary" onClick={onOpenAdvanced}>了解本地模式</button>
         <button className="ghost" onClick={() => document.getElementById("today-suggestions")?.scrollIntoView({behavior: "smooth"})}>稍后配置</button>
       </div>
-      <small>线上样例只展示产品效果；本地模式会在你确认后读取授权线索。</small>
+      <small>线上样例只展示产品效果；本地模式只在本机运行，授权后才读取线索。</small>
     </section>
   );
 }
@@ -1428,7 +1428,7 @@ function LifeTimelinePreview({items}: {items: TimelineMoment[]}) {
     return (
       <div className="friendly-empty">
         <strong>时间线还在等待第一条记录</strong>
-        <span>接入本地数据后，OpenButler 会把重要片段整理成可回看的生活记录。</span>
+        <span>启动本地版并授权后，OpenButler 会把重要片段整理成可回看的生活记录。</span>
       </div>
     );
   }
@@ -2812,7 +2812,7 @@ function FirstRunGuide({
 
         <div className="first-run-preview" aria-label="OpenButler 整理结果示例">
           <span className="privacy-chip">样例体验</span>
-          <strong>连接后，你会得到什么</strong>
+          <strong>授权后，你会得到什么</strong>
           <p>真实模式只在你的本机运行；线上样例只展示效果，不读取你的相册、电脑活动或本地截图。</p>
           <div>
             {previewItems.map((item) => (
@@ -2858,15 +2858,15 @@ function Privacy({
             <h2>当前状态：{activationStatusLabel(activationStatus)}</h2>
             <p>
               样例体验只展示产品效果；真实本地模式需要你在本机运行，并主动授权要读取的线索。
-              你可以随时重新打开引导，确认连接后会得到什么。
+              你可以随时重新打开引导，确认授权后会得到什么。
             </p>
           </div>
           <button className="secondary" onClick={onOpenGuide}>重新选择开始方式</button>
         </div>
         <div className="activation-status-grid">
           <StatusItem label="样例体验" value={activationStatus === "demo_selected" ? "已选择" : "可查看"} />
-          <StatusItem label="真实本地模式" value={activationStatus === "real_setup_started" || activationStatus === "completed" ? "待连接" : "未开始"} />
-          <StatusItem label="连接后得到" value="概览/提醒/依据" />
+          <StatusItem label="真实本地模式" value={activationStatus === "real_setup_started" || activationStatus === "completed" ? "待授权" : "未开始"} />
+          <StatusItem label="授权后得到" value="概览/提醒/依据" />
           <StatusItem label="真实数据读取" value="需授权" />
         </div>
         <p className="policy-note">线上版本不会读取你的真实本机活动。真实模式需要在你的电脑上启动本地版，并由你确认授权范围。</p>
