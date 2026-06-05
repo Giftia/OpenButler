@@ -35,6 +35,13 @@
 - Acceptance: dry-run previews recent history without database writes, screenshot copying, external model calls, or MineContext mutation; repeated imports are protected by source id or stable hash; 7-day metrics can be rebuilt from unified timeline; Inbox evidence detail click smoke passes; dismiss/inaccurate/too-frequent feedback can reduce future insight priority; weekly review briefing and Goals trend use the same local 7-day metrics.
 - Risks: MineContext schema drift, duplicate records without stable source ids, over-suppressing important privacy or data-quality notices.
 
+### Phase 2 L3: Demo / Local Boundary And Trust Layer
+
+- Goal: make the public demo honest and understandable while preserving the path to real local use.
+- Deliverables: Demo/local mode boundary, local real mode activation path, consistent evidence trust layer, archived completed goals, and one clear active productization objective.
+- Acceptance: Vercel clearly says it is a sample experience; local mode explains local run plus active authorization; ordinary CTAs use user task language; reminders, timeline events, and assistant answers keep evidence boundaries; no real MineContext data is read without explicit approval.
+- Risks: public users may still expect web-only real data access; local activation may remain too technical until a guided installer exists.
+
 ## Phase 3: Workstation Vision
 
 - Goal: add local visual presence/work-state signals where user explicitly opts in.

@@ -245,7 +245,7 @@ try {
     hasDialog: !!document.querySelector('.first-run-guide'),
     hasIntro: document.body.innerText.includes('先选择 OpenButler 怎么认识你的一天'),
     hasDemo: document.body.innerText.includes('先看样例'),
-    hasReal: document.body.innerText.includes('连接本地数据源'),
+    hasReal: document.body.innerText.includes('了解本地模式'),
     hasLater: document.body.innerText.includes('稍后配置')
   }))()`);
   assertCondition(initial.hasDialog && initial.hasIntro && initial.hasDemo && initial.hasReal && initial.hasLater, "First-run activation dialog missing expected choices.");
@@ -269,7 +269,7 @@ try {
   await navigate(cdp, "/butler");
   await evaluate(cdp, "localStorage.setItem('openbutler:first_run_activation:v1', 'unseen'); location.reload(); true");
   await new Promise((resolveWait) => setTimeout(resolveWait, 700));
-  await evaluate(cdp, `Array.from(document.querySelectorAll('.first-run-guide button')).find((button) => button.innerText.includes('连接本地数据源')).click(); true`);
+  await evaluate(cdp, `Array.from(document.querySelectorAll('.first-run-guide button')).find((button) => button.innerText.includes('了解本地模式')).click(); true`);
   await new Promise((resolveWait) => setTimeout(resolveWait, 350));
   const afterReal = await evaluate(cdp, `(() => ({
     path: location.pathname,
@@ -277,7 +277,7 @@ try {
     width: innerWidth,
     scrollWidth: document.documentElement.scrollWidth
   }))()`);
-  assertCondition(afterReal.path === "/pc-activity-context", `Real setup routed to ${afterReal.path}`);
+  assertCondition(afterReal.path === "/me", `Real setup routed to ${afterReal.path}`);
   assertCondition(afterReal.status === "real_setup_started", "Real setup did not persist real_setup_started.");
   assertNoHorizontalOverflow(afterReal, "Real setup");
 

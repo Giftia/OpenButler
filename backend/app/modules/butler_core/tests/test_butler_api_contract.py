@@ -409,7 +409,7 @@ class ButlerApiContractTests(unittest.TestCase):
         self.assertEqual(response["privacy"]["minecontext_source_deleted"], 0)
         self.assertTrue(response["goals_source"]["loaded"])
         self.assertEqual(response["goals_source"]["path"], ".openbutler/goals.yaml")
-        self.assertGreaterEqual(response["goals_source"]["active_objective_count"], 4)
+        self.assertGreaterEqual(response["goals_source"]["active_objective_count"], 1)
         template = response["evidence_mapper_template"]
         self.assertEqual(template["schema_version"], "active_objective_evidence_mapper_template_v1")
         self.assertEqual(template["goals_path"], ".openbutler/goals.yaml")
@@ -418,31 +418,22 @@ class ButlerApiContractTests(unittest.TestCase):
         self.assertIn("evidence_boundary", template["criterion_contract"])
         self.assertIn("minecontext_source_deleted must remain 0", template["privacy_invariants"])
         objectives = {item["id"]: item for item in response["objectives"]}
-        for objective_id in ["OB-GOAL-001", "OB-GOAL-002", "OB-GOAL-003"]:
-            self.assertEqual(objectives[objective_id]["status"], "proven", objective_id)
-            self.assertEqual(objectives[objective_id]["proven_count"], objectives[objective_id]["criteria_count"])
-            self.assertTrue(objectives[objective_id]["evidence_boundary"])
-            self.assertEqual(objectives[objective_id]["priority"], "P0")
-            self.assertTrue(objectives[objective_id]["success_criteria"])
-            self.assertEqual(objectives[objective_id]["source_ref"]["path"], ".openbutler/goals.yaml")
-            for criterion in objectives[objective_id]["criteria"]:
-                self.assertEqual(criterion["status"], "proven", criterion["id"])
-                self.assertTrue(criterion["evidence_refs"])
-                self.assertTrue(criterion["evidence_boundary"])
-        self.assertEqual(objectives["OB-GOAL-001"]["title"], "完成主动管家中枢 MVP")
-        self.assertIn("今日指标可生成", objectives["OB-GOAL-001"]["success_criteria"])
-        goal_one_criteria = {item["id"]: item for item in objectives["OB-GOAL-001"]["criteria"]}
-        self.assertFalse(goal_one_criteria["strict_no_external_model"]["details"]["external_model_used"])
-        self.assertFalse(goal_one_criteria["strict_no_external_model"]["details"]["external_model_allowed"])
-        goal_two_criteria = {item["id"]: item for item in objectives["OB-GOAL-002"]["criteria"]}
-        self.assertEqual(goal_two_criteria["minecontext_source_preserved"]["details"]["minecontext_source_deleted"], 0)
-        self.assertEqual(objectives["OB-GOAL-004"]["status"], "proven")
-        goal_four_criteria = {item["id"]: item for item in objectives["OB-GOAL-004"]["criteria"]}
-        self.assertEqual(goal_four_criteria["seven_day_import_preview_supported"]["status"], "proven")
-        self.assertEqual(goal_four_criteria["idempotent_import_guard"]["status"], "proven")
-        self.assertEqual(goal_four_criteria["seven_day_metrics_summary"]["status"], "proven")
-        self.assertEqual(goal_four_criteria["strict_no_external_model_l2"]["status"], "proven")
-        self.assertEqual(goal_four_criteria["evidence_click_smoke"]["status"], "proven")
+        self.assertEqual(set(objectives), {"OB-GOAL-016"})
+        objective = objectives["OB-GOAL-016"]
+        self.assertEqual(objective["status"], "proven")
+        self.assertEqual(objective["title"], "Demo / Local Mode Boundary")
+        self.assertEqual(objective["proven_count"], objective["criteria_count"])
+        self.assertEqual(objective["priority"], "P0")
+        self.assertTrue(objective["success_criteria"])
+        self.assertEqual(objective["source_ref"]["path"], ".openbutler/goals.yaml")
+        for criterion in objective["criteria"]:
+            self.assertEqual(criterion["status"], "proven", criterion["id"])
+            self.assertTrue(criterion["evidence_refs"])
+            self.assertTrue(criterion["evidence_boundary"])
+        criteria = {item["id"]: item for item in objective["criteria"]}
+        self.assertEqual(criteria["public_demo_marked_as_sample"]["status"], "proven")
+        self.assertEqual(criteria["public_demo_does_not_imply_real_connection"]["status"], "proven")
+        self.assertEqual(criteria["no_dedicated_evidence_endpoint_added"]["status"], "proven")
 
     def test_productization_objective_status_surfaces_unknown_goals(self) -> None:
         butler_router.run_demo(DemoRunRequest(import_pc_activity=False))
@@ -506,8 +497,8 @@ class ButlerApiContractTests(unittest.TestCase):
         self.assertEqual(response["source"]["goals_path"], ".openbutler/goals.yaml")
         self.assertIn("missing_evidence", response["allowed_results"])
         self.assertIn("out_of_scope", response["allowed_results"])
-        self.assertGreaterEqual(response["summary"]["objective_count"], 4)
-        self.assertGreaterEqual(response["summary"]["success_criteria_count"], 13)
+        self.assertEqual(response["summary"]["objective_count"], 1)
+        self.assertGreaterEqual(response["summary"]["success_criteria_count"], 10)
         self.assertEqual(response["summary"]["missing_evidence"], 0)
         self.assertEqual(response["summary"]["out_of_scope"], 0)
         self.assertEqual(response["summary"]["needs_attention"], 0)
@@ -518,13 +509,13 @@ class ButlerApiContractTests(unittest.TestCase):
         self.assertTrue(response["privacy"]["strict_mode_respected"])
         self.assertTrue(response["evidence_boundary"])
         objectives = {item["id"]: item for item in response["objectives"]}
-        goal_one = objectives["OB-GOAL-001"]
-        self.assertEqual(goal_one["objective_status"], "proven")
-        checks = {item["success_criterion"]: item for item in goal_one["success_criteria"]}
-        self.assertEqual(checks["/butler 页面可用"]["verification_result"], "proven")
-        self.assertEqual(checks["今日指标可生成"]["verification_result"], "proven")
-        self.assertTrue(checks["今日指标可生成"]["evidence_refs"])
-        self.assertTrue(checks["strict 模式不调用外部模型"]["evidence_boundary"])
+        goal = objectives["OB-GOAL-016"]
+        self.assertEqual(goal["objective_status"], "proven")
+        checks = {item["success_criterion"]: item for item in goal["success_criteria"]}
+        self.assertEqual(checks["线上 Demo 明确标识为样例体验"]["verification_result"], "proven")
+        self.assertEqual(checks["公开 Demo 不暗示已经连接真实本机数据"]["verification_result"], "proven")
+        self.assertTrue(checks["公开 Demo 不暗示已经连接真实本机数据"]["evidence_refs"])
+        self.assertTrue(checks["不读取真实 MineContext 数据"]["evidence_boundary"])
 
     def test_productization_l1_audit_report_distinguishes_missing_and_out_of_scope(self) -> None:
         butler_router.run_demo(DemoRunRequest(import_pc_activity=False))

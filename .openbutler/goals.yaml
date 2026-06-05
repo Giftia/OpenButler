@@ -1,10 +1,30 @@
 product_goal:
   name: "OpenButler 主动全场景感知 AI 管家"
   mission: "让用户的生活更加清晰高效可量化"
-  current_stage: "Timeline as Life Event Feed"
+  current_stage: "Demo / Local Mode Boundary"
   north_star: "用户每天 60 秒内理解今天发生了什么、什么值得注意、下一步应该做什么"
 
 active_objectives:
+  - id: OB-GOAL-016
+    title: "Demo / Local Mode Boundary"
+    priority: P0
+    status: active
+    description: >
+      将 Vercel 线上版明确定位为公开样例体验，将真实个人数据能力收束到本地模式。
+      普通用户路径需要清楚说明：线上样例不会读取真实数据；本地模式需要用户本机运行并主动授权。
+    success_criteria:
+      - "线上 Demo 明确标识为样例体验"
+      - "公开 Demo 不暗示已经连接真实本机数据"
+      - "真实本地模式入口说明需要本机运行和主动授权"
+      - "普通路径 CTA 使用看今天重点、查看时间线、解释依据、了解本地模式等用户任务文案"
+      - "普通路径不出现 mock、seed、debug、internal source 等工程词"
+      - "提醒、时间线和问管家都保留依据与边界说明"
+      - "不新增 /api/butler/insights/{id}/evidence"
+      - "不读取真实 MineContext 数据"
+      - "不复制截图或上传数据"
+      - "前端 build 和后端核心测试通过"
+
+archived_objectives:
   - id: OB-GOAL-001
     title: "完成主动管家中枢 MVP"
     priority: P0
@@ -59,7 +79,7 @@ active_objectives:
   - id: OB-GOAL-006
     title: "Product-friendly UI V1：降低理解成本，建立渐进式主动管家体验"
     priority: P0
-    status: active
+    status: implemented
     description: >
       将 OpenButler 从技术控制台优化为用户友好的主动 AI 管家首页。
       重点是第一屏价值表达、渐进式功能触发、统一时间线展示、
@@ -77,7 +97,7 @@ active_objectives:
   - id: OB-GOAL-008
     title: "Mobile UX Polish V2：减少技术泄露，压缩首屏，强化演示闭环"
     priority: P0
-    status: active
+    status: implemented
     description: >
       基于移动端线上 Demo 截图反馈，继续优化 OpenButler 普通用户体验。
       本阶段聚焦移动端首屏压缩、演示内容去技术化、时间线中文生活化、
@@ -97,7 +117,7 @@ active_objectives:
   - id: OB-GOAL-009
     title: "Timeline V2：米家式事件流与三维筛选"
     priority: P0
-    status: active
+    status: implemented
     description: >
       将 OpenButler 时间线优化为普通用户更容易浏览的事件流。
       单条事件弱化时间和来源，突出事件内容，并支持右侧图片证据。
@@ -116,7 +136,7 @@ active_objectives:
   - id: OB-GOAL-010
     title: "Product Experience V3：生活任务优先的私人管家体验"
     priority: P0
-    status: active
+    status: implemented
     description: >
       基于桌面端和移动端中立用户评审，把主路径从技术验证台调整为
       生活任务优先的私人管家体验。重点是生活化 demo、结果型首页、
@@ -135,7 +155,7 @@ active_objectives:
   - id: OB-GOAL-011
     title: "First-Run Activation Flow"
     priority: P0
-    status: active
+    status: implemented
     description: >
       将首次进入体验从产品说明升级为激活流。新用户需要在 30 秒内理解
       OpenButler 的用途、样例体验与真实本地模式的区别，以及连接后会得到
@@ -154,7 +174,7 @@ active_objectives:
   - id: OB-GOAL-012
     title: "Today as Command Center"
     priority: P0
-    status: active
+    status: implemented
     description: >
       将 /butler 首页收敛成今日中控。第一屏优先展示今天的状态、
       最高优先级建议、少量关键数字和下一步行动，而不是模块列表或技术能力清单。
@@ -172,7 +192,7 @@ active_objectives:
   - id: OB-GOAL-013
     title: "Timeline as Life Event Feed"
     priority: P0
-    status: active
+    status: implemented
     description: >
       将 /timeline 打磨为可筛选、可扫读、可复核的生活事件流。
       时间和来源作为辅助信息，事件标题、摘要和右侧证据占位成为主要浏览对象。
@@ -191,7 +211,7 @@ active_objectives:
   - id: OB-GOAL-014
     title: "Butler Inbox as Decision Queue"
     priority: P0
-    status: active
+    status: implemented
     description: >
       将 /butler/inbox 从提醒列表改成用户决策队列。用户可以把提醒处理掉、
       放到稍后、标记不准确，反馈会影响后续同类提醒的优先级。
@@ -209,7 +229,7 @@ active_objectives:
   - id: OB-GOAL-015
     title: "Assistant as Natural Control Layer"
     priority: P0
-    status: active
+    status: implemented
     description: >
       将 /assistant 打磨成自然语言入口。用户可以回看今天、确认下一步、
       解释依据、提交提醒反馈、生成复盘和查时间线；回答必须保留关键数字、
@@ -223,6 +243,31 @@ active_objectives:
       - "移动端问管家入口不横向溢出"
       - "前端 build 和 assistant smoke 通过"
       - "后端核心测试通过"
+
+planned_objectives:
+  - id: OB-GOAL-017
+    title: "Goal Queue Governance"
+    priority: P0
+    status: planned
+    description: "清理目标队列、更新 current_state.md，并保持一次只推进一个 active productization goal。"
+
+  - id: OB-GOAL-018
+    title: "Local Real Mode Activation Path"
+    priority: P0
+    status: planned
+    description: "为本地真实模式设计清楚的启动、授权、预览和关闭路径。"
+
+  - id: OB-GOAL-019
+    title: "Evidence Trust Layer V1"
+    priority: P0
+    status: planned
+    description: "统一首页、时间线、提醒收件箱和问管家的依据表达。"
+
+  - id: OB-GOAL-020
+    title: "Real 7-Day Local Review"
+    priority: P0
+    status: needs-human
+    description: "在用户明确授权后，执行真实 7 天本地回顾闭环；默认从 dry-run 开始。"
 
 governance_objectives:
   - id: OB-GOAL-005

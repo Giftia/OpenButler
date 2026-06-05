@@ -94,7 +94,7 @@ const demoTimelineItems = [
     summary: "样例提醒显示一条会议后事项适合回看确认。OpenButler 不会替你判断远程任务状态。",
     started_at: new Date().toISOString(),
     confidence: 0.72,
-    evidence_boundary: "这是样例数据，用于展示提醒和依据说明；真实模式需要你主动授权本地数据源。",
+    evidence_boundary: "这是样例数据，用于展示提醒和依据说明；真实模式需要你在本机运行并主动授权。",
     evidence_refs: [{source: "butler_demo", evidence_level: "demo_reference"}],
   },
   {
@@ -135,7 +135,7 @@ export function buildTodayHomeViewModel(
     : "我已经帮你整理好今天值得回看的 3 件事";
 
   const subheadline = mode === "new_user"
-    ? "连接一个本地数据源后，它会整理时间线、生成今日概览，并在需要时提醒你。"
+    ? "本地模式需要你在自己的电脑上运行，并主动授权要读取的线索。"
     : demoMode
       ? "包括物品回溯、待办提醒和休息建议。所有内容都是演示，不会读取你的真实数据。"
       : `其中 ${insightCount} 条值得关注，约 ${Math.round(focusMinutes)} 分钟稳定专注时段。`;
@@ -177,7 +177,7 @@ export function buildTodayHomeViewModel(
   const commandCenter: TodayCommandCenter = {
     headline: mode === "new_user" ? "今天从哪儿开始？" : "今天先看这几件事",
     oneLineStatus: mode === "new_user"
-      ? "先看样例，或连接一个本地数据源。连接后会有今日概览、时间线和依据。"
+      ? "先看样例，或了解本地模式。授权后会有今日概览、时间线和依据。"
       : demoMode
         ? "有 3 条样例记录值得回看，1 条建议适合先处理。"
         : insightCount > 0
@@ -216,7 +216,7 @@ export function buildTodayHomeViewModel(
     subheadline,
     primaryAction: mode === "new_user" ? "开始整理今天" : "看今天建议",
     summaryLine: mode === "new_user"
-      ? "连接一个本地数据源后开始整理。"
+      ? "了解本地模式后再决定是否授权。"
       : demoMode
         ? "3 件事 · 2 条提醒 · 1 个建议"
         : `${sourceCount} 条信号 · ${insightCount} 条提醒 · ${Math.round(focusMinutes)} 分钟专注`,
@@ -243,7 +243,7 @@ export function buildTodayHomeViewModel(
       {
         title: "数据质量",
         value: mode === "new_user" ? "待连接" : "可用",
-        description: mode === "new_user" ? "连接数据后开始整理" : "当前结论带有边界说明",
+        description: mode === "new_user" ? "授权后才开始整理" : "当前结论带有边界说明",
         tone: "amber",
       },
     ],

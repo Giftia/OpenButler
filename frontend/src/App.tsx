@@ -437,7 +437,7 @@ function App() {
           {CurrentPage}
         </main>
       </div>
-      {showFirstRunGuide && (
+          {showFirstRunGuide && (
         <FirstRunGuide
           status={activationStatus}
           onChooseDemo={() => {
@@ -447,8 +447,8 @@ function App() {
           }}
           onChooseReal={() => {
             closeActivation("real_setup_started");
-            setPage("pcActivity");
-            window.history.replaceState(null, "", routeForPage("pcActivity"));
+            setPage("privacy");
+            window.history.replaceState(null, "", routeForPage("privacy"));
           }}
           onDismiss={() => closeActivation("dismissed")}
           onComplete={() => closeActivation("completed")}
@@ -837,7 +837,7 @@ function ButlerHome({
               <span>{command.primaryAction}</span>
             </button>
             {view.mode === "new_user" && (
-              <button className="secondary" onClick={() => navigateTo("/pc-activity-context")}>连接本地数据源</button>
+              <button className="secondary" onClick={() => navigateTo("/me")}>了解本地模式</button>
             )}
           </div>
           <div className="hero-quiet-links" aria-label="首页快捷入口">
@@ -875,7 +875,7 @@ function ButlerHome({
             onActivation("demo_selected");
             document.getElementById("today-suggestions")?.scrollIntoView({behavior: "smooth"});
           }}
-          onOpenAdvanced={() => navigateTo("/pc-activity-context")}
+          onOpenAdvanced={() => navigateTo("/me")}
         />
       )}
 
@@ -937,8 +937,8 @@ function ButlerHome({
           <section className="today-panel">
             <div className="section-title"><h2>下一步</h2></div>
             <div className="next-action-card">
-              <strong>{primarySuggestion?.title ?? (dataInsufficient ? "先连接一个本地数据源" : "查看今天整理好的时间线")}</strong>
-              <span>{primarySuggestion?.summary ?? (dataInsufficient ? "连接电脑活动后，OpenButler 会开始整理今日概览和依据。" : "当前没有紧急提醒，可以从完整时间线继续回看。")}</span>
+              <strong>{primarySuggestion?.title ?? (dataInsufficient ? "先了解本地模式" : "查看今天整理好的时间线")}</strong>
+              <span>{primarySuggestion?.summary ?? (dataInsufficient ? "本地模式需要你在自己的电脑上运行，并主动授权要读取的线索。" : "当前没有紧急提醒，可以从完整时间线继续回看。")}</span>
               <button
                 className="secondary"
                 onClick={() => {
@@ -946,10 +946,10 @@ function ButlerHome({
                     document.getElementById("today-suggestions")?.scrollIntoView({behavior: "smooth"});
                     return;
                   }
-                  navigateTo(dataInsufficient ? "/pc-activity-context" : "/timeline");
+                  navigateTo(dataInsufficient ? "/me" : "/timeline");
                 }}
               >
-                {primarySuggestion ? "看建议" : dataInsufficient ? "去连接" : "去查看"}
+                {primarySuggestion ? "看建议" : dataInsufficient ? "了解本地模式" : "去查看"}
               </button>
             </div>
           </section>
@@ -991,7 +991,7 @@ function ButlerHome({
           <small>objectives {String((objectiveStatus?.objectives ?? []).length)}</small>
           <small>demo_pack {String(demoPack?.status ?? "not_loaded")}</small>
         </div>
-        <p className="policy-note">{home?.overview?.evidence_boundary ?? "今日概览只基于已授权的本地数据源，远程系统状态需要回源确认。"}</p>
+        <p className="policy-note">{home?.overview?.evidence_boundary ?? "今日概览只基于你授权的本地线索，远程系统状态需要回源确认。"}</p>
       </details>
     </div>
   );
@@ -1056,7 +1056,7 @@ function ButlerHome({
         </div>
         <div className="suggestion-box">
           <strong>证据边界</strong>
-          <span>{home?.overview?.evidence_boundary ?? "结论只基于已授权的本地数据源。"}</span>
+          <span>{home?.overview?.evidence_boundary ?? "结论只基于你授权的本地线索。"}</span>
         </div>
         {dataInsufficient && (
           <div className="suggestion-box">
@@ -1351,7 +1351,7 @@ function ProgressiveOnboarding({
       <div>
         <p className="eyebrow">开始设置 · {activationStatusLabel(activationStatus)}</p>
         <h2>选择一种方式开始今天</h2>
-        <p>你可以先用样例理解产品，也可以前往本地数据源设置。样例不会读取真实数据，真实模式需要你主动授权。</p>
+        <p>你可以先看样例，也可以了解本地模式。样例不会读取真实数据；本地模式需要你在自己的电脑上运行，并主动授权。</p>
       </div>
       <div className="onboarding-steps">
         <article><strong>1</strong><span>连接后生成今日概览</span></article>
@@ -1363,7 +1363,7 @@ function ProgressiveOnboarding({
           <CheckCircle2 size={17} />
           <span>先看样例</span>
         </button>
-        <button className="secondary" onClick={onOpenAdvanced}>连接本地数据源</button>
+        <button className="secondary" onClick={onOpenAdvanced}>了解本地模式</button>
         <button className="ghost" onClick={() => document.getElementById("today-suggestions")?.scrollIntoView({behavior: "smooth"})}>稍后配置</button>
       </div>
       <small>线上样例只展示产品效果；本地模式会在你确认后读取授权线索。</small>
@@ -2004,7 +2004,7 @@ function UnifiedTimeline() {
       ) : (
         <div className="friendly-empty">
           <strong>{displayItems.length ? "这个筛选下暂时没有事件" : "时间线还没有记录"}</strong>
-          <span>{displayItems.length ? "可以放宽时间、分类或重要性条件，再看看。" : "连接本地数据源后，这里会按时间整理工作、生活、提醒和可自动化流程。"}</span>
+          <span>{displayItems.length ? "可以放宽时间、分类或重要性条件，再看看。" : "启动本地版并授权后，这里会按时间整理工作、生活、提醒和可自动化流程。"}</span>
         </div>
       )}
     </section>
@@ -2776,7 +2776,7 @@ function FirstRunGuide({
           <h2 id="first-run-title">先选择 OpenButler 怎么认识你的一天</h2>
           <p>
             OpenButler 会整理你主动授权的本地线索，生成今日概览、管家提醒和可复核依据。
-            你可以先看样例，也可以进入真实本地模式设置；未授权时不会读取真实数据。
+            你可以先看样例，也可以了解本地模式；未授权时不会读取真实数据。
           </p>
           <div className="activation-choice-grid" aria-label="选择开始方式">
             <button className="activation-choice primary-choice" onClick={onChooseDemo}>
@@ -2786,8 +2786,8 @@ function FirstRunGuide({
             </button>
             <button className="activation-choice" onClick={onChooseReal}>
               <Database size={17} />
-              <strong>连接本地数据源</strong>
-              <span>前往本机观察设置，真实模式需要你主动授权。</span>
+              <strong>了解本地模式</strong>
+              <span>真实模式需要你本机运行，并主动授权要读取的线索。</span>
             </button>
             <button className="activation-choice quiet-choice" onClick={onDismiss}>
               <CalendarDays size={17} />
@@ -2813,7 +2813,7 @@ function FirstRunGuide({
         <div className="first-run-preview" aria-label="OpenButler 整理结果示例">
           <span className="privacy-chip">样例体验</span>
           <strong>连接后，你会得到什么</strong>
-          <p>真实模式会在你授权后整理本地线索；线上样例只展示效果，不读取你的相册、电脑活动或本地截图。</p>
+          <p>真实模式只在你的本机运行；线上样例只展示效果，不读取你的相册、电脑活动或本地截图。</p>
           <div>
             {previewItems.map((item) => (
               <article key={`${item.time}-${item.title}`}>
@@ -2857,7 +2857,7 @@ function Privacy({
             <p className="eyebrow">开始设置</p>
             <h2>当前状态：{activationStatusLabel(activationStatus)}</h2>
             <p>
-              样例体验只展示产品效果；真实本地模式需要你主动连接本机数据源。
+              样例体验只展示产品效果；真实本地模式需要你在本机运行，并主动授权要读取的线索。
               你可以随时重新打开引导，确认连接后会得到什么。
             </p>
           </div>
@@ -2869,7 +2869,7 @@ function Privacy({
           <StatusItem label="连接后得到" value="概览/提醒/依据" />
           <StatusItem label="真实数据读取" value="需授权" />
         </div>
-        <p className="policy-note">线上版本不会自动读取你的真实本机活动；连接入口只会带你进入现有本地数据源设置。</p>
+        <p className="policy-note">线上版本不会读取你的真实本机活动。真实模式需要在你的电脑上启动本地版，并由你确认授权范围。</p>
       </section>
 
       <section className="today-panel">

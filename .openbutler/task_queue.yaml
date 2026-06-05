@@ -938,4 +938,116 @@ tasks:
     evidence:
       - "Local validation before commit and Vercel deploy."
 
+  - id: OB-TASK-160
+    title: "收紧公开 Demo 与本地模式边界"
+    goal_id: OB-GOAL-016
+    priority: P0
+    status: done
+    done_when:
+      - "Vercel 线上版明确标识为样例体验"
+      - "普通路径不暗示已经连接真实本机数据"
+      - "本地模式说明本机运行和主动授权"
+      - "不读取真实 MineContext 数据"
+    evidence:
+      - "frontend/src/App.tsx uses 了解本地模式 and states the hosted version does not read real local activity."
+      - "docs/product/DEMO_LOCAL_MODE_BOUNDARY.md documents the public demo boundary."
+      - "docs/product/LOCAL_REAL_MODE_ACTIVATION_PATH.md documents the real local mode activation path."
+
+  - id: OB-TASK-161
+    title: "归档已完成产品化目标"
+    goal_id: OB-GOAL-017
+    priority: P0
+    status: done
+    done_when:
+      - "OB-GOAL-010 到 OB-GOAL-015 不再作为 active objectives"
+      - "当前 active objective 只保留 OB-GOAL-016"
+      - "后续目标进入 planned_objectives"
+    evidence:
+      - ".openbutler/goals.yaml active_objectives contains OB-GOAL-016."
+      - ".openbutler/goals.yaml archived_objectives contains OB-GOAL-010 through OB-GOAL-015."
+
+  - id: OB-TASK-162
+    title: "补齐 Demo / Local Boundary 产品文档"
+    goal_id: OB-GOAL-016
+    priority: P0
+    status: done
+    done_when:
+      - "Demo/local 边界文档存在"
+      - "本地真实模式路径文档存在"
+      - "依据层文档存在"
+    evidence:
+      - "docs/product/DEMO_LOCAL_MODE_BOUNDARY.md"
+      - "docs/product/LOCAL_REAL_MODE_ACTIVATION_PATH.md"
+      - "docs/product/EVIDENCE_TRUST_LAYER_V1.md"
+
+  - id: OB-TASK-163
+    title: "为 OB-GOAL-016 补充 Productization Harness mapper"
+    goal_id: OB-GOAL-016
+    priority: P0
+    status: done
+    done_when:
+      - "Productization Harness 可识别 OB-GOAL-016"
+      - "mapper 不读取真实数据"
+      - "mapper 不新增业务行为"
+    evidence:
+      - "backend/app/modules/butler_core/service.py contains OB-GOAL-016 mapper."
+
+  - id: OB-TASK-164
+    title: "增加 Demo / Local Boundary smoke"
+    goal_id: OB-GOAL-016
+    priority: P0
+    status: done
+    done_when:
+      - "smoke 检查样例体验文案"
+      - "smoke 检查本地模式授权说明"
+      - "smoke 检查普通路径不出现工程词"
+      - "smoke 检查未新增 dedicated evidence endpoint"
+    evidence:
+      - "frontend/scripts/smoke-demo-local-boundary.mjs"
+      - "frontend/package.json smoke:demo-local-boundary"
+
+  - id: OB-TASK-170
+    title: "继续治理目标队列和 current_state.md"
+    goal_id: OB-GOAL-017
+    priority: P0
+    status: ready
+    done_when:
+      - "current_state.md 与最新 active/planned/archived 目标一致"
+      - "task_queue 没有过期 active wording"
+      - "Productization Harness 状态能解释当前阶段"
+
+  - id: OB-TASK-180
+    title: "设计本地真实模式启动向导"
+    goal_id: OB-GOAL-018
+    priority: P0
+    status: ready
+    done_when:
+      - "用户知道如何启动本地版"
+      - "用户知道会读取什么和不读取什么"
+      - "真实数据预览优先 dry-run"
+      - "不会自动导入或复制截图"
+
+  - id: OB-TASK-190
+    title: "统一四条主路径的依据表达"
+    goal_id: OB-GOAL-019
+    priority: P0
+    status: ready
+    done_when:
+      - "首页、时间线、Inbox、问管家使用同一套来源/可信度/边界/隐私说明"
+      - "普通层不展示内部字段"
+      - "高级层可查看调试信息"
+
+  - id: OB-TASK-200
+    title: "真实 7 天本地回顾闭环"
+    goal_id: OB-GOAL-020
+    priority: P0
+    status: needs-human
+    why: "需要读取真实本机活动 metadata，必须由用户单独确认。"
+    done_when:
+      - "只读 dry-run 优先"
+      - "不写数据库"
+      - "不复制截图"
+      - "不上传数据"
+      - "输出聚合脱敏结果"
+
 blocked: []

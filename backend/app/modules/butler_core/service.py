@@ -1156,6 +1156,8 @@ class ButlerCoreService:
             "Privacy Boundaries": root / "docs" / "privacy" / "PRIVACY_BOUNDARIES.md",
         }
         app_text = app_path.read_text(encoding="utf-8") if app_path.exists() else ""
+        butler_ui_text = (root / "frontend" / "src" / "lib" / "butlerUiAdapter.ts").read_text(encoding="utf-8")
+        api_contracts_text = (root / "docs" / "architecture" / "API_CONTRACTS.md").read_text(encoding="utf-8")
         router_text = router_path.read_text(encoding="utf-8") if router_path.exists() else ""
         service_text = service_path.read_text(encoding="utf-8") if service_path.exists() else ""
         insight_engine_text = insight_engine_path.read_text(encoding="utf-8") if insight_engine_path.exists() else ""
@@ -2040,6 +2042,98 @@ class ButlerCoreService:
                             {"kind": "file", "path": "frontend/src/styles.css"},
                             {"kind": "file", "path": "frontend/scripts/smoke-assistant-natural-control.mjs"},
                         ],
+                    ),
+            ],
+            "OB-GOAL-016": [
+                    criterion(
+                        "public_demo_marked_as_sample",
+                        "线上 Demo 明确标识为样例体验",
+                        "样例体验" in app_text
+                        and "未读取你的真实数据" in butler_ui_text
+                        and (root / "docs" / "product" / "DEMO_LOCAL_MODE_BOUNDARY.md").exists(),
+                        [
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                            {"kind": "file", "path": "docs/product/DEMO_LOCAL_MODE_BOUNDARY.md"},
+                        ],
+                    ),
+                    criterion(
+                        "public_demo_does_not_imply_real_connection",
+                        "公开 Demo 不暗示已经连接真实本机数据",
+                        "了解本地模式" in app_text
+                        and "线上版本不会读取你的真实本机活动" in app_text
+                        and "真实本地模式需要你在本机运行" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "real_local_mode_requires_local_run_and_authorization",
+                        "真实本地模式入口说明需要本机运行和主动授权",
+                        "本机运行" in app_text
+                        and "主动授权" in app_text
+                        and "本地真实模式" in (root / "docs" / "product" / "LOCAL_REAL_MODE_ACTIVATION_PATH.md").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                            {"kind": "file", "path": "docs/product/LOCAL_REAL_MODE_ACTIVATION_PATH.md"},
+                        ],
+                    ),
+                    criterion(
+                        "ordinary_ctas_are_user_tasks",
+                        "普通路径 CTA 使用看今天重点、查看时间线、解释依据、了解本地模式等用户任务文案",
+                        "看今天建议" in butler_ui_text
+                        and "查看全部记录" in app_text
+                        and "查看依据" in app_text
+                        and "了解本地模式" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "ordinary_path_forbidden_terms_guarded",
+                        "普通路径不出现 mock、seed、debug、internal source 等工程词",
+                        (root / "frontend" / "scripts" / "smoke-demo-local-boundary.mjs").exists()
+                        and "forbiddenTerms" in (root / "frontend" / "scripts" / "smoke-demo-local-boundary.mjs").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "frontend/scripts/smoke-demo-local-boundary.mjs"}],
+                    ),
+                    criterion(
+                        "trust_layer_present_across_main_paths",
+                        "提醒、时间线和问管家都保留依据与边界说明",
+                        "evidenceBoundary" in app_text
+                        and "边界说明" in app_text
+                        and "依据" in app_text
+                        and (root / "docs" / "product" / "EVIDENCE_TRUST_LAYER_V1.md").exists(),
+                        [
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                            {"kind": "file", "path": "docs/product/EVIDENCE_TRUST_LAYER_V1.md"},
+                        ],
+                    ),
+                    criterion(
+                        "no_dedicated_evidence_endpoint_added",
+                        "不新增 /api/butler/insights/{id}/evidence",
+                        "/insights/{insight_id}/evidence" not in router_text
+                        and "evidence_refs" in api_contracts_text
+                        and "inline" in api_contracts_text.lower(),
+                        [
+                            {"kind": "file", "path": "backend/app/modules/butler_core/router.py"},
+                            {"kind": "file", "path": "docs/architecture/API_CONTRACTS.md"},
+                        ],
+                    ),
+                    criterion(
+                        "no_real_minecontext_read_for_demo_boundary",
+                        "不读取真实 MineContext 数据",
+                        "本轮不读取真实 MineContext 数据" in (root / "docs" / "product" / "DEMO_LOCAL_MODE_BOUNDARY.md").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "docs/product/DEMO_LOCAL_MODE_BOUNDARY.md"}],
+                    ),
+                    criterion(
+                        "no_screenshot_copy_or_upload",
+                        "不复制截图或上传数据",
+                        "不复制截图" in (root / "docs" / "product" / "DEMO_LOCAL_MODE_BOUNDARY.md").read_text(encoding="utf-8")
+                        and "不上传数据" in (root / "docs" / "product" / "DEMO_LOCAL_MODE_BOUNDARY.md").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "docs/product/DEMO_LOCAL_MODE_BOUNDARY.md"}],
+                    ),
+                    criterion(
+                        "frontend_and_backend_validation_documented",
+                        "前端 build 和后端核心测试通过",
+                        "Frontend build passes" in (root / "current_state.md").read_text(encoding="utf-8")
+                        and "butler_core tests" in (root / "current_state.md").read_text(encoding="utf-8")
+                        and "pc_activity_context tests" in (root / "current_state.md").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "current_state.md"}],
                     ),
             ],
         }

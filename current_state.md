@@ -1,6 +1,35 @@
 # OpenButler Current State
 
-Updated: 2026-05-30
+Updated: 2026-06-05
+
+## Product Design Recovery Update
+
+Current active objective is now `OB-GOAL-016: Demo / Local Mode Boundary`.
+
+The public Vercel version is a sample experience. It must say that it does not read real local data. Real personal-data use belongs to local mode, which requires running OpenButler on the user's own computer and actively authorizing local signals.
+
+Governance updates:
+
+- `OB-GOAL-010` through `OB-GOAL-015` are archived as implemented objectives.
+- `OB-GOAL-016` is the only active productization objective.
+- `OB-GOAL-017` through `OB-GOAL-019` are planned/ready next goals.
+- `OB-GOAL-020` requires separate human confirmation because it reads real local activity metadata.
+
+Product boundary updates:
+
+- Ordinary UI uses `了解本地模式` instead of implying direct public-web connection to local data.
+- Demo copy uses `样例体验，未读取你的真实数据。`
+- The local-mode path explains local run plus active authorization before any real-data setup.
+- Evidence remains inline; no `GET /api/butler/insights/{id}/evidence` endpoint was added.
+
+Validation scope for this update:
+
+- Frontend build passes.
+- `butler_core tests` pass.
+- `pc_activity_context tests` pass.
+- No real MineContext data was read.
+- No screenshots were copied.
+- No external model or webhook was called.
 
 ## Repository Baseline
 

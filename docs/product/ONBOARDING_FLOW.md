@@ -22,10 +22,10 @@ First-run activation now starts with a choice, not a technical setup screen:
    - UI behavior: set local browser activation state to `demo_selected`.
    - Privacy note: no real MineContext data, screenshots, uploads, external models, or backend imports.
 
-2. **连接本地数据源**
-   - User-facing explanation: enter real local setup when the user is ready to authorize data.
-   - UI behavior: route to the existing local data source / PC activity setup path.
-   - Privacy note: this CTA does not directly import or mutate data.
+2. **了解本地模式**
+   - User-facing explanation: real mode runs on the user's own computer and requires active authorization.
+   - UI behavior: route to the user-facing local-mode explanation.
+   - Privacy note: this CTA does not directly import, read, or mutate data.
 
 3. **稍后配置**
    - User-facing explanation: enter the product with a clear next step and no empty console.
@@ -34,9 +34,9 @@ First-run activation now starts with a choice, not a technical setup screen:
 
 After the choice, the product-level promise is still:
 
-1. **连接本机观察**
-   - User-facing explanation: let OpenButler read authorized local computer activity.
-   - UI entry: data source card or advanced/lab link to PC activity context.
+1. **启动本地版**
+   - User-facing explanation: run OpenButler on the user's own computer before authorizing local signals.
+   - UI entry: local-mode explanation and advanced/lab link to PC activity context.
    - Privacy note: local read-only by default; no screenshot copy.
 
 2. **生成今日概览**
@@ -73,7 +73,7 @@ Do not show:
 The home page should prefer:
 
 - primary action: `先看样例`,
-- secondary action: `连接本地数据源`,
+- secondary action: `了解本地模式`,
 - quiet action: `稍后配置`.
 
 It must not directly run a real import from the first-run prompt.

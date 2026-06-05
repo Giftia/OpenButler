@@ -19,6 +19,7 @@
     "smoke:timeline-life-feed": "node scripts/smoke-timeline-life-feed.mjs",
     "smoke:butler-inbox-decision-queue": "node scripts/smoke-butler-inbox-decision-queue.mjs",
     "smoke:assistant-natural-control": "node scripts/smoke-assistant-natural-control.mjs",
+    "smoke:demo-local-boundary": "node scripts/smoke-demo-local-boundary.mjs",
     "smoke:butler-l1-audit": "node scripts/smoke-butler-l1-audit.mjs",
     "smoke:butler-data-insufficient-drill": "node scripts/smoke-butler-data-insufficient-drill.mjs",
     "artifact:butler-demo-pack": "node scripts/write-butler-demo-pack-artifact.mjs",
