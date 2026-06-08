@@ -245,6 +245,19 @@ archived_objectives:
       - "后端核心测试通过"
 
 planned_objectives:
+  - id: OB-GOAL-021
+    title: "Achievement Layer Recovery"
+    priority: P0
+    status: implemented
+    description: "恢复成就系统为独立普通用户入口，并将旧奖状栏升级为正反馈层。"
+    success_criteria:
+      - "/achievements 前端路由存在"
+      - "主导航显示 成就"
+      - "今日页可进入今天的小成就"
+      - "成就页展示今天的小成就、连续记录、下一枚可解锁"
+      - "成就卡可展开依据和边界说明"
+      - "普通 UI 不暴露内部字段或本地截图路径"
+
   - id: OB-GOAL-017
     title: "Goal Queue Governance"
     priority: P0

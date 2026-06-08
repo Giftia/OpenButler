@@ -2,6 +2,23 @@
 
 Updated: 2026-06-05
 
+## Achievement Layer Recovery Update
+
+Updated: 2026-06-08
+
+`OB-GOAL-021: Achievement Layer Recovery` restored the achievement system as a user-visible product surface without changing backend API contracts.
+
+- New route: `/achievements`.
+- Main navigation now includes `成就`.
+- `今日` includes a lightweight `今天的小成就` entry.
+- The achievement page shows `今天的小成就`, `连续记录`, and `下一枚可解锁`.
+- Achievement evidence remains inline and user-facing: source, confidence, boundary, and privacy note.
+- Public demo mode can show sample achievements, explicitly marked as not reading real user data.
+- No real MineContext data was read.
+- No screenshots were copied.
+- No external model or webhook was called.
+- Productization Harness active objective remains `OB-GOAL-016` until the next governance pass updates mapper expectations.
+
 ## Product Design Recovery Update
 
 Current active objective is now `OB-GOAL-016: Demo / Local Mode Boundary`.

@@ -1050,4 +1050,22 @@ tasks:
       - "不上传数据"
       - "输出聚合脱敏结果"
 
+  - id: OB-TASK-210
+    title: "恢复成就系统为独立普通用户入口"
+    goal_id: OB-GOAL-021
+    priority: P0
+    status: done
+    done_when:
+      - "新增 /achievements 前端路由"
+      - "主导航显示 成就"
+      - "今日页提供今天的小成就入口"
+      - "成就页展示今天的小成就、连续记录、下一枚可解锁"
+      - "成就卡可展开依据和边界说明"
+      - "普通 UI 不暴露 event_type、source_event_id、mock、seed 或本地截图路径"
+    evidence:
+      - "frontend/src/App.tsx AchievementsPage"
+      - "frontend/src/lib/achievementUiAdapter.ts"
+      - "frontend/scripts/smoke-achievements.mjs"
+      - "docs/product/ACHIEVEMENT_LAYER_RECOVERY.md"
+
 blocked: []

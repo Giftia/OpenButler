@@ -85,6 +85,7 @@ import {
   simulateEvents
 } from "./lib/api";
 import {buildTodayHomeViewModel, type ActivationMode} from "./lib/butlerUiAdapter";
+import {buildAchievementViewModel, type AchievementCard} from "./lib/achievementUiAdapter";
 import {
   inboxCountByState,
   inboxStateLabels,
@@ -109,6 +110,7 @@ type PageKey =
   | "ingest"
   | "plugins"
   | "timeline"
+  | "achievements"
   | "chat"
   | "workstation"
   | "pcActivity"
@@ -120,6 +122,7 @@ type PageKey =
 const primaryNavItems: Array<{key: PageKey; label: string; icon: typeof Home}> = [
   {key: "butler", label: "今日", icon: Inbox},
   {key: "timeline", label: "时间线", icon: CalendarDays},
+  {key: "achievements", label: "成就", icon: Trophy},
   {key: "chat", label: "问管家", icon: MessageSquareText},
   {key: "privacy", label: "我的", icon: ShieldCheck}
 ];
@@ -174,6 +177,7 @@ function routeForPage(key: PageKey) {
   return {
     butler: "/butler",
     timeline: "/timeline",
+    achievements: "/achievements",
     chat: "/assistant",
     privacy: "/me",
     dashboard: "/dashboard",
@@ -194,6 +198,8 @@ function pageForPath(path: string): PageKey {
       ? "metrics"
       : path.includes("goals")
         ? "goals"
+        : path.includes("achievements")
+          ? "achievements"
         : path.includes("pc-activity-context")
           ? "pcActivity"
           : path.includes("vision")
@@ -345,6 +351,7 @@ function App() {
     timeline: (
       <UnifiedTimeline />
     ),
+    achievements: <AchievementsPage />,
     chat: <Chat />,
     workstation: <WorkstationVision privacyMode={privacyMode} />,
     pcActivity: <PCActivityContext privacyMode={privacyMode} />,
@@ -455,6 +462,134 @@ function App() {
         />
       )}
     </>
+  );
+}
+
+function AchievementsPage() {
+  const [events, setEvents] = useState<Array<Record<string, any>>>([]);
+  const [timelineItems, setTimelineItems] = useState<Array<Record<string, any>>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    void (async () => {
+      try {
+        const [eventResult, timelineResult] = await Promise.all([
+          getEvents(),
+          getButlerTimeline()
+        ]);
+        if (!mounted) return;
+        setEvents((eventResult as any).events ?? eventResult.items ?? []);
+        setTimelineItems(timelineResult.items ?? []);
+      } catch {
+        if (!mounted) return;
+        setEvents([]);
+        setTimelineItems([]);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const view = buildAchievementViewModel(events, timelineItems);
+
+  const navigateTo = (path: string) => {
+    window.history.replaceState(null, "", path);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+
+  return (
+    <div className="achievements-page">
+      <section className="achievement-hero today-panel">
+        <div>
+          <p className="eyebrow">{view.dataMode === "sample" ? "样例体验，未读取你的真实数据。" : "本地整理"}</p>
+          <h1>{view.headline}</h1>
+          <p>{view.subheadline}</p>
+        </div>
+        <div className="achievement-hero-number">
+          <strong>{view.today.length}</strong>
+          <span>条小成就</span>
+        </div>
+      </section>
+
+      <section className="today-panel">
+        <div className="section-title">
+          <div>
+            <h2>今天的小成就</h2>
+            <p>这里记录进展，不评价你，也不制造压力。</p>
+          </div>
+        </div>
+        <div className="achievement-card-grid">
+          {view.today.map((item: AchievementCard) => (
+            <article className="achievement-card-v2" key={item.id}>
+              <div className="achievement-card-head">
+                <Trophy size={20} />
+                <span>{item.timeLabel}</span>
+              </div>
+              <strong>{item.title}</strong>
+              <p>{item.summary}</p>
+              <div className="achievement-meta-row">
+                <span>{item.source}</span>
+                <span>可信度 {item.confidence}</span>
+              </div>
+              <details className="achievement-evidence">
+                <summary>查看依据</summary>
+                <div>
+                  <span>来源：{item.source}</span>
+                  <span>可信度：{item.confidence}</span>
+                  <span>边界说明：{item.boundary}</span>
+                  <span>隐私说明：{item.privacy}</span>
+                </div>
+              </details>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="achievement-columns">
+        <div className="today-panel">
+          <div className="section-title">
+            <h2>连续记录</h2>
+          </div>
+          <div className="achievement-streak-list">
+            {view.streaks.map((item) => (
+              <div className="achievement-streak" key={item.id}>
+                <strong>{item.value}</strong>
+                <div>
+                  <span>{item.title}</span>
+                  <p>{item.summary}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="today-panel">
+          <div className="section-title">
+            <h2>下一枚可解锁</h2>
+          </div>
+          <div className="achievement-next-list">
+            {view.nextUnlock.map((item) => (
+              <article className="achievement-next" key={item.id}>
+                <strong>{item.title}</strong>
+                <p>{item.summary}</p>
+                <button
+                  className="secondary"
+                  onClick={() => navigateTo(item.action.includes("时间线") ? "/timeline" : "/me")}
+                >
+                  {item.action}
+                </button>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {loading && <div className="friendly-empty"><strong>正在整理小成就</strong><span>如果暂时没有真实记录，会先展示样例体验。</span></div>}
+    </div>
   );
 }
 
@@ -912,6 +1047,23 @@ function ButlerHome({
                 <span>{dataInsufficient ? "OpenButler 不会用空数据编造结论。你可以先了解本地模式，或查看高级入口。" : "已授权线索已整理，目前没有高优先级提醒。"}</span>
               </div>
             )}
+          </section>
+
+          <section className="today-panel achievement-entry-panel">
+            <div className="section-title">
+              <div>
+                <h2>今天的小成就</h2>
+                <p>把值得留下的小进展单独收好，方便晚点回看。</p>
+              </div>
+              <button className="ghost" onClick={() => navigateTo("/achievements")}>查看成就</button>
+            </div>
+            <div className="achievement-entry-card">
+              <Trophy size={22} />
+              <div>
+                <strong>有几件小事值得被记住</strong>
+                <span>包括专注片段、待办收尾和节律恢复。样例体验未读取你的真实数据。</span>
+              </div>
+            </div>
           </section>
 
           <section className="today-panel">

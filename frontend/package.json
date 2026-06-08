@@ -17,6 +17,7 @@
     "smoke:first-run-activation": "node scripts/smoke-first-run-activation.mjs",
     "smoke:today-command-center": "node scripts/smoke-today-command-center.mjs",
     "smoke:timeline-life-feed": "node scripts/smoke-timeline-life-feed.mjs",
+    "smoke:achievements": "node scripts/smoke-achievements.mjs",
     "smoke:butler-inbox-decision-queue": "node scripts/smoke-butler-inbox-decision-queue.mjs",
     "smoke:assistant-natural-control": "node scripts/smoke-assistant-natural-control.mjs",
     "smoke:demo-local-boundary": "node scripts/smoke-demo-local-boundary.mjs",
