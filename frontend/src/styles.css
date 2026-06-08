@@ -1396,6 +1396,7 @@ nav button.active {
 }
 
 main {
+  grid-column: 2;
   min-width: 0;
   padding: 30px clamp(22px, 4vw, 54px) 72px;
   overflow-x: hidden;
@@ -2433,6 +2434,7 @@ h2 {
   }
 
   main {
+    grid-column: auto;
     width: 100%;
     max-width: 100%;
     padding: 12px 18px 42px;
