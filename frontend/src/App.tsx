@@ -1061,7 +1061,7 @@ function ButlerHome({
               <Trophy size={22} />
               <div>
                 <strong>有几件小事值得被记住</strong>
-                <span>包括专注片段、待办收尾和节律恢复。样例体验未读取你的真实数据。</span>
+                <span>{view.demoMode ? "包括专注片段、待办收尾和节律恢复。样例体验未读取你的真实数据。" : "包括本地时间线里的推进、收尾和节律片段。"}</span>
               </div>
             </div>
           </section>

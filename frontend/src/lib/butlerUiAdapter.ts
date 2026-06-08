@@ -120,7 +120,11 @@ export function buildTodayHomeViewModel(
   const sourceCount = Number(metrics.source_event_count ?? 0);
   const focusMinutes = Number(metrics.focus_minutes ?? 0);
   const insightCount = insights.length;
-  const demoMode = activationMode === "demo" || isDemoLike(home) || isDemoLike(timelineItems);
+  const hasLocalSignals = sourceCount > 0 || timelineItems.some((item) => {
+    const source = String(item?.source ?? "");
+    return source === "pc_activity" || source === "minecontext" || source === "butler_core";
+  });
+  const demoMode = activationMode === "demo" || (!hasLocalSignals && (isDemoLike(home) || isDemoLike(timelineItems)));
   const nonDataQualityInsights = insights.filter((item: Record<string, any>) => item.type !== "data_quality_notice");
   const mode: TodayMode = activationMode === "demo"
     ? "active"
