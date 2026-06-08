@@ -1120,13 +1120,16 @@ button {
 }
 
 .sidebar {
-  position: sticky;
-  top: 0;
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 260px;
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   gap: 22px;
   padding: 22px;
+  overflow-y: auto;
   color: #f8fafc;
   background:
     linear-gradient(180deg, rgb(16 24 32 / 96%), rgb(22 33 43 / 98%)),
@@ -2134,6 +2137,10 @@ h2 {
     grid-template-columns: 88px minmax(0, 1fr);
   }
 
+  .sidebar {
+    width: 88px;
+  }
+
   .brand div:last-child,
   nav span,
   .mode-chip span {
@@ -2186,6 +2193,7 @@ h2 {
 
   .sidebar {
     position: sticky;
+    inset: auto;
     top: 0;
     z-index: 10;
     width: 100%;
@@ -2733,6 +2741,7 @@ h2 {
     right: 12px;
     top: auto;
     bottom: max(10px, env(safe-area-inset-bottom));
+    inset: auto 12px max(10px, env(safe-area-inset-bottom)) 12px;
     z-index: 40;
     width: auto;
     max-width: calc(100vw - 24px);
