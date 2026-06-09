@@ -352,7 +352,7 @@ function App() {
       <UnifiedTimeline />
     ),
     achievements: <AchievementsPage />,
-    chat: <Chat />,
+    chat: <Chat activationStatus={activationStatus} />,
     workstation: <WorkstationVision privacyMode={privacyMode} />,
     pcActivity: <PCActivityContext privacyMode={privacyMode} />,
     butlerInbox: <ButlerInbox />,
@@ -2778,7 +2778,7 @@ function StatusItem({label, value}: {label: string; value: string}) {
   );
 }
 
-function Chat() {
+function Chat({activationStatus}: {activationStatus: ActivationStatus}) {
   const [messages, setMessages] = useState<Array<{role: "user" | "butler"; text: string}>>([
     {role: "butler", text: "结论：我可以先帮你回看今天。\n关键数字：回答里会尽量给出少量数字，比如提醒数量、专注时长或时间线记录数。\n依据：我只使用 OpenButler 已授权的本地整理结果。\n边界说明：我不会凭聊天记忆补事实，也不能确认远程系统状态。\n下一步：你可以先问“今天有什么值得注意？”。"}
   ]);
@@ -2839,7 +2839,7 @@ function Chat() {
   return (
     <section className="chat-layout">
       <div className="butler-brief">
-        <span className="privacy-chip">样例体验</span>
+        <span className="privacy-chip">{activationModeFor(activationStatus) === "real_local" ? "本地整理" : "样例体验"}</span>
         <strong>你可以直接问我今天该看什么。</strong>
         <p>我会先给结论，再给关键数字、依据和边界。涉及外部系统状态时，我只会提示你回到原处确认。</p>
         <div className="hero-actions">
