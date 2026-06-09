@@ -184,6 +184,8 @@ def insert_event(event: dict[str, Any]) -> dict[str, Any]:
 
 
 def seed_events_if_empty() -> None:
+    if os.getenv("OPENBUTLER_DISABLE_SEED_EVENTS") == "1":
+        return
     with db() as conn:
         count = conn.execute("SELECT COUNT(*) AS count FROM events").fetchone()["count"]
     if count:
