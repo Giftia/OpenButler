@@ -361,7 +361,7 @@ function App() {
   }, [events]);
 
   const CurrentPage = {
-    butler: <ButlerHome activationStatus={activationStatus} onActivation={updateActivation} />,
+    butler: <ButlerHome activationStatus={activationStatus} onActivation={updateActivation} onOpenGuide={() => setShowFirstRunGuide(true)} />,
     dashboard: (
       <Dashboard
         events={events}
@@ -818,10 +818,12 @@ function Timeline({
 
 function ButlerHome({
   activationStatus,
-  onActivation
+  onActivation,
+  onOpenGuide
 }: {
   activationStatus: ActivationStatus;
   onActivation: (status: ActivationStatus) => void;
+  onOpenGuide: () => void;
 }) {
   const [home, setHome] = useState<Record<string, any> | null>(null);
   const [readiness, setReadiness] = useState<Record<string, any> | null>(null);
@@ -1006,6 +1008,16 @@ function ButlerHome({
     navigateTo("/timeline");
   }
 
+  function startFullSetup() {
+    onActivation("real_setup_started");
+    onOpenGuide();
+  }
+
+  function replayGuide() {
+    onActivation("unseen");
+    onOpenGuide();
+  }
+
   return (
     <div className="today-page">
       <section className="today-hero" aria-label="OpenButler 主动 AI 管家">
@@ -1018,6 +1030,9 @@ function ButlerHome({
               <CheckCircle2 size={17} />
               <span>{command.primaryAction}</span>
             </button>
+            {activationStatus === "demo_selected" && (
+              <button className="secondary setup-action" onClick={startFullSetup}>启用完整功能</button>
+            )}
             {view.mode === "new_user" && (
               <button className="secondary" onClick={() => navigateTo("/me")}>了解本地模式</button>
             )}
@@ -1049,6 +1064,23 @@ function ButlerHome({
           </button>
         </div>
       </section>
+
+      {activationStatus === "demo_selected" && (
+        <section className="setup-resume-panel" aria-label="本地完整功能设置">
+          <div>
+            <p className="eyebrow">当前是样例体验</p>
+            <h2>想用自己的记录，需要先完成本地设置</h2>
+            <p>
+              现在没有读取你的真实数据。启用完整功能时，OpenButler 会先让你填写模型配置，再扫描本机记录工具。
+              确认前不会导入活动，也不会复制截图。
+            </p>
+          </div>
+          <div className="setup-resume-actions">
+            <button className="primary" onClick={startFullSetup}>继续设置完整功能</button>
+            <button className="secondary" onClick={replayGuide}>重新看一遍引导</button>
+          </div>
+        </section>
+      )}
 
       {view.mode === "new_user" && (
         <ProgressiveOnboarding
@@ -1127,7 +1159,12 @@ function ButlerHome({
 
         <aside className="today-side-column">
           <section className="today-panel">
-            <div className="section-title"><h2>场景信号</h2></div>
+            <div className="section-title">
+              <div>
+                <h2>场景信号</h2>
+                <p>这些只是入口，点开依据前不会展示复杂细节。</p>
+              </div>
+            </div>
             <div className="scene-card-grid">
               {view.sceneCards.map((card) => <SceneSignalCard card={card} key={card.title} />)}
             </div>

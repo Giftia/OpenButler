@@ -179,12 +179,24 @@
   gap: 12px;
 }
 
-.today-status-card,
-.scene-card {
+.scene-card-grid {
+  grid-template-columns: 1fr;
+}
+
+.today-status-card {
   display: grid;
   gap: 7px;
   min-height: 118px;
   padding: 18px;
+}
+
+.scene-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 14px;
+  align-items: center;
+  min-height: 0;
+  padding: 14px 16px;
 }
 
 .today-status-card span,
@@ -201,6 +213,60 @@
   color: #0f172a;
   font-size: clamp(22px, 2.7vw, 30px);
   line-height: 1;
+}
+
+.scene-card strong {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  justify-self: end;
+  max-width: 5.8em;
+  font-size: clamp(24px, 2.4vw, 34px);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.scene-card small {
+  grid-column: 1;
+  min-width: 0;
+}
+
+.setup-resume-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  padding: 20px 22px;
+  border: 1px solid rgb(15 118 110 / 18%);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(135deg, rgb(240 253 250 / 96%), rgb(239 246 255 / 82%)),
+    radial-gradient(circle at 92% 16%, rgb(20 184 166 / 18%), transparent 30%);
+  box-shadow: var(--shadow-soft);
+}
+
+.setup-resume-panel h2,
+.setup-resume-panel p {
+  margin: 0;
+}
+
+.setup-resume-panel h2 {
+  color: #0f172a;
+  font-size: clamp(22px, 2.4vw, 32px);
+  line-height: 1.15;
+}
+
+.setup-resume-panel p:not(.eyebrow) {
+  max-width: 760px;
+  margin-top: 8px;
+  color: #475569;
+  line-height: 1.65;
+}
+
+.setup-resume-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: end;
 }
 
 .today-status-card small,
@@ -1280,7 +1346,6 @@
   }
 
   .today-status-grid,
-  .scene-card-grid,
   .activation-status-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1312,7 +1377,6 @@
   }
 
   .today-status-grid,
-  .scene-card-grid,
   .activation-status-grid {
     grid-template-columns: 1fr;
   }
@@ -1320,6 +1384,19 @@
   .today-status-card,
   .scene-card {
     min-height: 112px;
+  }
+
+  .setup-resume-panel {
+    grid-template-columns: 1fr;
+    padding: 16px;
+  }
+
+  .setup-resume-actions {
+    justify-content: stretch;
+  }
+
+  .setup-resume-actions button {
+    width: 100%;
   }
 
   .decision-inbox-head {

@@ -276,6 +276,12 @@ try {
     hasDialog: !!document.querySelector('.first-run-guide'),
     hasPrimaryNav: !!document.querySelector('[data-nav-key="butler"]'),
     hasSample: document.body.innerText.includes('钥匙可能在玄关托盘附近') || document.body.innerText.includes('样例体验') || document.body.innerText.includes('3 件事'),
+    hasSetupResume: document.body.innerText.includes('想用自己的记录，需要先完成本地设置'),
+    hasFullSetupButton: Array.from(document.querySelectorAll('button')).some((button) => button.innerText.includes('继续设置完整功能')),
+    sceneCardsUseList: Array.from(document.querySelectorAll('.scene-card')).every((card) => {
+      const rect = card.getBoundingClientRect();
+      return rect.width > 180 && rect.height < 130;
+    }),
     textStart: document.body.innerText.slice(0, 240),
     width: innerWidth,
     scrollWidth: document.documentElement.scrollWidth
@@ -284,7 +290,25 @@ try {
   assertCondition(!afterDemo.hasDialog, "Demo choice did not close the activation dialog.");
   assertCondition(afterDemo.hasPrimaryNav, "Demo mode should enter the sample application shell.");
   assertCondition(afterDemo.hasSample || afterDemo.textStart.includes("样例体验"), `Demo choice did not reveal sample value. Text: ${afterDemo.textStart}`);
+  assertCondition(afterDemo.hasSetupResume && afterDemo.hasFullSetupButton, "Demo home is missing the visible full-setup resume entry.");
+  assertCondition(afterDemo.sceneCardsUseList, "Scene signal cards appear compressed instead of using a readable list layout.");
   assertNoHorizontalOverflow(afterDemo, "Demo");
+
+  await evaluate(cdp, `Array.from(document.querySelectorAll('button')).find((button) => button.innerText.includes('继续设置完整功能')).click(); true`);
+  await new Promise((resolveWait) => setTimeout(resolveWait, 500));
+  const afterResumeSetup = await evaluate(cdp, `(() => ({
+    status: localStorage.getItem('openbutler:first_run_activation:v1'),
+    hasDialog: !!document.querySelector('.first-run-guide'),
+    hasModelConfig: document.body.innerText.includes('模型供应商'),
+    hasMineContextScan: document.body.innerText.includes('扫描本机 MineContext'),
+    hasPrimaryNav: !!document.querySelector('[data-nav-key="butler"]'),
+    width: innerWidth,
+    scrollWidth: document.documentElement.scrollWidth
+  }))()`);
+  assertCondition(afterResumeSetup.status === "real_setup_started", "Full setup resume did not switch activation state to real_setup_started.");
+  assertCondition(afterResumeSetup.hasDialog && afterResumeSetup.hasModelConfig && afterResumeSetup.hasMineContextScan, "Full setup resume did not reopen the activation guide at local setup.");
+  assertCondition(!afterResumeSetup.hasPrimaryNav, "Full setup resume should hide primary navigation until setup completes.");
+  assertNoHorizontalOverflow(afterResumeSetup, "Resume setup");
 
   await navigate(cdp, "/butler");
   await evaluate(cdp, "localStorage.setItem('openbutler:first_run_activation:v1', 'unseen'); location.reload(); true");
