@@ -47,6 +47,7 @@ const expectations = [
   ["backend entry disables uvicorn default log config", backendEntry.includes("log_config=None") && backendEntry.includes("access_log=False")],
   ["windows prototype build skips signing/editing", packageJson.includes('"signAndEditExecutable": false')],
   ["desktop frontend build uses relative asset mode", packageJson.includes("build-frontend-for-desktop")],
+  ["desktop installer build bumps version", packageJson.includes("build-installer.mjs")],
   ["MineContext model config posts only to loopback", main.includes("127.0.0.1:1733") && main.includes("/api/model_settings/update")],
   ["MineContext model config redacts keys", main.includes("apiKeyConfigured") && !main.includes("apiKey: payload.config.apiKey")],
   ["main can scan MineContext installations", main.includes("scanMineContextInstallations") && main.includes("OPENBUTLER_MINECONTEXT_EXE")],
