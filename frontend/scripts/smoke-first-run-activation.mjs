@@ -209,6 +209,16 @@ async function navigate(cdp, path) {
   await new Promise((resolveWait) => setTimeout(resolveWait, 500));
 }
 
+async function waitForCondition(cdp, expression, timeoutMs = 5000, label = "condition") {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const ok = await evaluate(cdp, expression);
+    if (ok) return;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 150));
+  }
+  throw new Error(`Timed out waiting for ${label}.`);
+}
+
 let browser;
 let cdp;
 
@@ -238,7 +248,12 @@ try {
 
   await navigate(cdp, "/butler");
   await evaluate(cdp, "localStorage.removeItem('openbutler:first_run_activation:v1'); location.reload(); true");
-  await new Promise((resolveWait) => setTimeout(resolveWait, 700));
+  await waitForCondition(
+    cdp,
+    "!!document.querySelector('.first-run-guide') && document.body.innerText.includes('像安装一个私人管家一样开始')",
+    6000,
+    "first-run activation dialog",
+  );
   const initial = await evaluate(cdp, `(() => ({
     width: innerWidth,
     scrollWidth: document.documentElement.scrollWidth,
@@ -268,7 +283,7 @@ try {
 
   await navigate(cdp, "/butler");
   await evaluate(cdp, "localStorage.setItem('openbutler:first_run_activation:v1', 'unseen'); location.reload(); true");
-  await new Promise((resolveWait) => setTimeout(resolveWait, 700));
+  await waitForCondition(cdp, "!!document.querySelector('.first-run-guide')", 6000, "first-run dialog before real setup");
   await evaluate(cdp, `Array.from(document.querySelectorAll('.first-run-guide button')).find((button) => button.innerText.includes('整理我的本机记录')).click(); true`);
   await new Promise((resolveWait) => setTimeout(resolveWait, 500));
   const afterReal = await evaluate(cdp, `(() => ({
@@ -287,7 +302,7 @@ try {
 
   await navigate(cdp, "/butler");
   await evaluate(cdp, "localStorage.setItem('openbutler:first_run_activation:v1', 'unseen'); location.reload(); true");
-  await new Promise((resolveWait) => setTimeout(resolveWait, 700));
+  await waitForCondition(cdp, "!!document.querySelector('.first-run-guide')", 6000, "first-run dialog before later choice");
   await evaluate(cdp, `Array.from(document.querySelectorAll('.first-run-guide button')).find((button) => button.innerText.includes('稍后配置')).click(); true`);
   await new Promise((resolveWait) => setTimeout(resolveWait, 350));
   const afterLater = await evaluate(cdp, `(() => ({
