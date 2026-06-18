@@ -24,6 +24,7 @@ const main = readFileSync(join(root, "src/main.cjs"), "utf8");
 const preload = readFileSync(join(root, "src/preload.cjs"), "utf8");
 const backendEntry = readFileSync(join(root, "backend_entry.py"), "utf8");
 const packageJson = readFileSync(join(root, "package.json"), "utf8");
+const installerNsh = readFileSync(join(root, "installer/installer.nsh"), "utf8");
 
 const expectations = [
   ["main binds backend to loopback", main.includes("127.0.0.1")],
@@ -43,6 +44,7 @@ const expectations = [
   ["main implements single instance", main.includes("requestSingleInstanceLock") && main.includes("second-instance")],
   ["main has desktop load error page", main.includes("loadDesktopErrorPage") && main.includes("did-fail-load")],
   ["main writes packaged smoke state", main.includes("OPENBUTLER_DESKTOP_SMOKE_FILE") && main.includes("bodyTextLength")],
+  ["main stops backend process tree on quit", main.includes("function killProcessTree") && main.includes('taskkill", ["/PID", String(pid), "/T", "/F"') && main.includes("OPENBUTLER_DESKTOP_SMOKE_QUIT_AFTER_MS")],
   ["backend entry guards missing standard streams", backendEntry.includes("_ensure_standard_streams") && backendEntry.includes("sys.stderr is None")],
   ["backend entry disables uvicorn default log config", backendEntry.includes("log_config=None") && backendEntry.includes("access_log=False")],
   ["windows prototype build skips signing/editing", packageJson.includes('"signAndEditExecutable": false')],
@@ -58,6 +60,9 @@ const expectations = [
   ["preload exposes MineContext download page", preload.includes("openMineContextDownloadPage")],
   ["windows build config uses app icon", packageJson.includes('"icon": "assets/openbutler.ico"')],
   ["electron builder packages desktop assets", packageJson.includes('"from": "assets"') && packageJson.includes('"to": "assets"')],
+  ["nsis installer includes lifecycle cleanup", packageJson.includes('"include": "installer/installer.nsh"')],
+  ["nsis installer kills app and backend", installerNsh.includes('taskkill /IM "${PROCESS_NAME}" /T /F') && installerNsh.includes('"OpenButler.exe"') && installerNsh.includes('"openbutler-backend.exe"')],
+  ["nsis installer cleanup runs on install and uninstall", installerNsh.includes("customInit") && installerNsh.includes("customUnInit") && installerNsh.includes("customUnInstall")],
 ];
 
 const failed = expectations.filter(([, ok]) => !ok);

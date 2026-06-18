@@ -1,5 +1,5 @@
 const {app, BrowserWindow, dialog, ipcMain, shell, Tray, Menu, nativeImage} = require("electron");
-const {spawn, execFile} = require("child_process");
+const {spawn, execFile, spawnSync} = require("child_process");
 const fs = require("fs");
 const net = require("net");
 const path = require("path");
@@ -8,6 +8,7 @@ let mainWindow = null;
 let tray = null;
 let backendProcess = null;
 let isQuitting = false;
+let smokeQuitScheduled = false;
 let backendState = {
   apiBase: "",
   port: null,
@@ -352,9 +353,23 @@ async function startBackend() {
   return backendState;
 }
 
+function killProcessTree(pid) {
+  if (!pid) return;
+  if (process.platform === "win32") {
+    spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], {stdio: "ignore", windowsHide: true});
+    return;
+  }
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    // Process already exited.
+  }
+}
+
 function stopBackend() {
-  if (!backendProcess) return;
-  backendProcess.kill();
+  const pid = backendProcess?.pid ?? backendState.pid;
+  if (!pid) return;
+  killProcessTree(pid);
   backendProcess = null;
   backendState = {...backendState, running: false, pid: null};
 }
@@ -464,6 +479,15 @@ async function recordSmokeState(status) {
     }))()`);
     fs.mkdirSync(path.dirname(smokeFile), {recursive: true});
     fs.writeFileSync(smokeFile, JSON.stringify(payload, null, 2), "utf8");
+    const smokeQuitAfterMs = Number(process.env.OPENBUTLER_DESKTOP_SMOKE_QUIT_AFTER_MS || 0);
+    if (smokeQuitAfterMs > 0 && !smokeQuitScheduled) {
+      smokeQuitScheduled = true;
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          void mainWindow.webContents.executeJavaScript("window.openbutlerDesktop?.quitApp?.()");
+        }
+      }, smokeQuitAfterMs);
+    }
   } catch (error) {
     fs.mkdirSync(path.dirname(smokeFile), {recursive: true});
     fs.writeFileSync(smokeFile, JSON.stringify({status: "error", error: error.message}, null, 2), "utf8");

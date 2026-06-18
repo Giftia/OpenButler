@@ -20,6 +20,7 @@ const child = spawn(exePath, [], {
   env: {
     ...process.env,
     OPENBUTLER_DESKTOP_SMOKE_FILE: smokeFile,
+    OPENBUTLER_DESKTOP_SMOKE_QUIT_AFTER_MS: "1500",
     OPENBUTLER_DESKTOP_USER_DATA_DIR: userDataDir,
   },
   stdio: "ignore",
@@ -60,6 +61,33 @@ try {
   const health = await fetch(`${payload.apiBase}/health`).then((response) => response.json());
   if (!health.ok || health.privacy_mode !== "strict") {
     throw new Error(`Unexpected health payload: ${JSON.stringify(health)}`);
+  }
+
+  const exited = await new Promise((resolve) => {
+    const startedAt = Date.now();
+    const check = () => {
+      if (child.exitCode !== null || child.killed) {
+        resolve(true);
+        return;
+      }
+      if (Date.now() - startedAt > 15000) {
+        resolve(false);
+        return;
+      }
+      setTimeout(check, 250);
+    };
+    check();
+  });
+  if (!exited) {
+    throw new Error("Packaged app did not exit through desktop quit path");
+  }
+
+  const processList = spawnSync("wmic", ["process", "where", "name='openbutler-backend.exe'", "get", "ProcessId,CommandLine", "/format:csv"], {encoding: "utf8"});
+  const leakedBackend = (processList.stdout || "")
+    .split(/\r?\n/)
+    .filter((line) => line.includes("\\desktop\\dist\\win-unpacked\\resources\\backend\\openbutler-backend.exe"));
+  if (leakedBackend.length) {
+    throw new Error(`Packaged app left backend process running: ${leakedBackend.join(" | ")}`);
   }
 
   console.log("packaged desktop smoke ok");
