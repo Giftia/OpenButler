@@ -6,11 +6,13 @@
   "main": "src/main.cjs",
   "scripts": {
     "dev": "electron .",
-    "build:frontend": "npm --prefix ../frontend run build",
+    "build:frontend": "node scripts/build-frontend-for-desktop.mjs",
     "build:backend": "pyinstaller --noconfirm desktop_backend.spec",
     "pack": "npm run build:frontend && electron-builder --dir",
     "dist": "npm run build:frontend && electron-builder --win nsis",
-    "check": "node scripts/check-desktop-contract.mjs"
+    "check": "node scripts/check-desktop-contract.mjs",
+    "smoke:packaged": "node scripts/smoke-packaged-app.mjs",
+    "check:frontend-assets": "node scripts/check-desktop-frontend-assets.mjs"
   },
   "build": {
     "appId": "moe.giftia.openbutler",

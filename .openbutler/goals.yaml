@@ -1,29 +1,29 @@
 product_goal:
   name: "OpenButler 主动全场景感知 AI 管家"
   mission: "让用户的生活更加清晰高效可量化"
-  current_stage: "Demo / Local Mode Boundary"
+  current_stage: "Desktop Reliability & Full-Mode Activation Recovery"
   north_star: "用户每天 60 秒内理解今天发生了什么、什么值得注意、下一步应该做什么"
 
 active_objectives:
-  - id: OB-GOAL-022
-    title: "Electron First-Run Productization Shell"
+  - id: OB-GOAL-023
+    title: "Desktop Reliability & Full-Mode Activation Recovery"
     priority: P0
     status: active
     description: >
-      将 OpenButler 从本地 Web 原型推进到普通用户可安装的 Windows 桌面产品壳。
-      本阶段聚焦 Electron 本地服务启动、首次激活、本地模式检查、只读授权预览、
-      以及商业化探索概念 PPT。
+      修复 OpenButler 桌面版空白窗口、缺少托盘常驻和首次激活不完整的问题。
+      本阶段聚焦 Electron 本地资源加载、系统托盘、二次唤起、MineContext 检测、
+      模型供应商配置、本地完全体检查和商业概念 PPT 高信息密度改版。
     success_criteria:
-      - "desktop/ Electron 应用存在"
-      - "Electron 主进程可启动本地 FastAPI 服务并绑定 127.0.0.1"
-      - "桌面模式默认 strict、禁用 seed、只读数据源、不复制截图、不调用外部模型"
-      - "前端优先使用 window.openbutlerDesktop.apiBase"
-      - "preload 只暴露最小安全接口"
-      - "首次激活流说明样例体验、本地模式、隐私承诺、数据源检测和预览确认"
-      - "/me 展示本机服务状态、授权线索、隐私检查和重新打开引导"
-      - "/api/desktop/status 只返回脱敏桌面状态"
-      - "商业概念 PPT 存在且不包含真实用户数据"
-      - "前端 build、后端核心测试和桌面合同检查通过"
+      - "桌面构建不再使用导致 Electron loadFile 空白的绝对 /assets 路径"
+      - "Electron 主进程提供可读错误页和 packaged app 非空 smoke"
+      - "桌面应用支持系统托盘、关闭隐藏和二次启动唤起"
+      - "preload 暴露 MineContext 检测、安装程序选择、启动和模型配置能力"
+      - "首次激活流包含 MineContext 检测、隐私承诺、模型供应商配置和确认写入"
+      - "/me 展示本地完全体检查，包括服务、MineContext、模型配置和 strict 状态"
+      - "/api/desktop/status 扩展 MineContext 状态且保持脱敏"
+      - "商业概念 PPT 改为高信息密度电子杂志/产品说明书风格"
+      - "不读取真实 MineContext 活动，不复制截图，不调用外部模型"
+      - "前端 build、后端核心测试、桌面合同检查和桌面资源检查通过"
 
 archived_objectives:
   - id: OB-GOAL-016

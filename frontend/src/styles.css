@@ -562,7 +562,7 @@
 
 .activation-step-list {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -659,6 +659,102 @@
   grid-area: cards;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.first-run-local-setup {
+  grid-area: cards;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgb(15 23 42 / 8%);
+  border-radius: 24px;
+  background: rgb(255 255 255 / 74%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 82%);
+}
+
+.local-setup-head {
+  display: grid;
+  gap: 8px;
+}
+
+.local-setup-head strong {
+  color: #0f172a;
+  font-size: 20px;
+}
+
+.local-setup-head p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.6;
+}
+
+.local-setup-status {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.model-config-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgb(15 23 42 / 8%);
+  border-radius: 22px;
+  background: #f8fafc;
+}
+
+.compact-title {
+  margin-bottom: 0;
+}
+
+.compact-title h3 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 19px;
+}
+
+.model-config-panel label {
+  display: grid;
+  gap: 7px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.model-config-panel input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgb(15 23 42 / 12%);
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: #0f172a;
+  background: #ffffff;
+  font: inherit;
+  font-weight: 500;
+}
+
+.model-config-panel input:focus {
+  outline: 2px solid rgb(15 118 110 / 20%);
+  border-color: #0f766e;
+}
+
+.checkbox-line {
+  display: flex !important;
+  grid-template-columns: none !important;
+  align-items: center;
+  gap: 9px;
+}
+
+.checkbox-line input {
+  width: 18px;
+  min-height: 18px;
+}
+
+.embedding-config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -2930,6 +3026,25 @@ h2 {
   .first-run-cards {
     grid-template-columns: 1fr;
     gap: 8px;
+  }
+
+  .first-run-local-setup {
+    padding: 12px;
+    border-radius: 20px;
+  }
+
+  .local-setup-status,
+  .embedding-config-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .model-config-panel {
+    padding: 12px;
+    border-radius: 18px;
+  }
+
+  .model-config-panel input {
+    min-height: 44px;
   }
 
   .first-run-card {

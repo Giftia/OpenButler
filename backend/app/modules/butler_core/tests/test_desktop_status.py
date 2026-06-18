@@ -21,6 +21,8 @@ class DesktopStatusTests(unittest.TestCase):
                 "OPENBUTLER_COPY_SCREENSHOTS",
                 "OPENBUTLER_EXTERNAL_MODEL_ALLOWED",
                 "OPENBUTLER_EXTERNAL_WEBHOOK_ALLOWED",
+                "OPENBUTLER_MINECONTEXT_REACHABLE",
+                "OPENBUTLER_MINECONTEXT_MODEL_CONFIGURED",
                 "MINECONTEXT_HOME",
                 "OPENBUTLER_MINECONTEXT_HOME",
             )
@@ -32,6 +34,8 @@ class DesktopStatusTests(unittest.TestCase):
         os.environ["OPENBUTLER_DESKTOP"] = "1"
         os.environ["OPENBUTLER_DISABLE_SEED_EVENTS"] = "1"
         os.environ["OPENBUTLER_DEFAULT_PRIVACY_MODE"] = "strict"
+        os.environ["OPENBUTLER_MINECONTEXT_REACHABLE"] = "1"
+        os.environ["OPENBUTLER_MINECONTEXT_MODEL_CONFIGURED"] = "1"
         os.environ["MINECONTEXT_HOME"] = "C:\\Users\\admin\\AppData\\Local\\MineContext"
         main.init_db()
 
@@ -57,6 +61,9 @@ class DesktopStatusTests(unittest.TestCase):
         self.assertFalse(payload["privacy"]["external_webhook_allowed"])
         self.assertTrue(payload["data_sources"]["minecontext"]["read_only"])
         self.assertTrue(payload["data_sources"]["minecontext"]["configured"])
+        self.assertTrue(payload["data_sources"]["minecontext"]["reachable"])
+        self.assertTrue(payload["data_sources"]["minecontext"]["model_configured"])
+        self.assertEqual(payload["data_sources"]["minecontext"]["status"], "ready")
         self.assertFalse(payload["safety"]["raw_activity_titles_returned"])
         self.assertFalse(payload["safety"]["screenshot_paths_returned"])
         self.assertFalse(payload["safety"]["local_paths_returned"])

@@ -143,6 +143,29 @@ const navItems = [...primaryNavItems, ...advancedNavItems];
 const FIRST_RUN_ACTIVATION_STORAGE_KEY = "openbutler:first_run_activation:v1";
 
 type ActivationStatus = "unseen" | "demo_selected" | "real_setup_started" | "dismissed" | "completed";
+type ModelProviderConfig = {
+  modelPlatform: string;
+  modelId: string;
+  baseUrl: string;
+  apiKey: string;
+  useSeparateEmbedding: boolean;
+  embeddingModelPlatform: string;
+  embeddingModelId: string;
+  embeddingBaseUrl: string;
+  embeddingApiKey: string;
+};
+
+const DEFAULT_MODEL_PROVIDER_CONFIG: ModelProviderConfig = {
+  modelPlatform: "doubao",
+  modelId: "ark-code-latest",
+  baseUrl: "https://ark.cn-beijing.volces.com/api/plan/v3",
+  apiKey: "",
+  useSeparateEmbedding: true,
+  embeddingModelPlatform: "doubao",
+  embeddingModelId: "doubao-embedding-vision",
+  embeddingBaseUrl: "https://ark.cn-beijing.volces.com/api/plan/v3",
+  embeddingApiKey: "",
+};
 
 function readActivationStatus(): ActivationStatus {
   try {
@@ -454,9 +477,7 @@ function App() {
             window.history.replaceState(null, "", routeForPage("butler"));
           }}
           onChooseReal={() => {
-            closeActivation("real_setup_started");
-            setPage("privacy");
-            window.history.replaceState(null, "", routeForPage("privacy"));
+            updateActivation("real_setup_started");
           }}
           onDismiss={() => closeActivation("dismissed")}
           onComplete={() => closeActivation("completed")}
@@ -2897,12 +2918,21 @@ function FirstRunGuide({
   onDismiss: () => void;
   onComplete: () => void;
 }) {
+  const isDesktopRuntime = typeof window !== "undefined" && !!window.openbutlerDesktop;
+  const [setupPane, setSetupPane] = useState<"intro" | "local">("intro");
+  const [mineContextStatus, setMineContextStatus] = useState<Record<string, any> | null>(null);
+  const [setupMessage, setSetupMessage] = useState("");
+  const [checkingMineContext, setCheckingMineContext] = useState(false);
+  const [savingModel, setSavingModel] = useState(false);
+  const [modelConfig, setModelConfig] = useState<ModelProviderConfig>(DEFAULT_MODEL_PROVIDER_CONFIG);
+
   const activationSteps = [
     {step: "1", title: "先看懂它能做什么", text: "OpenButler 会把你授权的线索整理成今日概览、提醒和依据。"},
-    {step: "2", title: "选择样例或本地模式", text: "样例只展示效果；本地模式才会在你的电脑上读取授权线索。"},
+    {step: "2", title: "选择样例或本地完全体", text: "样例只展示效果；本地完全体会在你的电脑上整理授权线索。"},
     {step: "3", title: "确认隐私承诺", text: "默认完全本地、只读、不开外部模型、不复制截图。"},
-    {step: "4", title: "检测本地线索", text: "先检测可用数据源，不读取活动明细。"},
-    {step: "5", title: "预览后再开始", text: "真实整理前先看会读取什么，确认后才继续。"},
+    {step: "4", title: "检测本机记录工具", text: "先检测 MineContext 是否运行，不读取活动明细。"},
+    {step: "5", title: "配置模型供应商", text: "模型配置写入前需要你确认，Key 不会在页面外回显。"},
+    {step: "6", title: "预览后再开始", text: "真实整理前先看会读取什么，确认后才继续。"},
   ];
   const resultCards = [
     {
@@ -2927,6 +2957,68 @@ function FirstRunGuide({
     {time: "14:10", title: "有一项会议后待办适合收尾", source: "今日记录 · 样例"},
     {time: "18:40", title: "可以安排 5 分钟活动一下", source: "生活节律 · 样例"},
   ];
+
+  async function refreshMineContextStatus() {
+    if (!window.openbutlerDesktop) {
+      setMineContextStatus({reachable: false, running: false, configured: false, status: "web_demo"});
+      return;
+    }
+    setCheckingMineContext(true);
+    try {
+      const payload = await window.openbutlerDesktop.getMineContextStatus();
+      setMineContextStatus(payload);
+      setSetupMessage(payload.reachable ? "已检测到本机记录工具正在运行。" : "还没有检测到本机记录工具。你可以先启动或选择安装程序。");
+    } catch {
+      setSetupMessage("检测失败。请确认 OpenButler 本机服务仍在运行。");
+    } finally {
+      setCheckingMineContext(false);
+    }
+  }
+
+  useEffect(() => {
+    if (setupPane === "local") {
+      void refreshMineContextStatus();
+    }
+  }, [setupPane]);
+
+  function updateModelConfig<K extends keyof ModelProviderConfig>(key: K, value: ModelProviderConfig[K]) {
+    setModelConfig((current) => ({...current, [key]: value}));
+  }
+
+  async function chooseInstaller() {
+    const result = await window.openbutlerDesktop?.chooseMineContextInstaller();
+    if (result?.selected) setSetupMessage("已选择安装程序。点击“安装或启动”后会交给 Windows 安装器处理。");
+  }
+
+  async function startMineContext() {
+    const result = await window.openbutlerDesktop?.startMineContext();
+    setSetupMessage(result?.message ?? "未能启动本机记录工具。");
+    window.setTimeout(() => void refreshMineContextStatus(), 1200);
+  }
+
+  async function testModelConfig() {
+    setSavingModel(true);
+    try {
+      const result = await window.openbutlerDesktop?.testMineContextModelConfig(modelConfig);
+      setSetupMessage(result?.message ?? "模型配置检查完成。");
+    } finally {
+      setSavingModel(false);
+    }
+  }
+
+  async function applyModelConfig() {
+    setSavingModel(true);
+    try {
+      const result = await window.openbutlerDesktop?.applyMineContextModelConfig(modelConfig);
+      setSetupMessage(result?.message ?? "模型配置写入完成。");
+      if (result?.ok) {
+        await refreshMineContextStatus();
+        onComplete();
+      }
+    } finally {
+      setSavingModel(false);
+    }
+  }
 
   return (
     <div className="first-run-backdrop" role="dialog" aria-modal="true" aria-labelledby="first-run-title">
@@ -2955,10 +3047,13 @@ function FirstRunGuide({
               <strong>先看样例</strong>
               <span>立即理解产品效果，不读取你的真实数据。</span>
             </button>
-            <button className="activation-choice" onClick={onChooseReal}>
+            <button className="activation-choice" onClick={() => {
+              onChooseReal();
+              setSetupPane("local");
+            }}>
               <Database size={17} />
               <strong>让 OpenButler 整理我的本机记录</strong>
-              <span>进入本地模式检查，先看会读取什么，再由你确认。</span>
+              <span>先检测本机记录工具和模型配置，再由你确认。</span>
             </button>
             <button className="activation-choice quiet-choice" onClick={onDismiss}>
               <CalendarDays size={17} />
@@ -2968,18 +3063,99 @@ function FirstRunGuide({
           </div>
         </div>
 
-        <div className="first-run-cards">
-          {resultCards.map((step) => {
-            const Icon = step.icon;
-            return (
-              <article className="first-run-card" key={step.title}>
-                <Icon size={20} />
-                <strong>{step.title}</strong>
-                <span>{step.text}</span>
-              </article>
-            );
-          })}
-        </div>
+        {setupPane === "intro" ? (
+          <div className="first-run-cards">
+            {resultCards.map((step) => {
+              const Icon = step.icon;
+              return (
+                <article className="first-run-card" key={step.title}>
+                  <Icon size={20} />
+                  <strong>{step.title}</strong>
+                  <span>{step.text}</span>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="first-run-local-setup" aria-label="本地完全体设置">
+            <div className="local-setup-head">
+              <span className="privacy-chip">{isDesktopRuntime ? "本地完全体" : "网页样例"}</span>
+              <strong>启用完整功能前，需要完成两件事</strong>
+              <p>先让 MineContext 在本机运行，再把模型供应商配置写入它的管理后台。OpenButler 不会替你读取或导入活动明细。</p>
+            </div>
+            <div className="local-setup-status">
+              <StatusItem label="桌面环境" value={isDesktopRuntime ? "已连接" : "仅样例"} />
+              <StatusItem label="MineContext 后台" value={mineContextStatus?.reachable ? "运行中" : checkingMineContext ? "检测中" : "未检测到"} />
+              <StatusItem label="模型配置" value={mineContextStatus?.configured ? "已写入" : "待配置"} />
+            </div>
+            <div className="desktop-action-row">
+              <button className="secondary" onClick={refreshMineContextStatus} disabled={checkingMineContext}>
+                {checkingMineContext ? "检测中" : "重新检测"}
+              </button>
+              <button className="secondary" onClick={chooseInstaller} disabled={!isDesktopRuntime}>选择安装程序</button>
+              <button className="secondary" onClick={startMineContext} disabled={!isDesktopRuntime}>安装或启动 MineContext</button>
+            </div>
+
+            <div className="model-config-panel">
+              <div className="section-title compact-title">
+                <div>
+                  <p className="eyebrow">模型供应商</p>
+                  <h3>配置模型后，MineContext 才能整理本机线索</h3>
+                </div>
+              </div>
+              <label>
+                <span>模型平台</span>
+                <input value={modelConfig.modelPlatform} onChange={(event) => updateModelConfig("modelPlatform", event.target.value)} placeholder="doubao" />
+              </label>
+              <label>
+                <span>模型 ID</span>
+                <input value={modelConfig.modelId} onChange={(event) => updateModelConfig("modelId", event.target.value)} placeholder="ark-code-latest" />
+              </label>
+              <label>
+                <span>Base URL</span>
+                <input value={modelConfig.baseUrl} onChange={(event) => updateModelConfig("baseUrl", event.target.value)} placeholder="https://..." />
+              </label>
+              <label>
+                <span>API Key</span>
+                <input type="password" value={modelConfig.apiKey} onChange={(event) => updateModelConfig("apiKey", event.target.value)} placeholder="只在本机写入 MineContext" />
+              </label>
+              <label className="checkbox-line">
+                <input type="checkbox" checked={modelConfig.useSeparateEmbedding} onChange={(event) => updateModelConfig("useSeparateEmbedding", event.target.checked)} />
+                <span>使用独立的 Embedding 配置</span>
+              </label>
+              {modelConfig.useSeparateEmbedding && (
+                <div className="embedding-config-grid">
+                  <label>
+                    <span>Embedding 平台</span>
+                    <input value={modelConfig.embeddingModelPlatform} onChange={(event) => updateModelConfig("embeddingModelPlatform", event.target.value)} placeholder="doubao" />
+                  </label>
+                  <label>
+                    <span>Embedding 模型 ID</span>
+                    <input value={modelConfig.embeddingModelId} onChange={(event) => updateModelConfig("embeddingModelId", event.target.value)} placeholder="doubao-embedding-vision" />
+                  </label>
+                  <label>
+                    <span>Embedding Base URL</span>
+                    <input value={modelConfig.embeddingBaseUrl} onChange={(event) => updateModelConfig("embeddingBaseUrl", event.target.value)} placeholder="https://..." />
+                  </label>
+                  <label>
+                    <span>Embedding API Key</span>
+                    <input type="password" value={modelConfig.embeddingApiKey} onChange={(event) => updateModelConfig("embeddingApiKey", event.target.value)} placeholder="只在本机写入 MineContext" />
+                  </label>
+                </div>
+              )}
+              <div className="desktop-action-row">
+                <button className="secondary" onClick={testModelConfig} disabled={!isDesktopRuntime || savingModel}>
+                  {savingModel ? "检查中" : "检查配置"}
+                </button>
+                <button className="primary" onClick={applyModelConfig} disabled={!isDesktopRuntime || savingModel}>
+                  {savingModel ? "写入中" : "写入 MineContext 配置"}
+                </button>
+              </div>
+              <small>Key 不会显示在状态接口、日志或页面摘要中。写入前只做本机后台可达性检查，不调用外部模型。</small>
+            </div>
+            {setupMessage && <p className="policy-note">{setupMessage}</p>}
+          </div>
+        )}
 
         <div className="first-run-preview" aria-label="OpenButler 整理结果示例">
           <span className="privacy-chip">样例体验</span>
@@ -3021,15 +3197,24 @@ function Privacy({
 }) {
   const blocked = plugins.filter((plugin) => !plugin.runtime.available).length;
   const [desktopStatus, setDesktopStatus] = useState<Record<string, any> | null>(null);
+  const [mineContextStatus, setMineContextStatus] = useState<Record<string, any> | null>(null);
   const [desktopStatusError, setDesktopStatusError] = useState<string | null>(null);
   const isDesktopRuntime = typeof window !== "undefined" && !!window.openbutlerDesktop;
 
+  async function refreshDesktopStatus() {
+    const payload = await getDesktopStatus();
+    setDesktopStatus(payload);
+    if (window.openbutlerDesktop) {
+      setMineContextStatus(await window.openbutlerDesktop.getMineContextStatus());
+    }
+    setDesktopStatusError(null);
+  }
+
   useEffect(() => {
     let mounted = true;
-    void getDesktopStatus()
-      .then((payload) => {
+    void refreshDesktopStatus()
+      .then(() => {
         if (mounted) {
-          setDesktopStatus(payload);
           setDesktopStatusError(null);
         }
       })
@@ -3047,15 +3232,13 @@ function Privacy({
   async function restartDesktopBackend() {
     if (!window.openbutlerDesktop) return;
     await window.openbutlerDesktop.restartBackend();
-    const payload = await getDesktopStatus();
-    setDesktopStatus(payload);
+    await refreshDesktopStatus();
   }
 
   async function chooseMineContextHome() {
     if (!window.openbutlerDesktop) return;
     await window.openbutlerDesktop.chooseMineContextHome();
-    const payload = await getDesktopStatus();
-    setDesktopStatus(payload);
+    await refreshDesktopStatus();
   }
 
   async function openDesktopDataFolder() {
@@ -3072,7 +3255,7 @@ function Privacy({
       value: desktopStatus?.privacy?.strict ? "已开启" : mode === "strict" ? "已开启" : "未开启",
     },
     {
-      label: "样例种子",
+      label: "样例数据",
       value: desktopStatus?.privacy?.seed_events_disabled ? "已关闭" : isDesktopRuntime ? "待确认" : "样例可用",
     },
     {
@@ -3087,6 +3270,14 @@ function Privacy({
       label: "本地线索",
       value: desktopStatus?.data_sources?.minecontext?.configured ? "已选择" : "未选择",
     },
+    {
+      label: "MineContext 后台",
+      value: mineContextStatus?.reachable ? "运行中" : isDesktopRuntime ? "未检测到" : "网页样例",
+    },
+    {
+      label: "模型配置",
+      value: mineContextStatus?.configured || desktopStatus?.data_sources?.minecontext?.model_configured ? "已完成" : "待配置",
+    },
   ];
 
   return (
@@ -3095,7 +3286,7 @@ function Privacy({
         <div className="section-title">
           <div>
             <p className="eyebrow">我的 OpenButler</p>
-            <h2>{isDesktopRuntime ? "本地版正在为你准备" : "当前是样例体验"}</h2>
+            <h2>{isDesktopRuntime ? "本地完全体检查" : "当前是样例体验"}</h2>
             <p>
               {isDesktopRuntime
                 ? "本地版会在你的电脑上启动服务，只绑定 127.0.0.1。你确认前不会导入真实活动。"
@@ -3114,6 +3305,7 @@ function Privacy({
           <div className="desktop-action-row">
             <button className="secondary" onClick={chooseMineContextHome}>选择本机记录目录</button>
             <button className="secondary" onClick={restartDesktopBackend}>重新启动本机服务</button>
+            <button className="secondary" onClick={refreshDesktopStatus}>重新检测</button>
             <button className="secondary" onClick={openDesktopDataFolder}>打开本地数据文件夹</button>
           </div>
         )}

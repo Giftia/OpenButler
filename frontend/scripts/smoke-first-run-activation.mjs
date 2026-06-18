@@ -243,9 +243,9 @@ try {
     width: innerWidth,
     scrollWidth: document.documentElement.scrollWidth,
     hasDialog: !!document.querySelector('.first-run-guide'),
-    hasIntro: document.body.innerText.includes('先选择 OpenButler 怎么认识你的一天'),
+    hasIntro: document.body.innerText.includes('像安装一个私人管家一样开始'),
     hasDemo: document.body.innerText.includes('先看样例'),
-    hasReal: document.body.innerText.includes('了解本地模式'),
+    hasReal: document.body.innerText.includes('让 OpenButler 整理我的本机记录'),
     hasLater: document.body.innerText.includes('稍后配置')
   }))()`);
   assertCondition(initial.hasDialog && initial.hasIntro && initial.hasDemo && initial.hasReal && initial.hasLater, "First-run activation dialog missing expected choices.");
@@ -269,16 +269,20 @@ try {
   await navigate(cdp, "/butler");
   await evaluate(cdp, "localStorage.setItem('openbutler:first_run_activation:v1', 'unseen'); location.reload(); true");
   await new Promise((resolveWait) => setTimeout(resolveWait, 700));
-  await evaluate(cdp, `Array.from(document.querySelectorAll('.first-run-guide button')).find((button) => button.innerText.includes('了解本地模式')).click(); true`);
-  await new Promise((resolveWait) => setTimeout(resolveWait, 350));
+  await evaluate(cdp, `Array.from(document.querySelectorAll('.first-run-guide button')).find((button) => button.innerText.includes('整理我的本机记录')).click(); true`);
+  await new Promise((resolveWait) => setTimeout(resolveWait, 500));
   const afterReal = await evaluate(cdp, `(() => ({
     path: location.pathname,
     status: localStorage.getItem('openbutler:first_run_activation:v1'),
+    hasLocalSetup: document.body.innerText.includes('启用完整功能前，需要完成两件事'),
+    hasModelConfig: document.body.innerText.includes('模型供应商'),
+    hasNoRealImport: document.body.innerText.includes('不会导入真实活动'),
     width: innerWidth,
     scrollWidth: document.documentElement.scrollWidth
   }))()`);
-  assertCondition(afterReal.path === "/me", `Real setup routed to ${afterReal.path}`);
+  assertCondition(afterReal.path === "/butler", `Real setup should stay in activation dialog, got ${afterReal.path}`);
   assertCondition(afterReal.status === "real_setup_started", "Real setup did not persist real_setup_started.");
+  assertCondition(afterReal.hasLocalSetup && afterReal.hasModelConfig && afterReal.hasNoRealImport, "Real setup did not show local activation and model config panel.");
   assertNoHorizontalOverflow(afterReal, "Real setup");
 
   await navigate(cdp, "/butler");
@@ -304,7 +308,7 @@ try {
   await new Promise((resolveWait) => setTimeout(resolveWait, 350));
   const afterReopen = await evaluate(cdp, `(() => ({
     hasDialog: !!document.querySelector('.first-run-guide'),
-    hasIntro: document.body.innerText.includes('先选择 OpenButler 怎么认识你的一天'),
+    hasIntro: document.body.innerText.includes('像安装一个私人管家一样开始'),
     width: innerWidth,
     scrollWidth: document.documentElement.scrollWidth
   }))()`);

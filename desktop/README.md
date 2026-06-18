@@ -10,12 +10,17 @@
 
 ## Development
 
-Build the frontend first:
+Build the frontend for Electron first:
 
 ```powershell
-cd C:\Users\admin\Desktop\git\OpenButler\frontend
-npm run build
+cd C:\Users\admin\Desktop\git\OpenButler\desktop
+npm run build:frontend
+npm run check:frontend-assets
 ```
+
+The desktop build uses relative `./assets/...` paths so Electron can load the
+bundled `index.html` with `BrowserWindow.loadFile()`. Do not use the normal
+Vercel/web `frontend npm run build` output as the desktop package source.
 
 Start the desktop shell:
 
@@ -55,7 +60,11 @@ Build a Windows package:
 
 ```powershell
 cd C:\Users\admin\Desktop\git\OpenButler\desktop
-npm run dist
+npm run build:frontend
+npm run check:frontend-assets
+npm run build:backend
+npm run pack
+npm run smoke:packaged
 ```
 
 This creates:
@@ -67,6 +76,31 @@ Code signing and auto-update are intentionally out of scope for this first shell
 The Windows builder config disables executable signing/editing for now so local
 prototype builds do not require Developer Mode or symlink privileges for the
 `winCodeSign` cache.
+
+## Tray Behavior
+
+OpenButler stays available from the Windows tray:
+
+- closing or minimizing the main window hides it instead of stopping the local service
+- launching OpenButler again shows the existing window
+- the tray menu can reopen the app, restart the local service, open the data folder, or quit
+
+## MineContext And Model Setup
+
+The desktop shell only detects MineContext by default. It does not silently
+install MineContext, import real activity, copy screenshots, or call external
+models.
+
+The first-run flow lets the user:
+
+- use the sample experience
+- check whether MineContext is running locally
+- select or start a MineContext installer/app with explicit confirmation
+- enter model provider settings
+- write model settings to the local MineContext admin API only after clicking confirm
+
+API keys are not returned by `/api/desktop/status`, not shown in diagnostic
+summaries, and should never be committed.
 
 ## Privacy Boundary
 

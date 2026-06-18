@@ -1164,4 +1164,102 @@ tasks:
       - "docs/product/ELECTRON_FIRST_RUN_PRODUCTIZATION_SHELL.md"
       - "desktop/scripts/check-desktop-contract.mjs"
 
+  - id: OB-TASK-230
+    title: "修复 Electron loadFile 空白页资源路径"
+    goal_id: OB-GOAL-023
+    priority: P0
+    status: done
+    done_when:
+      - "桌面构建使用相对 ./assets 路径"
+      - "Web/Vercel 构建仍可使用普通 /assets 路径"
+      - "存在桌面资源路径检查脚本"
+    evidence:
+      - "frontend/vite.config.ts"
+      - "desktop/scripts/build-frontend-for-desktop.mjs"
+      - "desktop/scripts/check-desktop-frontend-assets.mjs"
+
+  - id: OB-TASK-231
+    title: "增加桌面错误页和 packaged app 非空 smoke"
+    goal_id: OB-GOAL-023
+    priority: P0
+    status: done
+    done_when:
+      - "加载失败时显示可读错误页"
+      - "渲染进程异常时显示可读错误页"
+      - "packaged smoke 可检查页面非空和 strict health"
+    evidence:
+      - "desktop/src/main.cjs"
+      - "desktop/scripts/smoke-packaged-app.mjs"
+
+  - id: OB-TASK-232
+    title: "实现系统托盘、关闭隐藏和二次唤起"
+    goal_id: OB-GOAL-023
+    priority: P0
+    status: done
+    done_when:
+      - "系统托盘菜单存在"
+      - "关闭窗口隐藏到托盘"
+      - "二次启动唤起已有窗口"
+      - "退出必须通过托盘退出或应用退出"
+    evidence:
+      - "desktop/src/main.cjs"
+
+  - id: OB-TASK-233
+    title: "实现 MineContext 检测、启动和模型配置桥"
+    goal_id: OB-GOAL-023
+    priority: P0
+    status: done
+    done_when:
+      - "preload exposes MineContext status"
+      - "preload exposes installer selection"
+      - "preload exposes start MineContext"
+      - "preload exposes test/apply model config"
+      - "API Key 不回显、不写状态接口"
+    evidence:
+      - "desktop/src/main.cjs"
+      - "desktop/src/preload.cjs"
+      - "frontend/src/desktop.d.ts"
+
+  - id: OB-TASK-234
+    title: "升级首次激活为 V3 本地完全体向导"
+    goal_id: OB-GOAL-023
+    priority: P0
+    status: done
+    done_when:
+      - "首次激活包含 MineContext 检测"
+      - "首次激活包含模型供应商和 Embedding 配置"
+      - "写入配置前需要用户点击确认"
+      - "授权前不导入真实活动"
+    evidence:
+      - "frontend/src/App.tsx FirstRunGuide"
+      - "frontend/src/styles.css model-config-panel"
+      - "frontend/scripts/smoke-first-run-activation.mjs"
+
+  - id: OB-TASK-235
+    title: "扩展 /me 本地完全体检查"
+    goal_id: OB-GOAL-023
+    priority: P0
+    status: done
+    done_when:
+      - "/me 展示 OpenButler 本机服务状态"
+      - "/me 展示 MineContext 后台状态"
+      - "/me 展示模型配置状态"
+      - "/api/desktop/status 扩展但保持脱敏"
+    evidence:
+      - "frontend/src/App.tsx Privacy"
+      - "backend/app/main.py"
+      - "backend/app/modules/butler_core/tests/test_desktop_status.py"
+
+  - id: OB-TASK-236
+    title: "重做商业概念 PPT 为高信息密度版本"
+    goal_id: OB-GOAL-023
+    priority: P0
+    status: done
+    done_when:
+      - "PPT 使用电子杂志/产品说明书风格"
+      - "PPT 覆盖桌面安装、MineContext、模型配置、隐私和商业路径"
+      - "PPT 不包含真实路径、真实 Key 或 Sponsor/provenance 文案"
+    evidence:
+      - "docs/productization/openbutler-commercial-concept-pitch/ppt/index.html"
+
 blocked: []

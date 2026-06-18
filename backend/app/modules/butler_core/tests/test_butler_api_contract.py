@@ -418,10 +418,10 @@ class ButlerApiContractTests(unittest.TestCase):
         self.assertIn("evidence_boundary", template["criterion_contract"])
         self.assertIn("minecontext_source_deleted must remain 0", template["privacy_invariants"])
         objectives = {item["id"]: item for item in response["objectives"]}
-        self.assertEqual(set(objectives), {"OB-GOAL-022"})
-        objective = objectives["OB-GOAL-022"]
+        self.assertEqual(set(objectives), {"OB-GOAL-023"})
+        objective = objectives["OB-GOAL-023"]
         self.assertEqual(objective["status"], "proven")
-        self.assertEqual(objective["title"], "Electron First-Run Productization Shell")
+        self.assertEqual(objective["title"], "Desktop Reliability & Full-Mode Activation Recovery")
         self.assertEqual(objective["proven_count"], objective["criteria_count"])
         self.assertEqual(objective["priority"], "P0")
         self.assertTrue(objective["success_criteria"])
@@ -431,10 +431,11 @@ class ButlerApiContractTests(unittest.TestCase):
             self.assertTrue(criterion["evidence_refs"])
             self.assertTrue(criterion["evidence_boundary"])
         criteria = {item["id"]: item for item in objective["criteria"]}
-        self.assertEqual(criteria["electron_desktop_shell_exists"]["status"], "proven")
-        self.assertEqual(criteria["backend_loopback_and_strict_defaults"]["status"], "proven")
-        self.assertEqual(criteria["desktop_status_endpoint_redacted"]["status"], "proven")
-        self.assertEqual(criteria["commercial_concept_ppt_exists"]["status"], "proven")
+        self.assertEqual(criteria["desktop_blank_window_root_cause_guarded"]["status"], "proven")
+        self.assertEqual(criteria["tray_and_second_launch_available"]["status"], "proven")
+        self.assertEqual(criteria["minecontext_model_config_bridge"]["status"], "proven")
+        self.assertEqual(criteria["desktop_status_extended_but_redacted"]["status"], "proven")
+        self.assertEqual(criteria["commercial_ppt_dense_magazine_style"]["status"], "proven")
 
     def test_productization_objective_status_surfaces_unknown_goals(self) -> None:
         butler_router.run_demo(DemoRunRequest(import_pc_activity=False))
@@ -510,13 +511,16 @@ class ButlerApiContractTests(unittest.TestCase):
         self.assertTrue(response["privacy"]["strict_mode_respected"])
         self.assertTrue(response["evidence_boundary"])
         objectives = {item["id"]: item for item in response["objectives"]}
-        goal = objectives["OB-GOAL-022"]
+        goal = objectives["OB-GOAL-023"]
         self.assertEqual(goal["objective_status"], "proven")
         checks = {item["success_criterion"]: item for item in goal["success_criteria"]}
-        self.assertEqual(checks["desktop/ Electron 应用存在"]["verification_result"], "proven")
-        self.assertEqual(checks["Electron 主进程可启动本地 FastAPI 服务并绑定 127.0.0.1"]["verification_result"], "proven")
-        self.assertTrue(checks["Electron 主进程可启动本地 FastAPI 服务并绑定 127.0.0.1"]["evidence_refs"])
-        self.assertTrue(checks["/api/desktop/status 只返回脱敏桌面状态"]["evidence_boundary"])
+        self.assertEqual(checks["桌面构建不再使用导致 Electron loadFile 空白的绝对 /assets 路径"]["verification_result"], "proven")
+        self.assertEqual(checks["Electron 主进程提供可读错误页和 packaged app 非空 smoke"]["verification_result"], "proven")
+        self.assertEqual(checks["桌面应用支持系统托盘、关闭隐藏和二次启动唤起"]["verification_result"], "proven")
+        self.assertEqual(checks["preload 暴露 MineContext 检测、安装程序选择、启动和模型配置能力"]["verification_result"], "proven")
+        self.assertEqual(checks["/me 展示本地完全体检查，包括服务、MineContext、模型配置和 strict 状态"]["verification_result"], "proven")
+        self.assertTrue(checks["preload 暴露 MineContext 检测、安装程序选择、启动和模型配置能力"]["evidence_refs"])
+        self.assertTrue(checks["/api/desktop/status 扩展 MineContext 状态且保持脱敏"]["evidence_boundary"])
 
     def test_productization_l1_audit_report_distinguishes_missing_and_out_of_scope(self) -> None:
         butler_router.run_demo(DemoRunRequest(import_pc_activity=False))

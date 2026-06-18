@@ -18,6 +18,13 @@ declare global {
       restartBackend: () => Promise<{running: boolean; apiBase: string; pid: number | null}>;
       chooseMineContextHome: () => Promise<{canceled: boolean; path?: string}>;
       openDataFolder: () => Promise<{ok: boolean}>;
+      getMineContextStatus: () => Promise<Record<string, any>>;
+      chooseMineContextInstaller: () => Promise<{canceled: boolean; selected?: boolean}>;
+      startMineContext: () => Promise<{ok: boolean; action: string; message: string}>;
+      testMineContextModelConfig: (config: Record<string, unknown>) => Promise<Record<string, any>>;
+      applyMineContextModelConfig: (config: Record<string, unknown>) => Promise<Record<string, any>>;
+      showMainWindow: () => Promise<{ok: boolean}>;
+      quitApp: () => Promise<{ok: boolean}>;
     };
   }
 }

@@ -1169,6 +1169,8 @@ class ButlerCoreService:
         desktop_backend_entry_path = root / "desktop" / "backend_entry.py"
         desktop_spec_path = root / "desktop" / "desktop_backend.spec"
         desktop_check_path = root / "desktop" / "scripts" / "check-desktop-contract.mjs"
+        desktop_asset_check_path = root / "desktop" / "scripts" / "check-desktop-frontend-assets.mjs"
+        desktop_packaged_smoke_path = root / "desktop" / "scripts" / "smoke-packaged-app.mjs"
         desktop_readme_path = root / "desktop" / "README.md"
         desktop_status_test_path = root / "backend" / "app" / "modules" / "butler_core" / "tests" / "test_desktop_status.py"
         desktop_smoke_path = root / "frontend" / "scripts" / "smoke-desktop-runtime-bridge.mjs"
@@ -1181,6 +1183,7 @@ class ButlerCoreService:
         desktop_package_text = desktop_package_path.read_text(encoding="utf-8") if desktop_package_path.exists() else ""
         desktop_status_test_text = desktop_status_test_path.read_text(encoding="utf-8") if desktop_status_test_path.exists() else ""
         desktop_smoke_text = desktop_smoke_path.read_text(encoding="utf-8") if desktop_smoke_path.exists() else ""
+        desktop_packaged_smoke_text = desktop_packaged_smoke_path.read_text(encoding="utf-8") if desktop_packaged_smoke_path.exists() else ""
         frontend_api_text = frontend_api_path.read_text(encoding="utf-8") if frontend_api_path.exists() else ""
         commercial_ppt_text = commercial_ppt_path.read_text(encoding="utf-8") if commercial_ppt_path.exists() else ""
 
@@ -2305,6 +2308,122 @@ class ButlerCoreService:
                         "/insights/{insight_id}/evidence" not in router_text
                         and "external_model" in (root / "backend" / "app" / "main.py").read_text(encoding="utf-8"),
                         [{"kind": "file", "path": "backend/app/modules/butler_core/router.py"}],
+                    ),
+            ],
+            "OB-GOAL-023": [
+                    criterion(
+                        "desktop_blank_window_root_cause_guarded",
+                        "桌面构建不再使用导致 Electron loadFile 空白的绝对 /assets 路径",
+                        desktop_asset_check_path.exists()
+                        and "OPENBUTLER_DESKTOP_BUILD" in (root / "frontend" / "vite.config.ts").read_text(encoding="utf-8")
+                        and "check:frontend-assets" in desktop_package_text,
+                        [
+                            {"kind": "file", "path": "frontend/vite.config.ts"},
+                            {"kind": "script", "path": "desktop/scripts/check-desktop-frontend-assets.mjs"},
+                        ],
+                    ),
+                    criterion(
+                        "desktop_error_page_and_packaged_smoke",
+                        "Electron 主进程提供可读错误页和 packaged app 非空 smoke",
+                        "loadDesktopErrorPage" in desktop_main_text
+                        and "did-fail-load" in desktop_main_text
+                        and desktop_packaged_smoke_path.exists()
+                        and "bodyTextLength" in desktop_packaged_smoke_text,
+                        [
+                            {"kind": "file", "path": "desktop/src/main.cjs"},
+                            {"kind": "script", "path": "desktop/scripts/smoke-packaged-app.mjs"},
+                        ],
+                    ),
+                    criterion(
+                        "tray_and_second_launch_available",
+                        "桌面应用支持系统托盘、关闭隐藏和二次启动唤起",
+                        "new Tray" in desktop_main_text
+                        and "requestSingleInstanceLock" in desktop_main_text
+                        and "second-instance" in desktop_main_text
+                        and "mainWindow.hide" in desktop_main_text,
+                        [{"kind": "file", "path": "desktop/src/main.cjs"}],
+                    ),
+                    criterion(
+                        "minecontext_model_config_bridge",
+                        "preload 暴露 MineContext 检测、安装程序选择、启动和模型配置能力",
+                        "getMineContextStatus" in desktop_preload_text
+                        and "chooseMineContextInstaller" in desktop_preload_text
+                        and "startMineContext" in desktop_preload_text
+                        and "applyMineContextModelConfig" in desktop_preload_text
+                        and "/api/model_settings/update" in desktop_main_text,
+                        [
+                            {"kind": "file", "path": "desktop/src/preload.cjs"},
+                            {"kind": "file", "path": "desktop/src/main.cjs"},
+                        ],
+                    ),
+                    criterion(
+                        "activation_v3_model_provider_ui",
+                        "首次激活流包含 MineContext 检测、隐私承诺、模型供应商配置和确认写入",
+                        "模型供应商" in app_text
+                        and "写入 MineContext 配置" in app_text
+                        and "Embedding 模型 ID" in app_text
+                        and "不调用外部模型" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "me_local_full_mode_check",
+                        "/me 展示本地完全体检查，包括服务、MineContext、模型配置和 strict 状态",
+                        "本地完全体检查" in app_text
+                        and "本机服务" in app_text
+                        and "MineContext 后台" in app_text
+                        and "模型配置" in app_text
+                        and "严格隐私" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "desktop_status_extended_but_redacted",
+                        "/api/desktop/status 扩展 MineContext 状态且保持脱敏",
+                        "model_configured" in (root / "backend" / "app" / "main.py").read_text(encoding="utf-8")
+                        and "reachable" in (root / "backend" / "app" / "main.py").read_text(encoding="utf-8")
+                        and "assertNotIn" in desktop_status_test_text,
+                        [
+                            {"kind": "api", "path": "GET /api/desktop/status"},
+                            {"kind": "test", "path": "backend/app/modules/butler_core/tests/test_desktop_status.py"},
+                        ],
+                    ),
+                    criterion(
+                        "commercial_ppt_dense_magazine_style",
+                        "商业概念 PPT 改为高信息密度电子杂志/产品说明书风格",
+                        commercial_ppt_path.exists()
+                        and "电子杂志" in commercial_ppt_text
+                        and "本地完全体" in commercial_ppt_text
+                        and "商业化探索" in commercial_ppt_text
+                        and "C:\\Users" not in commercial_ppt_text
+                        and "Sponsor" not in commercial_ppt_text
+                        and "[必填]" not in commercial_ppt_text,
+                        [{"kind": "file", "path": "docs/productization/openbutler-commercial-concept-pitch/ppt/index.html"}],
+                    ),
+                    criterion(
+                        "desktop_privacy_no_real_data_side_effects",
+                        "不读取真实 MineContext 活动，不复制截图，不调用外部模型",
+                        "OPENBUTLER_DISABLE_SEED_EVENTS" in desktop_main_text
+                        and "OPENBUTLER_COPY_SCREENSHOTS" in desktop_main_text
+                        and "OPENBUTLER_EXTERNAL_MODEL_ALLOWED" in desktop_main_text
+                        and "不会导入真实活动" in app_text,
+                        [
+                            {"kind": "file", "path": "desktop/src/main.cjs"},
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                        ],
+                    ),
+                    criterion(
+                        "desktop_verification_commands_declared",
+                        "前端 build、后端核心测试、桌面合同检查和桌面资源检查通过",
+                        "check-desktop-contract" in desktop_package_text
+                        and "check:frontend-assets" in desktop_package_text
+                        and desktop_asset_check_path.exists()
+                        and (root / "backend" / "app" / "modules" / "butler_core" / "tests").exists()
+                        and (root / "backend" / "app" / "modules" / "pc_activity_context" / "tests").exists(),
+                        [
+                            {"kind": "script", "path": "desktop/scripts/check-desktop-contract.mjs"},
+                            {"kind": "script", "path": "desktop/scripts/check-desktop-frontend-assets.mjs"},
+                            {"kind": "test", "path": "backend/app/modules/butler_core/tests"},
+                            {"kind": "test", "path": "backend/app/modules/pc_activity_context/tests"},
+                        ],
                     ),
             ],
         }

@@ -34,9 +34,18 @@ const expectations = [
   ["preload exposes backend restart", preload.includes("restartBackend")],
   ["preload exposes directory chooser", preload.includes("chooseMineContextHome")],
   ["preload exposes data folder opener", preload.includes("openDataFolder")],
+  ["preload exposes MineContext status", preload.includes("getMineContextStatus")],
+  ["preload exposes model config apply", preload.includes("applyMineContextModelConfig")],
+  ["main implements tray", main.includes("new Tray") && main.includes("打开 OpenButler")],
+  ["main implements single instance", main.includes("requestSingleInstanceLock") && main.includes("second-instance")],
+  ["main has desktop load error page", main.includes("loadDesktopErrorPage") && main.includes("did-fail-load")],
+  ["main writes packaged smoke state", main.includes("OPENBUTLER_DESKTOP_SMOKE_FILE") && main.includes("bodyTextLength")],
   ["backend entry guards missing standard streams", backendEntry.includes("_ensure_standard_streams") && backendEntry.includes("sys.stderr is None")],
   ["backend entry disables uvicorn default log config", backendEntry.includes("log_config=None") && backendEntry.includes("access_log=False")],
   ["windows prototype build skips signing/editing", packageJson.includes('"signAndEditExecutable": false')],
+  ["desktop frontend build uses relative asset mode", packageJson.includes("build-frontend-for-desktop")],
+  ["MineContext model config posts only to loopback", main.includes("127.0.0.1:1733") && main.includes("/api/model_settings/update")],
+  ["MineContext model config redacts keys", main.includes("apiKeyConfigured") && !main.includes("apiKey: payload.config.apiKey")],
 ];
 
 const failed = expectations.filter(([, ok]) => !ok);

@@ -406,6 +406,8 @@ def desktop_status() -> dict[str, Any]:
     external_model_allowed = os.getenv("OPENBUTLER_EXTERNAL_MODEL_ALLOWED", "0") == "1"
     webhook_allowed = os.getenv("OPENBUTLER_EXTERNAL_WEBHOOK_ALLOWED", "0") == "1"
     minecontext_home = os.getenv("MINECONTEXT_HOME") or os.getenv("OPENBUTLER_MINECONTEXT_HOME")
+    minecontext_reachable = os.getenv("OPENBUTLER_MINECONTEXT_REACHABLE", "0") == "1"
+    minecontext_model_configured = os.getenv("OPENBUTLER_MINECONTEXT_MODEL_CONFIGURED", "0") == "1"
     return {
         "desktop": {
             "available": desktop_enabled,
@@ -428,8 +430,14 @@ def desktop_status() -> dict[str, Any]:
         "data_sources": {
             "minecontext": {
                 "configured": bool(minecontext_home),
+                "reachable": minecontext_reachable,
+                "model_configured": minecontext_model_configured,
                 "read_only": True,
-                "status": "configured" if minecontext_home else "not_configured",
+                "status": "ready"
+                if minecontext_home and minecontext_reachable and minecontext_model_configured
+                else "configured"
+                if minecontext_home
+                else "not_configured",
             }
         },
         "safety": {
