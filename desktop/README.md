@@ -58,7 +58,15 @@ cd C:\Users\admin\Desktop\git\OpenButler\desktop
 npm run dist
 ```
 
+This creates:
+
+- `desktop/dist/win-unpacked/OpenButler.exe` for unpacked local smoke testing.
+- `desktop/dist/OpenButler-Setup-0.1.0.exe` for the unsigned Windows installer prototype.
+
 Code signing and auto-update are intentionally out of scope for this first shell.
+The Windows builder config disables executable signing/editing for now so local
+prototype builds do not require Developer Mode or symlink privileges for the
+`winCodeSign` cache.
 
 ## Privacy Boundary
 

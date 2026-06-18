@@ -26,14 +26,12 @@
         "to": "frontend/dist"
       },
       {
-        "from": "dist/backend",
-        "to": "backend",
-        "filter": [
-          "**/*"
-        ]
+        "from": "dist/openbutler-backend.exe",
+        "to": "backend/openbutler-backend.exe"
       }
     ],
     "win": {
+      "signAndEditExecutable": false,
       "target": [
         "nsis"
       ],

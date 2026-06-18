@@ -3,7 +3,7 @@
 from pathlib import Path
 
 
-repo_root = Path(__file__).resolve().parents[1]
+repo_root = Path(SPECPATH).resolve().parents[0]
 backend_dir = repo_root / "backend"
 
 a = Analysis(

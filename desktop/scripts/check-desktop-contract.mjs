@@ -21,6 +21,8 @@ for (const file of required) {
 
 const main = readFileSync(join(root, "src/main.cjs"), "utf8");
 const preload = readFileSync(join(root, "src/preload.cjs"), "utf8");
+const backendEntry = readFileSync(join(root, "backend_entry.py"), "utf8");
+const packageJson = readFileSync(join(root, "package.json"), "utf8");
 
 const expectations = [
   ["main binds backend to loopback", main.includes("127.0.0.1")],
@@ -32,6 +34,9 @@ const expectations = [
   ["preload exposes backend restart", preload.includes("restartBackend")],
   ["preload exposes directory chooser", preload.includes("chooseMineContextHome")],
   ["preload exposes data folder opener", preload.includes("openDataFolder")],
+  ["backend entry guards missing standard streams", backendEntry.includes("_ensure_standard_streams") && backendEntry.includes("sys.stderr is None")],
+  ["backend entry disables uvicorn default log config", backendEntry.includes("log_config=None") && backendEntry.includes("access_log=False")],
+  ["windows prototype build skips signing/editing", packageJson.includes('"signAndEditExecutable": false')],
 ];
 
 const failed = expectations.filter(([, ok]) => !ok);
