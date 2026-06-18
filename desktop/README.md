@@ -81,26 +81,51 @@ prototype builds do not require Developer Mode or symlink privileges for the
 
 OpenButler stays available from the Windows tray:
 
+- tray and installer use `desktop/assets/openbutler.ico`
 - closing or minimizing the main window hides it instead of stopping the local service
 - launching OpenButler again shows the existing window
 - the tray menu can reopen the app, restart the local service, open the data folder, or quit
 
 ## MineContext And Model Setup
 
-The desktop shell only detects MineContext by default. It does not silently
-install MineContext, import real activity, copy screenshots, or call external
-models.
+The desktop shell starts with an activation gate. Until the user chooses the
+sample experience or completes local setup, the main application shell is not
+shown.
+
+The local full-mode path requires model provider settings first. After the model
+fields are complete, the shell can scan for MineContext, start an existing
+installation, or help install it. Scanning does not read activity titles, URLs,
+screenshots, or raw records.
 
 The first-run flow lets the user:
 
 - use the sample experience
-- check whether MineContext is running locally
-- select or start a MineContext installer/app with explicit confirmation
 - enter model provider settings
+- scan whether MineContext is installed or running locally
+- start an existing MineContext app when found
+- choose automatic installation from the official GitHub Releases page, with an
+  explicit confirmation before download and another confirmation before install
+- use manual installation by opening the release page
 - write model settings to the local MineContext admin API only after clicking confirm
 
 API keys are not returned by `/api/desktop/status`, not shown in diagnostic
 summaries, and should never be committed.
+
+Automatic installation is best-effort. If the latest GitHub release cannot be
+read or a Windows installer asset cannot be identified, OpenButler falls back to
+manual installation and opens:
+
+```text
+https://github.com/volcengine/MineContext/releases
+```
+
+For unattended development tests, set:
+
+```powershell
+$env:OPENBUTLER_MINECONTEXT_INSTALL_DRY_RUN = "1"
+```
+
+This verifies the installer path without running a real installer.
 
 ## Privacy Boundary
 

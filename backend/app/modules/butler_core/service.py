@@ -1168,6 +1168,7 @@ class ButlerCoreService:
         desktop_preload_path = root / "desktop" / "src" / "preload.cjs"
         desktop_backend_entry_path = root / "desktop" / "backend_entry.py"
         desktop_spec_path = root / "desktop" / "desktop_backend.spec"
+        desktop_icon_path = root / "desktop" / "assets" / "openbutler.ico"
         desktop_check_path = root / "desktop" / "scripts" / "check-desktop-contract.mjs"
         desktop_asset_check_path = root / "desktop" / "scripts" / "check-desktop-frontend-assets.mjs"
         desktop_packaged_smoke_path = root / "desktop" / "scripts" / "smoke-packaged-app.mjs"
@@ -2344,6 +2345,19 @@ class ButlerCoreService:
                         [{"kind": "file", "path": "desktop/src/main.cjs"}],
                     ),
                     criterion(
+                        "tray_uses_real_icon_asset",
+                        "桌面托盘和 Windows 安装包使用真实 OpenButler 图标资源",
+                        desktop_icon_path.exists()
+                        and "openbutler.ico" in desktop_main_text
+                        and "nativeImage.createFromPath" in desktop_main_text
+                        and '"icon": "assets/openbutler.ico"' in desktop_package_text,
+                        [
+                            {"kind": "file", "path": "desktop/assets/openbutler.ico"},
+                            {"kind": "file", "path": "desktop/package.json"},
+                            {"kind": "file", "path": "desktop/src/main.cjs"},
+                        ],
+                    ),
+                    criterion(
                         "minecontext_model_config_bridge",
                         "preload 暴露 MineContext 检测、安装程序选择、启动和模型配置能力",
                         "getMineContextStatus" in desktop_preload_text
@@ -2354,6 +2368,23 @@ class ButlerCoreService:
                         [
                             {"kind": "file", "path": "desktop/src/preload.cjs"},
                             {"kind": "file", "path": "desktop/src/main.cjs"},
+                        ],
+                    ),
+                    criterion(
+                        "minecontext_scan_and_install_bridge",
+                        "模型配置后可扫描本机 MineContext，并在用户确认后自动或手动安装接入",
+                        "scanMineContextInstallations" in desktop_main_text
+                        and "downloadMineContextInstaller" in desktop_main_text
+                        and "installMineContextWithApproval" in desktop_main_text
+                        and "openMineContextDownloadPage" in desktop_preload_text
+                        and "https://api.github.com/repos/volcengine/MineContext/releases/latest" in desktop_main_text
+                        and "扫描本机 MineContext" in app_text
+                        and "自动安装" in app_text
+                        and "手动安装" in app_text,
+                        [
+                            {"kind": "file", "path": "desktop/src/main.cjs"},
+                            {"kind": "file", "path": "desktop/src/preload.cjs"},
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
                         ],
                     ),
                     criterion(

@@ -287,7 +287,7 @@ function App() {
   const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [activationStatus, setActivationStatus] = useState<ActivationStatus>(() => readActivationStatus());
-  const [showFirstRunGuide, setShowFirstRunGuide] = useState(() => readActivationStatus() === "unseen");
+  const [showFirstRunGuide, setShowFirstRunGuide] = useState(false);
 
   async function refresh(q = search) {
     setError(null);
@@ -393,6 +393,31 @@ function App() {
     )
   }[page];
 
+  const activationGateOpen = activationStatus !== "demo_selected" && activationStatus !== "completed";
+
+  if (activationGateOpen) {
+    return (
+      <FirstRunGuide
+        status={activationStatus}
+        mandatory
+        onChooseDemo={() => {
+          closeActivation("demo_selected");
+          setPage("butler");
+          window.history.replaceState(null, "", routeForPage("butler"));
+        }}
+        onChooseReal={() => {
+          updateActivation("real_setup_started");
+        }}
+        onDismiss={() => updateActivation("dismissed")}
+        onComplete={() => {
+          closeActivation("completed");
+          setPage("butler");
+          window.history.replaceState(null, "", routeForPage("butler"));
+        }}
+      />
+    );
+  }
+
   return (
     <>
       <div className="app-shell">
@@ -468,7 +493,7 @@ function App() {
           {CurrentPage}
         </main>
       </div>
-          {showFirstRunGuide && (
+      {showFirstRunGuide && (
         <FirstRunGuide
           status={activationStatus}
           onChooseDemo={() => {
@@ -479,7 +504,7 @@ function App() {
           onChooseReal={() => {
             updateActivation("real_setup_started");
           }}
-          onDismiss={() => closeActivation("dismissed")}
+          onDismiss={() => setShowFirstRunGuide(false)}
           onComplete={() => closeActivation("completed")}
         />
       )}
@@ -2907,31 +2932,35 @@ function Chat({activationStatus}: {activationStatus: ActivationStatus}) {
 
 function FirstRunGuide({
   status,
+  mandatory = false,
   onChooseDemo,
   onChooseReal,
   onDismiss,
   onComplete
 }: {
   status: ActivationStatus;
+  mandatory?: boolean;
   onChooseDemo: () => void;
   onChooseReal: () => void;
   onDismiss: () => void;
   onComplete: () => void;
 }) {
   const isDesktopRuntime = typeof window !== "undefined" && !!window.openbutlerDesktop;
-  const [setupPane, setSetupPane] = useState<"intro" | "local">("intro");
+  const [setupPane, setSetupPane] = useState<"intro" | "local">(status === "real_setup_started" ? "local" : "intro");
   const [mineContextStatus, setMineContextStatus] = useState<Record<string, any> | null>(null);
+  const [mineContextScan, setMineContextScan] = useState<Record<string, any> | null>(null);
   const [setupMessage, setSetupMessage] = useState("");
   const [checkingMineContext, setCheckingMineContext] = useState(false);
   const [savingModel, setSavingModel] = useState(false);
+  const [modelReady, setModelReady] = useState(false);
   const [modelConfig, setModelConfig] = useState<ModelProviderConfig>(DEFAULT_MODEL_PROVIDER_CONFIG);
 
   const activationSteps = [
     {step: "1", title: "先看懂它能做什么", text: "OpenButler 会把你授权的线索整理成今日概览、提醒和依据。"},
     {step: "2", title: "选择样例或本地完全体", text: "样例只展示效果；本地完全体会在你的电脑上整理授权线索。"},
     {step: "3", title: "确认隐私承诺", text: "默认完全本地、只读、不开外部模型、不复制截图。"},
-    {step: "4", title: "检测本机记录工具", text: "先检测 MineContext 是否运行，不读取活动明细。"},
-    {step: "5", title: "配置模型供应商", text: "模型配置写入前需要你确认，Key 不会在页面外回显。"},
+    {step: "4", title: "配置模型供应商", text: "先补齐模型配置，Key 只在本机写入。"},
+    {step: "5", title: "扫描本机 MineContext", text: "找到后启动并连接；找不到再由你确认安装。"},
     {step: "6", title: "预览后再开始", text: "真实整理前先看会读取什么，确认后才继续。"},
   ];
   const resultCards = [
@@ -2983,6 +3012,64 @@ function FirstRunGuide({
 
   function updateModelConfig<K extends keyof ModelProviderConfig>(key: K, value: ModelProviderConfig[K]) {
     setModelConfig((current) => ({...current, [key]: value}));
+    setModelReady(false);
+  }
+
+  function missingModelFields(config: ModelProviderConfig) {
+    const labels: Record<keyof ModelProviderConfig, string> = {
+      modelPlatform: "模型平台",
+      modelId: "模型 ID",
+      baseUrl: "Base URL",
+      apiKey: "API Key",
+      useSeparateEmbedding: "独立 Embedding 配置",
+      embeddingModelPlatform: "Embedding 平台",
+      embeddingModelId: "Embedding 模型 ID",
+      embeddingBaseUrl: "Embedding Base URL",
+      embeddingApiKey: "Embedding API Key",
+    };
+    const missing: string[] = [];
+    (["modelPlatform", "modelId", "baseUrl", "apiKey"] as Array<keyof ModelProviderConfig>).forEach((key) => {
+      if (!String(config[key] || "").trim()) missing.push(labels[key]);
+    });
+    if (config.useSeparateEmbedding) {
+      (["embeddingModelPlatform", "embeddingModelId", "embeddingBaseUrl", "embeddingApiKey"] as Array<keyof ModelProviderConfig>).forEach((key) => {
+        if (!String(config[key] || "").trim()) missing.push(labels[key]);
+      });
+    }
+    return missing;
+  }
+
+  function saveModelConfigForScan() {
+    const missing = missingModelFields(modelConfig);
+    if (missing.length) {
+      setModelReady(false);
+      setSetupMessage(`请先补全：${missing.join("、")}。配置完成后才能启用本地完全体。`);
+      return false;
+    }
+    setModelReady(true);
+    setSetupMessage("模型配置已补齐。下一步可以扫描本机 MineContext；这一步不会读取活动明细。");
+    return true;
+  }
+
+  async function scanMineContext() {
+    if (!modelReady && !saveModelConfigForScan()) return;
+    if (!window.openbutlerDesktop) {
+      setSetupMessage("当前是网页样例。请在 OpenButler 桌面版中扫描本机 MineContext。");
+      return;
+    }
+    setCheckingMineContext(true);
+    try {
+      const scan = await window.openbutlerDesktop.scanMineContextInstallations();
+      setMineContextScan(scan);
+      await refreshMineContextStatus();
+      setSetupMessage(scan?.found
+        ? `已找到 ${scan.candidates?.length ?? 0} 个 MineContext 线索。可以启动并连接。`
+        : "没有找到 MineContext。你可以选择自动安装，或打开下载页手动安装。");
+    } catch {
+      setSetupMessage("扫描失败。请确认桌面应用仍在运行，或稍后重试。");
+    } finally {
+      setCheckingMineContext(false);
+    }
   }
 
   async function chooseInstaller() {
@@ -2991,22 +3078,57 @@ function FirstRunGuide({
   }
 
   async function startMineContext() {
+    if (!modelReady && !saveModelConfigForScan()) return;
     const result = await window.openbutlerDesktop?.startMineContext();
     setSetupMessage(result?.message ?? "未能启动本机记录工具。");
     window.setTimeout(() => void refreshMineContextStatus(), 1200);
   }
 
+  async function downloadAndInstallMineContext() {
+    if (!modelReady && !saveModelConfigForScan()) return;
+    if (!window.openbutlerDesktop) {
+      setSetupMessage("自动安装只在桌面版可用。网页样例不会安装任何本机工具。");
+      return;
+    }
+    setCheckingMineContext(true);
+    try {
+      const download = await window.openbutlerDesktop.downloadMineContextInstaller();
+      if (!download?.ok) {
+        setSetupMessage(download?.message ?? "没有准备好安装包。你可以选择手动安装。");
+        return;
+      }
+      const install = await window.openbutlerDesktop.installMineContextWithApproval();
+      setSetupMessage(install?.message ?? "安装流程已结束。请重新扫描 MineContext。");
+      await scanMineContext();
+    } finally {
+      setCheckingMineContext(false);
+    }
+  }
+
+  async function openMineContextDownloadPage() {
+    await window.openbutlerDesktop?.openMineContextDownloadPage();
+    setSetupMessage("已打开 MineContext 下载页面。安装完成后，请回到这里重新扫描。");
+  }
+
   async function testModelConfig() {
     setSavingModel(true);
     try {
-      const result = await window.openbutlerDesktop?.testMineContextModelConfig(modelConfig);
-      setSetupMessage(result?.message ?? "模型配置检查完成。");
+      const missing = missingModelFields(modelConfig);
+      if (missing.length) {
+        setModelReady(false);
+        setSetupMessage(`请先补全：${missing.join("、")}。`);
+      } else {
+        setModelReady(true);
+        const result = await window.openbutlerDesktop?.testMineContextModelConfig(modelConfig);
+        setSetupMessage(result?.message ?? "模型字段已补齐；连接 MineContext 后即可写入。");
+      }
     } finally {
       setSavingModel(false);
     }
   }
 
   async function applyModelConfig() {
+    if (!modelReady && !saveModelConfigForScan()) return;
     setSavingModel(true);
     try {
       const result = await window.openbutlerDesktop?.applyMineContextModelConfig(modelConfig);
@@ -3030,6 +3152,9 @@ function FirstRunGuide({
             你不用理解后端、端口或数据表。先看样例，或者让 OpenButler 在本机整理你主动授权的记录。
             授权前只会检测和预览，不会导入真实活动。
           </p>
+          {status === "dismissed" && (
+            <p className="policy-note">你可以稍后回来继续设置。完成样例体验或本地完全体设置前，不会进入空控制台。</p>
+          )}
           <div className="activation-step-list" aria-label="首次激活步骤">
             {activationSteps.map((item) => (
               <article key={item.step}>
@@ -3058,7 +3183,7 @@ function FirstRunGuide({
             <button className="activation-choice quiet-choice" onClick={onDismiss}>
               <CalendarDays size={17} />
               <strong>稍后配置</strong>
-              <span>先进入首页，之后可以在“我的”里重新打开。</span>
+              <span>停在引导页，之后再选择样例或本地完全体。</span>
             </button>
           </div>
         </div>
@@ -3080,20 +3205,13 @@ function FirstRunGuide({
           <div className="first-run-local-setup" aria-label="本地完全体设置">
             <div className="local-setup-head">
               <span className="privacy-chip">{isDesktopRuntime ? "本地完全体" : "网页样例"}</span>
-              <strong>启用完整功能前，需要完成两件事</strong>
-              <p>先让 MineContext 在本机运行，再把模型供应商配置写入它的管理后台。OpenButler 不会替你读取或导入活动明细。</p>
+              <strong>启用完整功能前，需要完成这些设置</strong>
+              <p>先补齐模型供应商配置，再扫描本机 MineContext。找到或安装后，OpenButler 才会把配置写入它的本机后台。</p>
             </div>
             <div className="local-setup-status">
               <StatusItem label="桌面环境" value={isDesktopRuntime ? "已连接" : "仅样例"} />
+              <StatusItem label="模型配置" value={modelReady ? "已补齐" : "待补齐"} />
               <StatusItem label="MineContext 后台" value={mineContextStatus?.reachable ? "运行中" : checkingMineContext ? "检测中" : "未检测到"} />
-              <StatusItem label="模型配置" value={mineContextStatus?.configured ? "已写入" : "待配置"} />
-            </div>
-            <div className="desktop-action-row">
-              <button className="secondary" onClick={refreshMineContextStatus} disabled={checkingMineContext}>
-                {checkingMineContext ? "检测中" : "重新检测"}
-              </button>
-              <button className="secondary" onClick={chooseInstaller} disabled={!isDesktopRuntime}>选择安装程序</button>
-              <button className="secondary" onClick={startMineContext} disabled={!isDesktopRuntime}>安装或启动 MineContext</button>
             </div>
 
             <div className="model-config-panel">
@@ -3147,11 +3265,47 @@ function FirstRunGuide({
                 <button className="secondary" onClick={testModelConfig} disabled={!isDesktopRuntime || savingModel}>
                   {savingModel ? "检查中" : "检查配置"}
                 </button>
-                <button className="primary" onClick={applyModelConfig} disabled={!isDesktopRuntime || savingModel}>
-                  {savingModel ? "写入中" : "写入 MineContext 配置"}
+                <button className="primary" onClick={saveModelConfigForScan} disabled={!isDesktopRuntime || savingModel}>
+                  保存配置，继续扫描
                 </button>
               </div>
-              <small>Key 不会显示在状态接口、日志或页面摘要中。写入前只做本机后台可达性检查，不调用外部模型。</small>
+              <small>Key 不会显示在状态接口、日志或页面摘要中。这里不调用外部模型，只准备写入本机 MineContext。</small>
+            </div>
+
+            <div className="model-config-panel">
+              <div className="section-title compact-title">
+                <div>
+                  <p className="eyebrow">本机记录工具</p>
+                  <h3>扫描本机 MineContext</h3>
+                </div>
+              </div>
+              <p className="policy-note">扫描只查找安装位置和后台状态，不读取活动标题、URL、截图或原始记录。</p>
+              <div className="local-setup-status">
+                <StatusItem label="扫描结果" value={mineContextScan?.found ? `找到 ${mineContextScan?.candidates?.length ?? 0} 个线索` : "待扫描"} />
+                <StatusItem label="后台状态" value={mineContextStatus?.reachable ? "可连接" : "未连接"} />
+                <StatusItem label="写入模型" value={mineContextStatus?.configured ? "已完成" : "待确认"} />
+              </div>
+              <div className="desktop-action-row">
+                <button className="secondary" onClick={scanMineContext} disabled={!isDesktopRuntime || checkingMineContext || !modelReady}>
+                  {checkingMineContext ? "扫描中" : "扫描本机 MineContext"}
+                </button>
+                <button className="secondary" onClick={startMineContext} disabled={!isDesktopRuntime || checkingMineContext || !modelReady}>
+                  启动并连接
+                </button>
+                <button className="secondary" onClick={downloadAndInstallMineContext} disabled={!isDesktopRuntime || checkingMineContext || !modelReady}>
+                  自动安装
+                </button>
+                <button className="secondary" onClick={openMineContextDownloadPage} disabled={!isDesktopRuntime}>
+                  手动安装
+                </button>
+                <button className="secondary" onClick={chooseInstaller} disabled={!isDesktopRuntime}>
+                  选择安装包
+                </button>
+                <button className="primary" onClick={applyModelConfig} disabled={!isDesktopRuntime || savingModel || !modelReady || !mineContextStatus?.reachable}>
+                  {savingModel ? "写入中" : "写入 MineContext 配置并完成"}
+                </button>
+              </div>
+              <small>如果没有找到 MineContext，自动安装会先请求确认，再从官方 Releases 下载最新安装包。无法识别安装包时会转为手动安装。</small>
             </div>
             {setupMessage && <p className="policy-note">{setupMessage}</p>}
           </div>
@@ -3173,10 +3327,10 @@ function FirstRunGuide({
             ))}
           </div>
           <small>样例只用于说明产品效果，不代表你的真实生活记录。</small>
-          <button className="secondary light-on-dark" onClick={onComplete}>我知道了</button>
+          <button className="secondary light-on-dark" onClick={onChooseDemo}>先看样例</button>
         </div>
 
-        <button className="first-run-close" onClick={onDismiss}>关闭</button>
+        {!mandatory && <button className="first-run-close" onClick={onDismiss}>关闭</button>}
       </section>
     </div>
   );

@@ -8,6 +8,7 @@ const required = [
   "package.json",
   "src/main.cjs",
   "src/preload.cjs",
+  "assets/openbutler.ico",
   "backend_entry.py",
   "desktop_backend.spec",
 ];
@@ -37,6 +38,8 @@ const expectations = [
   ["preload exposes MineContext status", preload.includes("getMineContextStatus")],
   ["preload exposes model config apply", preload.includes("applyMineContextModelConfig")],
   ["main implements tray", main.includes("new Tray") && main.includes("打开 OpenButler")],
+  ["main loads tray icon from file", main.includes("openbutler.ico") && main.includes("nativeImage.createFromPath")],
+  ["main checks empty tray icon", main.includes("isEmpty()") && main.includes("托盘图标")],
   ["main implements single instance", main.includes("requestSingleInstanceLock") && main.includes("second-instance")],
   ["main has desktop load error page", main.includes("loadDesktopErrorPage") && main.includes("did-fail-load")],
   ["main writes packaged smoke state", main.includes("OPENBUTLER_DESKTOP_SMOKE_FILE") && main.includes("bodyTextLength")],
@@ -46,6 +49,14 @@ const expectations = [
   ["desktop frontend build uses relative asset mode", packageJson.includes("build-frontend-for-desktop")],
   ["MineContext model config posts only to loopback", main.includes("127.0.0.1:1733") && main.includes("/api/model_settings/update")],
   ["MineContext model config redacts keys", main.includes("apiKeyConfigured") && !main.includes("apiKey: payload.config.apiKey")],
+  ["main can scan MineContext installations", main.includes("scanMineContextInstallations") && main.includes("OPENBUTLER_MINECONTEXT_EXE")],
+  ["main can download latest MineContext release", main.includes("downloadMineContextInstaller") && main.includes("api.github.com/repos/volcengine/MineContext/releases/latest")],
+  ["main gates MineContext install behind approval", main.includes("installMineContextWithApproval") && main.includes("showMessageBox")],
+  ["preload exposes MineContext scan", preload.includes("scanMineContextInstallations")],
+  ["preload exposes MineContext download/install", preload.includes("downloadMineContextInstaller") && preload.includes("installMineContextWithApproval")],
+  ["preload exposes MineContext download page", preload.includes("openMineContextDownloadPage")],
+  ["windows build config uses app icon", packageJson.includes('"icon": "assets/openbutler.ico"')],
+  ["electron builder packages desktop assets", packageJson.includes('"from": "assets"') && packageJson.includes('"to": "assets"')],
 ];
 
 const failed = expectations.filter(([, ok]) => !ok);

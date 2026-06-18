@@ -19,7 +19,11 @@ declare global {
       chooseMineContextHome: () => Promise<{canceled: boolean; path?: string}>;
       openDataFolder: () => Promise<{ok: boolean}>;
       getMineContextStatus: () => Promise<Record<string, any>>;
+      scanMineContextInstallations: () => Promise<Record<string, any>>;
       chooseMineContextInstaller: () => Promise<{canceled: boolean; selected?: boolean}>;
+      downloadMineContextInstaller: () => Promise<Record<string, any>>;
+      installMineContextWithApproval: () => Promise<Record<string, any>>;
+      openMineContextDownloadPage: () => Promise<{ok: boolean; url: string}>;
       startMineContext: () => Promise<{ok: boolean; action: string; message: string}>;
       testMineContextModelConfig: (config: Record<string, unknown>) => Promise<Record<string, any>>;
       applyMineContextModelConfig: (config: Record<string, unknown>) => Promise<Record<string, any>>;

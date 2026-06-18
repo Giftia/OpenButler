@@ -1,5 +1,5 @@
 const {app, BrowserWindow, dialog, ipcMain, shell, Tray, Menu, nativeImage} = require("electron");
-const {spawn} = require("child_process");
+const {spawn, execFile} = require("child_process");
 const fs = require("fs");
 const net = require("net");
 const path = require("path");
@@ -18,6 +18,8 @@ let selectedMineContextHome = "";
 let selectedMineContextInstaller = "";
 
 const mineContextBaseUrl = "http://127.0.0.1:1733";
+const mineContextReleasesUrl = "https://github.com/volcengine/MineContext/releases";
+const mineContextLatestReleaseApi = "https://api.github.com/repos/volcengine/MineContext/releases/latest";
 
 if (process.env.OPENBUTLER_DESKTOP_USER_DATA_DIR) {
   app.setPath("userData", process.env.OPENBUTLER_DESKTOP_USER_DATA_DIR);
@@ -38,6 +40,19 @@ function userDataDir() {
   return dir;
 }
 
+function installerDownloadDir() {
+  const dir = path.join(userDataDir(), "installers");
+  fs.mkdirSync(dir, {recursive: true});
+  return dir;
+}
+
+function desktopAssetPath(name) {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, "assets", name);
+  }
+  return path.join(__dirname, "..", "assets", name);
+}
+
 function desktopStatePath() {
   return path.join(userDataDir(), "desktop-state.json");
 }
@@ -55,6 +70,107 @@ function writeDesktopState(patch) {
   const next = {...current, ...patch};
   fs.writeFileSync(desktopStatePath(), JSON.stringify(next, null, 2), "utf8");
   return next;
+}
+
+function execFileText(command, args, timeout = 3000) {
+  return new Promise((resolve) => {
+    execFile(command, args, {windowsHide: true, timeout}, (error, stdout, stderr) => {
+      resolve({ok: !error, stdout: stdout || "", stderr: stderr || "", error: error?.message || ""});
+    });
+  });
+}
+
+function uniqueExistingCandidates(items) {
+  const seen = new Set();
+  return items
+    .filter((item) => item && item.path)
+    .map((item) => ({...item, path: path.normalize(item.path)}))
+    .filter((item) => {
+      const key = item.path.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return item.runningProcess || fs.existsSync(item.path);
+    });
+}
+
+function knownMineContextPaths() {
+  const home = app.getPath("home");
+  const appData = process.env.APPDATA || path.join(home, "AppData", "Roaming");
+  const localAppData = process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");
+  const programFiles = process.env.ProgramFiles || "C:\\Program Files";
+  const programFilesX86 = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
+  const programData = process.env.ProgramData || "C:\\ProgramData";
+  return [
+    process.env.OPENBUTLER_MINECONTEXT_EXE,
+    path.join(localAppData, "Programs", "MineContext", "MineContext.exe"),
+    path.join(localAppData, "MineContext", "MineContext.exe"),
+    path.join(programFiles, "MineContext", "MineContext.exe"),
+    path.join(programFilesX86, "MineContext", "MineContext.exe"),
+    path.join(appData, "Microsoft", "Windows", "Start Menu", "Programs", "MineContext.lnk"),
+    path.join(programData, "Microsoft", "Windows", "Start Menu", "Programs", "MineContext.lnk"),
+  ].filter(Boolean);
+}
+
+async function queryRegistryMineContextCandidates() {
+  if (process.platform !== "win32") return [];
+  const roots = [
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+    "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+    "HKLM\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+  ];
+  const candidates = [];
+  for (const root of roots) {
+    const result = await execFileText("reg", ["query", root, "/s"], 5000);
+    if (!result.ok && !result.stdout) continue;
+    const chunks = result.stdout.split(/\r?\n\r?\n/);
+    for (const chunk of chunks) {
+      if (!/MineContext/i.test(chunk)) continue;
+      const displayIcon = chunk.match(/DisplayIcon\s+REG_\w+\s+(.+)/i)?.[1]?.trim();
+      const installLocation = chunk.match(/InstallLocation\s+REG_\w+\s+(.+)/i)?.[1]?.trim();
+      const iconPath = displayIcon ? displayIcon.replace(/^"|"$/g, "").split(",")[0] : "";
+      const installExe = installLocation ? path.join(installLocation.replace(/^"|"$/g, ""), "MineContext.exe") : "";
+      if (iconPath) candidates.push({source: "registry", path: iconPath, label: "注册表安装记录"});
+      if (installExe) candidates.push({source: "registry", path: installExe, label: "注册表安装目录"});
+    }
+  }
+  return candidates;
+}
+
+async function isMineContextProcessRunning() {
+  if (process.platform !== "win32") return false;
+  const result = await execFileText("tasklist", ["/FI", "IMAGENAME eq MineContext.exe", "/FO", "CSV", "/NH"], 3000);
+  return /MineContext\.exe/i.test(result.stdout);
+}
+
+async function scanMineContextInstallations() {
+  const pathCandidates = knownMineContextPaths().map((candidatePath) => ({
+    source: candidatePath === process.env.OPENBUTLER_MINECONTEXT_EXE ? "environment" : "known_path",
+    path: candidatePath,
+    label: candidatePath.endsWith(".lnk") ? "开始菜单快捷方式" : "常见安装路径",
+  }));
+  const registryCandidates = await queryRegistryMineContextCandidates();
+  const runningProcess = await isMineContextProcessRunning();
+  const candidates = uniqueExistingCandidates([
+    ...pathCandidates,
+    ...registryCandidates,
+    runningProcess ? {source: "process", path: "MineContext.exe", label: "正在运行的 MineContext", runningProcess: true} : null,
+  ]);
+  return {
+    found: candidates.length > 0 || runningProcess,
+    runningProcess,
+    candidates: candidates.map((candidate) => ({
+      source: candidate.source,
+      label: candidate.label,
+      startable: !candidate.runningProcess,
+      // Keep concrete paths in Electron IPC for starting only; ordinary UI shows label/count.
+      path: candidate.path,
+    })),
+    privacy: {
+      activityRead: false,
+      screenshotCopied: false,
+      externalModelCalled: false,
+    },
+  };
 }
 
 function frontendIndexPath() {
@@ -136,6 +252,7 @@ function validateModelConfig(config = {}) {
 
 async function probeMineContext() {
   const state = readDesktopState();
+  const scan = await scanMineContextInstallations();
   const checks = [
     `${mineContextBaseUrl}/api/model_settings`,
     `${mineContextBaseUrl}/health`,
@@ -163,8 +280,16 @@ async function probeMineContext() {
     configured: Boolean(state.minecontextModelConfiguredAt),
     model: state.minecontextModelSummary || null,
     install: {
+      found: scan.found,
+      runningProcess: scan.runningProcess,
+      candidates: scan.candidates.map((candidate) => ({
+        source: candidate.source,
+        label: candidate.label,
+        startable: candidate.startable,
+      })),
       installerSelected: Boolean(selectedMineContextInstaller),
-      silentInstallEnabled: false,
+      silentInstallEnabled: true,
+      releasesUrl: mineContextReleasesUrl,
     },
     privacy: {
       localOnly: true,
@@ -247,6 +372,7 @@ async function createWindow() {
     minWidth: 960,
     minHeight: 680,
     title: "OpenButler",
+    icon: desktopAssetPath("openbutler.ico"),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -356,16 +482,13 @@ function showMainWindow() {
 
 function createTray() {
   if (tray) return tray;
-  const svg = encodeURIComponent(`
-    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-      <rect width="64" height="64" rx="14" fill="#0b1b26"/>
-      <path d="M18 25h28v19H18z" fill="none" stroke="#dff8ed" stroke-width="4" stroke-linejoin="round"/>
-      <path d="M25 25v-5h14v5" fill="none" stroke="#dff8ed" stroke-width="4" stroke-linecap="round"/>
-      <circle cx="27" cy="34" r="2.5" fill="#4ee6a5"/>
-      <circle cx="37" cy="34" r="2.5" fill="#4ee6a5"/>
-    </svg>
-  `);
-  const image = nativeImage.createFromDataURL(`data:image/svg+xml;charset=utf-8,${svg}`);
+  let image = nativeImage.createFromPath(desktopAssetPath("openbutler.ico"));
+  if (image.isEmpty()) {
+    image = nativeImage.createFromPath(desktopAssetPath("openbutler.png"));
+  }
+  if (image.isEmpty()) {
+    void loadDesktopErrorPage("OpenButler 托盘图标加载失败", "没有找到可用的桌面图标资源。", desktopAssetPath("openbutler.ico"));
+  }
   tray = new Tray(image);
   tray.setToolTip("OpenButler");
   tray.setContextMenu(Menu.buildFromTemplate([
@@ -378,6 +501,142 @@ function createTray() {
   ]));
   tray.on("click", showMainWindow);
   return tray;
+}
+
+async function startMineContextFromScan() {
+  const scan = await scanMineContextInstallations();
+  if (scan.runningProcess) {
+    return {ok: true, action: "already_running", message: "已检测到 MineContext 正在运行。", scan};
+  }
+  const candidate = scan.candidates.find((item) => item.startable && item.path && fs.existsSync(item.path));
+  if (candidate) {
+    const result = await shell.openPath(candidate.path);
+    return {ok: !result, action: "started", message: result || "已尝试启动 MineContext。", scan};
+  }
+  return {ok: false, action: "not_found", message: "未找到可启动的 MineContext。", scan};
+}
+
+function chooseMineContextReleaseAsset(release) {
+  const assets = Array.isArray(release?.assets) ? release.assets : [];
+  return assets.find((asset) => {
+    const name = String(asset.name || "").toLowerCase();
+    const url = String(asset.browser_download_url || "");
+    return url && (name.endsWith(".exe") || name.endsWith(".msi")) && /(win|windows|setup|installer|minecontext)/i.test(name);
+  }) || assets.find((asset) => {
+    const name = String(asset.name || "").toLowerCase();
+    const url = String(asset.browser_download_url || "");
+    return url && (name.endsWith(".exe") || name.endsWith(".msi"));
+  });
+}
+
+async function downloadMineContextInstaller() {
+  const confirm = await dialog.showMessageBox(mainWindow, {
+    type: "question",
+    buttons: ["下载并准备安装", "取消"],
+    defaultId: 0,
+    cancelId: 1,
+    title: "下载 MineContext",
+    message: "OpenButler 将从 MineContext 官方 GitHub Releases 获取最新 Windows 安装包。",
+    detail: "下载完成后仍会再次询问你是否安装。不会读取你的活动记录，也不会复制截图。",
+  });
+  if (confirm.response !== 0) {
+    return {ok: false, canceled: true, message: "已取消下载。"};
+  }
+  try {
+    const releaseResponse = await fetchWithTimeout(mineContextLatestReleaseApi, {
+      headers: {"Accept": "application/vnd.github+json", "User-Agent": "OpenButler Desktop"},
+    }, 12000);
+    if (!releaseResponse.ok) {
+      await shell.openExternal(mineContextReleasesUrl);
+      return {ok: false, action: "manual_download", message: "无法读取最新发行包，已打开下载页面。"};
+    }
+    const release = await releaseResponse.json();
+    const asset = chooseMineContextReleaseAsset(release);
+    if (!asset?.browser_download_url) {
+      await shell.openExternal(mineContextReleasesUrl);
+      return {ok: false, action: "manual_download", version: release?.tag_name || "", message: "没有识别到 Windows 安装包，已打开下载页面。"};
+    }
+    const assetName = String(asset.name || "MineContext-Setup.exe").replace(/[\\/:*?"<>|]/g, "-");
+    const installerPath = path.join(installerDownloadDir(), assetName);
+    const response = await fetchWithTimeout(asset.browser_download_url, {
+      headers: {"User-Agent": "OpenButler Desktop"},
+    }, 60000);
+    if (!response.ok) {
+      await shell.openExternal(asset.browser_download_url);
+      return {ok: false, action: "manual_download", message: "安装包下载失败，已打开浏览器下载页面。"};
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    fs.writeFileSync(installerPath, buffer);
+    selectedMineContextInstaller = installerPath;
+    return {
+      ok: true,
+      action: "downloaded",
+      installerReady: true,
+      version: release?.tag_name || "",
+      assetName,
+      message: "MineContext 安装包已下载，安装前会再次请求确认。",
+    };
+  } catch (error) {
+    await shell.openExternal(mineContextReleasesUrl);
+    return {ok: false, action: "manual_download", message: `自动下载失败，已打开下载页面。${error instanceof Error ? error.message : ""}`};
+  }
+}
+
+function installCommandFor(installerPath) {
+  if (installerPath.toLowerCase().endsWith(".msi")) {
+    return {
+      command: "msiexec",
+      args: ["/i", installerPath, "/qn", "/norestart"],
+    };
+  }
+  const envArgs = process.env.OPENBUTLER_MINECONTEXT_SILENT_ARGS;
+  return {
+    command: installerPath,
+    args: envArgs ? envArgs.split(" ").filter(Boolean) : ["/S"],
+  };
+}
+
+function runInstaller(command, args) {
+  return new Promise((resolve) => {
+    if (process.env.OPENBUTLER_MINECONTEXT_INSTALL_DRY_RUN === "1") {
+      resolve({ok: true, code: 0, dryRun: true});
+      return;
+    }
+    const child = spawn(command, args, {windowsHide: true, stdio: "ignore"});
+    child.on("error", (error) => resolve({ok: false, code: null, error: error.message}));
+    child.on("exit", (code) => resolve({ok: code === 0, code}));
+  });
+}
+
+async function installMineContextWithApproval() {
+  if (!selectedMineContextInstaller || !fs.existsSync(selectedMineContextInstaller)) {
+    return {ok: false, action: "no_installer", message: "还没有可用的 MineContext 安装包。请先自动下载或手动选择安装程序。"};
+  }
+  const installPlan = installCommandFor(selectedMineContextInstaller);
+  const confirm = await dialog.showMessageBox(mainWindow, {
+    type: "question",
+    buttons: ["开始安装", "取消"],
+    defaultId: 0,
+    cancelId: 1,
+    title: "安装 MineContext",
+    message: "即将安装 MineContext，并在安装后尝试启动它。",
+    detail: "OpenButler 不会读取活动明细。安装完成后才会把你刚才填写的模型配置写入 MineContext 本机后台。",
+  });
+  if (confirm.response !== 0) {
+    return {ok: false, canceled: true, action: "canceled", message: "已取消安装。"};
+  }
+  const result = await runInstaller(installPlan.command, installPlan.args);
+  if (!result.ok) {
+    return {ok: false, action: "install_failed", code: result.code, message: "MineContext 安装程序没有成功完成。你可以改用手动安装。"};
+  }
+  const scan = await scanMineContextInstallations();
+  return {
+    ok: true,
+    action: result.dryRun ? "install_dry_run" : "installed",
+    dryRun: Boolean(result.dryRun),
+    scan,
+    message: result.dryRun ? "安装 dry-run 已完成。" : "安装程序已完成，正在尝试连接 MineContext。",
+  };
 }
 
 ipcMain.handle("openbutler:get-runtime", async () => ({
@@ -399,6 +658,17 @@ ipcMain.handle("openbutler:restart-backend", async () => {
 
 ipcMain.handle("openbutler:get-minecontext-status", async () => probeMineContext());
 
+ipcMain.handle("openbutler:scan-minecontext-installations", async () => scanMineContextInstallations());
+
+ipcMain.handle("openbutler:download-minecontext-installer", async () => downloadMineContextInstaller());
+
+ipcMain.handle("openbutler:install-minecontext-with-approval", async () => installMineContextWithApproval());
+
+ipcMain.handle("openbutler:open-minecontext-download-page", async () => {
+  await shell.openExternal(mineContextReleasesUrl);
+  return {ok: true, url: mineContextReleasesUrl};
+});
+
 ipcMain.handle("openbutler:choose-minecontext-installer", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: "选择 MineContext 安装程序",
@@ -416,17 +686,8 @@ ipcMain.handle("openbutler:choose-minecontext-installer", async () => {
 });
 
 ipcMain.handle("openbutler:start-minecontext", async () => {
-  const candidates = [
-    process.env.OPENBUTLER_MINECONTEXT_EXE,
-    path.join(app.getPath("home"), "AppData", "Local", "Programs", "MineContext", "MineContext.exe"),
-    path.join(app.getPath("home"), "AppData", "Local", "MineContext", "MineContext.exe"),
-    path.join(process.env.ProgramFiles || "C:\\Program Files", "MineContext", "MineContext.exe"),
-  ].filter(Boolean);
-  const executable = candidates.find((item) => fs.existsSync(item));
-  if (executable) {
-    const result = await shell.openPath(executable);
-    return {ok: !result, action: "started", message: result || "已尝试启动 MineContext。"};
-  }
+  const fromScan = await startMineContextFromScan();
+  if (fromScan.ok || fromScan.action !== "not_found") return fromScan;
   if (selectedMineContextInstaller) {
     const result = await shell.openPath(selectedMineContextInstaller);
     return {ok: !result, action: "installer_opened", message: result || "已打开你选择的安装程序。"};

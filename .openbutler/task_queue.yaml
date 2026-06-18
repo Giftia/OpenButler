@@ -1262,4 +1262,40 @@ tasks:
     evidence:
       - "docs/productization/openbutler-commercial-concept-pitch/ppt/index.html"
 
+  - id: OB-TASK-237
+    title: "修复桌面托盘图标和强制首次激活门禁"
+    goal_id: OB-GOAL-023
+    priority: P0
+    status: done
+    done_when:
+      - "托盘和安装包使用真实 OpenButler 图标资源"
+      - "未完成首次激活时不渲染主应用导航"
+      - "稍后配置不会进入空控制台"
+      - "本地完全体必须先看到模型供应商配置"
+    evidence:
+      - "desktop/assets/openbutler.ico"
+      - "desktop/assets/openbutler.png"
+      - "desktop/src/main.cjs createTray"
+      - "frontend/src/App.tsx activationGateOpen"
+      - "frontend/scripts/smoke-first-run-activation.mjs"
+
+  - id: OB-TASK-238
+    title: "补齐 MineContext 扫描、自动安装和配置写入链路"
+    goal_id: OB-GOAL-023
+    priority: P0
+    status: done
+    done_when:
+      - "模型配置完成后才能扫描本机 MineContext"
+      - "可扫描进程、常见路径、开始菜单和注册表"
+      - "找不到时提供自动安装和手动安装两条路径"
+      - "自动安装必须经过用户确认"
+      - "配置写入只调用 127.0.0.1:1733 的 MineContext 本机接口"
+    evidence:
+      - "desktop/src/main.cjs scanMineContextInstallations"
+      - "desktop/src/main.cjs downloadMineContextInstaller"
+      - "desktop/src/main.cjs installMineContextWithApproval"
+      - "desktop/src/preload.cjs"
+      - "frontend/src/desktop.d.ts"
+      - "frontend/src/App.tsx FirstRunGuide"
+
 blocked: []

@@ -258,12 +258,15 @@ try {
     width: innerWidth,
     scrollWidth: document.documentElement.scrollWidth,
     hasDialog: !!document.querySelector('.first-run-guide'),
+    hasMainShell: !!document.querySelector('.app-shell'),
+    hasPrimaryNav: !!document.querySelector('[data-nav-key="butler"]'),
     hasIntro: document.body.innerText.includes('像安装一个私人管家一样开始'),
     hasDemo: document.body.innerText.includes('先看样例'),
     hasReal: document.body.innerText.includes('让 OpenButler 整理我的本机记录'),
     hasLater: document.body.innerText.includes('稍后配置')
   }))()`);
   assertCondition(initial.hasDialog && initial.hasIntro && initial.hasDemo && initial.hasReal && initial.hasLater, "First-run activation dialog missing expected choices.");
+  assertCondition(!initial.hasMainShell && !initial.hasPrimaryNav, "Main application shell is visible before activation completes.");
   assertNoHorizontalOverflow(initial, "Initial");
 
   await evaluate(cdp, `Array.from(document.querySelectorAll('.first-run-guide button')).find((button) => button.innerText.includes('先看样例')).click(); true`);
@@ -271,6 +274,7 @@ try {
   const afterDemo = await evaluate(cdp, `(() => ({
     status: localStorage.getItem('openbutler:first_run_activation:v1'),
     hasDialog: !!document.querySelector('.first-run-guide'),
+    hasPrimaryNav: !!document.querySelector('[data-nav-key="butler"]'),
     hasSample: document.body.innerText.includes('钥匙可能在玄关托盘附近') || document.body.innerText.includes('样例体验') || document.body.innerText.includes('3 件事'),
     textStart: document.body.innerText.slice(0, 240),
     width: innerWidth,
@@ -278,6 +282,7 @@ try {
   }))()`);
   assertCondition(afterDemo.status === "demo_selected", "Demo choice did not persist demo_selected.");
   assertCondition(!afterDemo.hasDialog, "Demo choice did not close the activation dialog.");
+  assertCondition(afterDemo.hasPrimaryNav, "Demo mode should enter the sample application shell.");
   assertCondition(afterDemo.hasSample || afterDemo.textStart.includes("样例体验"), `Demo choice did not reveal sample value. Text: ${afterDemo.textStart}`);
   assertNoHorizontalOverflow(afterDemo, "Demo");
 
@@ -289,15 +294,20 @@ try {
   const afterReal = await evaluate(cdp, `(() => ({
     path: location.pathname,
     status: localStorage.getItem('openbutler:first_run_activation:v1'),
-    hasLocalSetup: document.body.innerText.includes('启用完整功能前，需要完成两件事'),
+    hasLocalSetup: document.body.innerText.includes('启用完整功能前，需要完成这些设置'),
     hasModelConfig: document.body.innerText.includes('模型供应商'),
+    hasMineContextScan: document.body.innerText.includes('扫描本机 MineContext'),
+    hasAutoInstall: document.body.innerText.includes('自动安装'),
+    hasManualInstall: document.body.innerText.includes('手动安装'),
+    hasPrimaryNav: !!document.querySelector('[data-nav-key="butler"]'),
     hasNoRealImport: document.body.innerText.includes('不会导入真实活动'),
     width: innerWidth,
     scrollWidth: document.documentElement.scrollWidth
   }))()`);
   assertCondition(afterReal.path === "/butler", `Real setup should stay in activation dialog, got ${afterReal.path}`);
   assertCondition(afterReal.status === "real_setup_started", "Real setup did not persist real_setup_started.");
-  assertCondition(afterReal.hasLocalSetup && afterReal.hasModelConfig && afterReal.hasNoRealImport, "Real setup did not show local activation and model config panel.");
+  assertCondition(afterReal.hasLocalSetup && afterReal.hasModelConfig && afterReal.hasMineContextScan && afterReal.hasAutoInstall && afterReal.hasManualInstall && afterReal.hasNoRealImport, "Real setup did not show model config and MineContext bootstrap panel.");
+  assertCondition(!afterReal.hasPrimaryNav, "Real setup should not reveal the main navigation before completion.");
   assertNoHorizontalOverflow(afterReal, "Real setup");
 
   await navigate(cdp, "/butler");
@@ -308,14 +318,16 @@ try {
   const afterLater = await evaluate(cdp, `(() => ({
     status: localStorage.getItem('openbutler:first_run_activation:v1'),
     hasDialog: !!document.querySelector('.first-run-guide'),
-    hasNextStep: document.body.innerText.includes('选择一种方式开始今天') || document.body.innerText.includes('先看样例'),
+    hasMainShell: !!document.querySelector('.app-shell'),
+    hasNextStep: document.body.innerText.includes('你可以稍后回来继续设置') || document.body.innerText.includes('先看样例'),
     width: innerWidth,
     scrollWidth: document.documentElement.scrollWidth
   }))()`);
   assertCondition(afterLater.status === "dismissed", "Later choice did not persist dismissed.");
-  assertCondition(!afterLater.hasDialog && afterLater.hasNextStep, "Later choice did not leave a clear next step.");
+  assertCondition(afterLater.hasDialog && !afterLater.hasMainShell && afterLater.hasNextStep, "Later choice should keep the activation gate instead of entering the full app.");
   assertNoHorizontalOverflow(afterLater, "Later");
 
+  await evaluate(cdp, "localStorage.setItem('openbutler:first_run_activation:v1', 'demo_selected'); true");
   await navigate(cdp, "/me");
   const reopenBefore = await evaluate(cdp, "document.body.innerText.includes('重新选择开始方式')");
   assertCondition(reopenBefore, "/me missing reopen activation guide entry.");

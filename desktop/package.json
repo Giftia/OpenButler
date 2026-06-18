@@ -24,6 +24,10 @@
     ],
     "extraResources": [
       {
+        "from": "assets",
+        "to": "assets"
+      },
+      {
         "from": "../frontend/dist",
         "to": "frontend/dist"
       },
@@ -33,6 +37,7 @@
       }
     ],
     "win": {
+      "icon": "assets/openbutler.ico",
       "signAndEditExecutable": false,
       "target": [
         "nsis"
