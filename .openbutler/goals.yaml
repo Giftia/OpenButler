@@ -5,10 +5,31 @@ product_goal:
   north_star: "用户每天 60 秒内理解今天发生了什么、什么值得注意、下一步应该做什么"
 
 active_objectives:
+  - id: OB-GOAL-022
+    title: "Electron First-Run Productization Shell"
+    priority: P0
+    status: active
+    description: >
+      将 OpenButler 从本地 Web 原型推进到普通用户可安装的 Windows 桌面产品壳。
+      本阶段聚焦 Electron 本地服务启动、首次激活、本地模式检查、只读授权预览、
+      以及商业化探索概念 PPT。
+    success_criteria:
+      - "desktop/ Electron 应用存在"
+      - "Electron 主进程可启动本地 FastAPI 服务并绑定 127.0.0.1"
+      - "桌面模式默认 strict、禁用 seed、只读数据源、不复制截图、不调用外部模型"
+      - "前端优先使用 window.openbutlerDesktop.apiBase"
+      - "preload 只暴露最小安全接口"
+      - "首次激活流说明样例体验、本地模式、隐私承诺、数据源检测和预览确认"
+      - "/me 展示本机服务状态、授权线索、隐私检查和重新打开引导"
+      - "/api/desktop/status 只返回脱敏桌面状态"
+      - "商业概念 PPT 存在且不包含真实用户数据"
+      - "前端 build、后端核心测试和桌面合同检查通过"
+
+archived_objectives:
   - id: OB-GOAL-016
     title: "Demo / Local Mode Boundary"
     priority: P0
-    status: active
+    status: implemented
     description: >
       将 Vercel 线上版明确定位为公开样例体验，将真实个人数据能力收束到本地模式。
       普通用户路径需要清楚说明：线上样例不会读取真实数据；本地模式需要用户本机运行并主动授权。
@@ -24,7 +45,6 @@ active_objectives:
       - "不复制截图或上传数据"
       - "前端 build 和后端核心测试通过"
 
-archived_objectives:
   - id: OB-GOAL-001
     title: "完成主动管家中枢 MVP"
     priority: P0

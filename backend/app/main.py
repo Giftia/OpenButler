@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import sqlite3
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -393,6 +394,50 @@ async def ensure_vercel_demo_data(request, call_next):
 @app.get("/health")
 def health() -> dict[str, Any]:
     return {"ok": True, "service": "openbutler-api", "privacy_mode": get_privacy_mode()}
+
+
+@app.get("/api/desktop/status")
+def desktop_status() -> dict[str, Any]:
+    """Return desktop runtime health without exposing local activity details."""
+    mode = get_privacy_mode()
+    desktop_enabled = os.getenv("OPENBUTLER_DESKTOP") == "1"
+    seed_disabled = os.getenv("OPENBUTLER_DISABLE_SEED_EVENTS") == "1"
+    copy_screenshots = os.getenv("OPENBUTLER_COPY_SCREENSHOTS", "0") == "1"
+    external_model_allowed = os.getenv("OPENBUTLER_EXTERNAL_MODEL_ALLOWED", "0") == "1"
+    webhook_allowed = os.getenv("OPENBUTLER_EXTERNAL_WEBHOOK_ALLOWED", "0") == "1"
+    minecontext_home = os.getenv("MINECONTEXT_HOME") or os.getenv("OPENBUTLER_MINECONTEXT_HOME")
+    return {
+        "desktop": {
+            "available": desktop_enabled,
+            "platform": platform.system() or "unknown",
+            "version": os.getenv("OPENBUTLER_APP_VERSION", app.version),
+        },
+        "service": {
+            "running": True,
+            "host": "127.0.0.1" if desktop_enabled else "web",
+            "privacy_mode": mode,
+            "data_scope": "electron_user_data" if desktop_enabled else "configured_backend_data",
+        },
+        "privacy": {
+            "strict": mode == "strict",
+            "seed_events_disabled": seed_disabled,
+            "copy_screenshots": copy_screenshots,
+            "external_model_allowed": external_model_allowed,
+            "external_webhook_allowed": webhook_allowed,
+        },
+        "data_sources": {
+            "minecontext": {
+                "configured": bool(minecontext_home),
+                "read_only": True,
+                "status": "configured" if minecontext_home else "not_configured",
+            }
+        },
+        "safety": {
+            "raw_activity_titles_returned": False,
+            "screenshot_paths_returned": False,
+            "local_paths_returned": False,
+        },
+    }
 
 
 @app.get("/api/events")

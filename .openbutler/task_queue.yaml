@@ -1068,4 +1068,100 @@ tasks:
       - "frontend/scripts/smoke-achievements.mjs"
       - "docs/product/ACHIEVEMENT_LAYER_RECOVERY.md"
 
+  - id: OB-TASK-220
+    title: "建立 Electron 桌面壳和打包配置"
+    goal_id: OB-GOAL-022
+    priority: P0
+    status: done
+    done_when:
+      - "desktop/package.json exists"
+      - "Electron main process starts backend on 127.0.0.1"
+      - "preload exposes minimal OpenButler desktop bridge"
+      - "electron-builder Windows config exists"
+    evidence:
+      - "desktop/package.json"
+      - "desktop/src/main.cjs"
+      - "desktop/src/preload.cjs"
+
+  - id: OB-TASK-221
+    title: "新增后端桌面模式只读状态接口"
+    goal_id: OB-GOAL-022
+    priority: P0
+    status: done
+    done_when:
+      - "GET /api/desktop/status exists"
+      - "response does not expose local paths, screenshot paths, or activity titles"
+      - "desktop privacy defaults are test-covered"
+    evidence:
+      - "backend/app/main.py"
+      - "backend/app/modules/butler_core/tests/test_desktop_status.py"
+
+  - id: OB-TASK-222
+    title: "实现前端 Electron runtime bridge"
+    goal_id: OB-GOAL-022
+    priority: P0
+    status: done
+    done_when:
+      - "frontend API client prefers window.openbutlerDesktop.apiBase"
+      - "TypeScript knows openbutlerDesktop preload contract"
+      - "desktop runtime bridge smoke exists"
+    evidence:
+      - "frontend/src/lib/api.ts"
+      - "frontend/src/desktop.d.ts"
+      - "frontend/scripts/smoke-desktop-runtime-bridge.mjs"
+
+  - id: OB-TASK-223
+    title: "升级首次激活为桌面产品化 V2"
+    goal_id: OB-GOAL-022
+    priority: P0
+    status: done
+    done_when:
+      - "首次激活说明欢迎、选择模式、隐私承诺、检测线索、预览确认"
+      - "连接本地数据源使用普通用户语言"
+      - "确认前不导入真实数据"
+    evidence:
+      - "frontend/src/App.tsx FirstRunGuide"
+      - "frontend/src/styles.css activation-step-list"
+
+  - id: OB-TASK-224
+    title: "升级 /me 为我的 OpenButler 管理页"
+    goal_id: OB-GOAL-022
+    priority: P0
+    status: done
+    done_when:
+      - "我的页显示本机服务状态"
+      - "我的页显示隐私与本地模式检查"
+      - "Electron 环境显示重启服务、选择目录、打开数据文件夹"
+      - "网页环境不暗示已连接真实本机数据"
+    evidence:
+      - "frontend/src/App.tsx Privacy"
+      - "frontend/src/styles.css local-service-panel"
+
+  - id: OB-TASK-225
+    title: "生成商业概念 PPT"
+    goal_id: OB-GOAL-022
+    priority: P0
+    status: done
+    done_when:
+      - "Swiss Style HTML PPT exists"
+      - "contains 12 productization slides"
+      - "does not contain real user data or local paths"
+      - "does not include skill sponsor/provenance wording"
+    evidence:
+      - "docs/productization/openbutler-commercial-concept-pitch/ppt/index.html"
+
+  - id: OB-TASK-226
+    title: "补充 Electron 产品化文档和验证"
+    goal_id: OB-GOAL-022
+    priority: P0
+    status: done
+    done_when:
+      - "Electron first-run productization doc exists"
+      - "desktop contract check passes"
+      - "frontend build passes"
+      - "backend core tests pass"
+    evidence:
+      - "docs/product/ELECTRON_FIRST_RUN_PRODUCTIZATION_SHELL.md"
+      - "desktop/scripts/check-desktop-contract.mjs"
+
 blocked: []

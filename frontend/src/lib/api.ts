@@ -1,6 +1,9 @@
 import type { EventItem, PluginManifest, PrivacyMode } from "../types";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
+const API_BASE =
+  typeof window !== "undefined" && window.openbutlerDesktop?.apiBase
+    ? window.openbutlerDesktop.apiBase
+    : import.meta.env.VITE_API_BASE_URL ?? "";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -31,6 +34,10 @@ export function getPlugins() {
 
 export function getPrivacyMode() {
   return request<{mode: PrivacyMode}>("/api/privacy-mode");
+}
+
+export function getDesktopStatus() {
+  return request<Record<string, any>>("/api/desktop/status");
 }
 
 export function setPrivacyMode(mode: PrivacyMode) {

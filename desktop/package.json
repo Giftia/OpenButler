@@ -1,0 +1,52 @@
+{
+  "name": "openbutler-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenButler Windows desktop shell",
+  "main": "src/main.cjs",
+  "scripts": {
+    "dev": "electron .",
+    "build:frontend": "npm --prefix ../frontend run build",
+    "build:backend": "pyinstaller --noconfirm desktop_backend.spec",
+    "pack": "npm run build:frontend && electron-builder --dir",
+    "dist": "npm run build:frontend && electron-builder --win nsis",
+    "check": "node scripts/check-desktop-contract.mjs"
+  },
+  "build": {
+    "appId": "moe.giftia.openbutler",
+    "productName": "OpenButler",
+    "asar": true,
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../frontend/dist",
+        "to": "frontend/dist"
+      },
+      {
+        "from": "dist/backend",
+        "to": "backend",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "OpenButler-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3"
+  }
+}

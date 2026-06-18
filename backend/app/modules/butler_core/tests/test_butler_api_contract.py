@@ -418,10 +418,10 @@ class ButlerApiContractTests(unittest.TestCase):
         self.assertIn("evidence_boundary", template["criterion_contract"])
         self.assertIn("minecontext_source_deleted must remain 0", template["privacy_invariants"])
         objectives = {item["id"]: item for item in response["objectives"]}
-        self.assertEqual(set(objectives), {"OB-GOAL-016"})
-        objective = objectives["OB-GOAL-016"]
+        self.assertEqual(set(objectives), {"OB-GOAL-022"})
+        objective = objectives["OB-GOAL-022"]
         self.assertEqual(objective["status"], "proven")
-        self.assertEqual(objective["title"], "Demo / Local Mode Boundary")
+        self.assertEqual(objective["title"], "Electron First-Run Productization Shell")
         self.assertEqual(objective["proven_count"], objective["criteria_count"])
         self.assertEqual(objective["priority"], "P0")
         self.assertTrue(objective["success_criteria"])
@@ -431,9 +431,10 @@ class ButlerApiContractTests(unittest.TestCase):
             self.assertTrue(criterion["evidence_refs"])
             self.assertTrue(criterion["evidence_boundary"])
         criteria = {item["id"]: item for item in objective["criteria"]}
-        self.assertEqual(criteria["public_demo_marked_as_sample"]["status"], "proven")
-        self.assertEqual(criteria["public_demo_does_not_imply_real_connection"]["status"], "proven")
-        self.assertEqual(criteria["no_dedicated_evidence_endpoint_added"]["status"], "proven")
+        self.assertEqual(criteria["electron_desktop_shell_exists"]["status"], "proven")
+        self.assertEqual(criteria["backend_loopback_and_strict_defaults"]["status"], "proven")
+        self.assertEqual(criteria["desktop_status_endpoint_redacted"]["status"], "proven")
+        self.assertEqual(criteria["commercial_concept_ppt_exists"]["status"], "proven")
 
     def test_productization_objective_status_surfaces_unknown_goals(self) -> None:
         butler_router.run_demo(DemoRunRequest(import_pc_activity=False))
@@ -509,13 +510,13 @@ class ButlerApiContractTests(unittest.TestCase):
         self.assertTrue(response["privacy"]["strict_mode_respected"])
         self.assertTrue(response["evidence_boundary"])
         objectives = {item["id"]: item for item in response["objectives"]}
-        goal = objectives["OB-GOAL-016"]
+        goal = objectives["OB-GOAL-022"]
         self.assertEqual(goal["objective_status"], "proven")
         checks = {item["success_criterion"]: item for item in goal["success_criteria"]}
-        self.assertEqual(checks["线上 Demo 明确标识为样例体验"]["verification_result"], "proven")
-        self.assertEqual(checks["公开 Demo 不暗示已经连接真实本机数据"]["verification_result"], "proven")
-        self.assertTrue(checks["公开 Demo 不暗示已经连接真实本机数据"]["evidence_refs"])
-        self.assertTrue(checks["不读取真实 MineContext 数据"]["evidence_boundary"])
+        self.assertEqual(checks["desktop/ Electron 应用存在"]["verification_result"], "proven")
+        self.assertEqual(checks["Electron 主进程可启动本地 FastAPI 服务并绑定 127.0.0.1"]["verification_result"], "proven")
+        self.assertTrue(checks["Electron 主进程可启动本地 FastAPI 服务并绑定 127.0.0.1"]["evidence_refs"])
+        self.assertTrue(checks["/api/desktop/status 只返回脱敏桌面状态"]["evidence_boundary"])
 
     def test_productization_l1_audit_report_distinguishes_missing_and_out_of_scope(self) -> None:
         butler_router.run_demo(DemoRunRequest(import_pc_activity=False))

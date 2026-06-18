@@ -54,6 +54,7 @@ import {
   getButlerSettings,
   getButlerTimeline,
   getButlerProductizationObjectiveStatus,
+  getDesktopStatus,
   getEvents,
   getPlugins,
   getPrivacyMode,
@@ -2896,6 +2897,13 @@ function FirstRunGuide({
   onDismiss: () => void;
   onComplete: () => void;
 }) {
+  const activationSteps = [
+    {step: "1", title: "先看懂它能做什么", text: "OpenButler 会把你授权的线索整理成今日概览、提醒和依据。"},
+    {step: "2", title: "选择样例或本地模式", text: "样例只展示效果；本地模式才会在你的电脑上读取授权线索。"},
+    {step: "3", title: "确认隐私承诺", text: "默认完全本地、只读、不开外部模型、不复制截图。"},
+    {step: "4", title: "检测本地线索", text: "先检测可用数据源，不读取活动明细。"},
+    {step: "5", title: "预览后再开始", text: "真实整理前先看会读取什么，确认后才继续。"},
+  ];
   const resultCards = [
     {
       title: "今日概览",
@@ -2925,11 +2933,22 @@ function FirstRunGuide({
       <section className="first-run-guide">
         <div className="first-run-copy">
           <p className="eyebrow">首次激活 · {activationStatusLabel(status)}</p>
-          <h2 id="first-run-title">先选择 OpenButler 怎么认识你的一天</h2>
+          <h2 id="first-run-title">像安装一个私人管家一样开始</h2>
           <p>
-            OpenButler 会整理你主动授权的本地线索，生成今日概览、管家提醒和可复核依据。
-            你可以先看样例，也可以了解本地模式；未授权时不会读取真实数据。
+            你不用理解后端、端口或数据表。先看样例，或者让 OpenButler 在本机整理你主动授权的记录。
+            授权前只会检测和预览，不会导入真实活动。
           </p>
+          <div className="activation-step-list" aria-label="首次激活步骤">
+            {activationSteps.map((item) => (
+              <article key={item.step}>
+                <span>{item.step}</span>
+                <div>
+                  <strong>{item.title}</strong>
+                  <small>{item.text}</small>
+                </div>
+              </article>
+            ))}
+          </div>
           <div className="activation-choice-grid" aria-label="选择开始方式">
             <button className="activation-choice primary-choice" onClick={onChooseDemo}>
               <CheckCircle2 size={17} />
@@ -2938,8 +2957,8 @@ function FirstRunGuide({
             </button>
             <button className="activation-choice" onClick={onChooseReal}>
               <Database size={17} />
-              <strong>了解本地模式</strong>
-              <span>真实模式需要你本机运行，并主动授权要读取的线索。</span>
+              <strong>让 OpenButler 整理我的本机记录</strong>
+              <span>进入本地模式检查，先看会读取什么，再由你确认。</span>
             </button>
             <button className="activation-choice quiet-choice" onClick={onDismiss}>
               <CalendarDays size={17} />
@@ -2965,7 +2984,7 @@ function FirstRunGuide({
         <div className="first-run-preview" aria-label="OpenButler 整理结果示例">
           <span className="privacy-chip">样例体验</span>
           <strong>授权后，你会得到什么</strong>
-          <p>真实模式只在你的本机运行；线上样例只展示效果，不读取你的相册、电脑活动或本地截图。</p>
+          <p>本地模式只绑定 127.0.0.1。默认完全本地、只读、不开外部模型、不复制本地截图。</p>
           <div>
             {previewItems.map((item) => (
               <article key={`${item.time}-${item.title}`}>
@@ -3001,8 +3020,105 @@ function Privacy({
   onOpenGuide: () => void;
 }) {
   const blocked = plugins.filter((plugin) => !plugin.runtime.available).length;
+  const [desktopStatus, setDesktopStatus] = useState<Record<string, any> | null>(null);
+  const [desktopStatusError, setDesktopStatusError] = useState<string | null>(null);
+  const isDesktopRuntime = typeof window !== "undefined" && !!window.openbutlerDesktop;
+
+  useEffect(() => {
+    let mounted = true;
+    void getDesktopStatus()
+      .then((payload) => {
+        if (mounted) {
+          setDesktopStatus(payload);
+          setDesktopStatusError(null);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setDesktopStatus(null);
+          setDesktopStatusError("当前页面还没有连接本机桌面服务。");
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  async function restartDesktopBackend() {
+    if (!window.openbutlerDesktop) return;
+    await window.openbutlerDesktop.restartBackend();
+    const payload = await getDesktopStatus();
+    setDesktopStatus(payload);
+  }
+
+  async function chooseMineContextHome() {
+    if (!window.openbutlerDesktop) return;
+    await window.openbutlerDesktop.chooseMineContextHome();
+    const payload = await getDesktopStatus();
+    setDesktopStatus(payload);
+  }
+
+  async function openDesktopDataFolder() {
+    await window.openbutlerDesktop?.openDataFolder();
+  }
+
+  const localModeChecks = [
+    {
+      label: "本机服务",
+      value: desktopStatus?.service?.running ? "运行中" : isDesktopRuntime ? "启动中" : "网页样例",
+    },
+    {
+      label: "严格隐私",
+      value: desktopStatus?.privacy?.strict ? "已开启" : mode === "strict" ? "已开启" : "未开启",
+    },
+    {
+      label: "样例种子",
+      value: desktopStatus?.privacy?.seed_events_disabled ? "已关闭" : isDesktopRuntime ? "待确认" : "样例可用",
+    },
+    {
+      label: "截图复制",
+      value: desktopStatus?.privacy?.copy_screenshots ? "已开启" : "未开启",
+    },
+    {
+      label: "外部模型",
+      value: desktopStatus?.privacy?.external_model_allowed ? "已允许" : "未允许",
+    },
+    {
+      label: "本地线索",
+      value: desktopStatus?.data_sources?.minecontext?.configured ? "已选择" : "未选择",
+    },
+  ];
+
   return (
     <div className="me-page">
+      <section className="today-panel local-service-panel">
+        <div className="section-title">
+          <div>
+            <p className="eyebrow">我的 OpenButler</p>
+            <h2>{isDesktopRuntime ? "本地版正在为你准备" : "当前是样例体验"}</h2>
+            <p>
+              {isDesktopRuntime
+                ? "本地版会在你的电脑上启动服务，只绑定 127.0.0.1。你确认前不会导入真实活动。"
+                : "网页版本只展示产品效果。要整理真实本机记录，需要安装并启动本地版。"}
+            </p>
+          </div>
+          <span className="privacy-chip">{isDesktopRuntime ? "本地模式" : "样例体验"}</span>
+        </div>
+        <div className="activation-status-grid">
+          {localModeChecks.map((item) => (
+            <StatusItem key={item.label} label={item.label} value={item.value} />
+          ))}
+        </div>
+        {desktopStatusError && <p className="policy-note">{desktopStatusError}</p>}
+        {isDesktopRuntime && (
+          <div className="desktop-action-row">
+            <button className="secondary" onClick={chooseMineContextHome}>选择本机记录目录</button>
+            <button className="secondary" onClick={restartDesktopBackend}>重新启动本机服务</button>
+            <button className="secondary" onClick={openDesktopDataFolder}>打开本地数据文件夹</button>
+          </div>
+        )}
+      </section>
+
       <section className="today-panel activation-settings-panel">
         <div className="section-title">
           <div>

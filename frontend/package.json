@@ -20,6 +20,7 @@
     "smoke:achievements": "node scripts/smoke-achievements.mjs",
     "smoke:butler-inbox-decision-queue": "node scripts/smoke-butler-inbox-decision-queue.mjs",
     "smoke:assistant-natural-control": "node scripts/smoke-assistant-natural-control.mjs",
+    "smoke:desktop-runtime-bridge": "node scripts/smoke-desktop-runtime-bridge.mjs",
     "smoke:demo-local-boundary": "node scripts/smoke-demo-local-boundary.mjs",
     "smoke:butler-l1-audit": "node scripts/smoke-butler-l1-audit.mjs",
     "smoke:butler-data-insufficient-drill": "node scripts/smoke-butler-data-insufficient-drill.mjs",

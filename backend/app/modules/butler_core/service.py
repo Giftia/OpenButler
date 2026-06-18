@@ -1163,6 +1163,26 @@ class ButlerCoreService:
         insight_engine_text = insight_engine_path.read_text(encoding="utf-8") if insight_engine_path.exists() else ""
         smoke_text = smoke_path.read_text(encoding="utf-8") if smoke_path.exists() else ""
         openclaw_ready = self._openclaw_tools_status()
+        desktop_package_path = root / "desktop" / "package.json"
+        desktop_main_path = root / "desktop" / "src" / "main.cjs"
+        desktop_preload_path = root / "desktop" / "src" / "preload.cjs"
+        desktop_backend_entry_path = root / "desktop" / "backend_entry.py"
+        desktop_spec_path = root / "desktop" / "desktop_backend.spec"
+        desktop_check_path = root / "desktop" / "scripts" / "check-desktop-contract.mjs"
+        desktop_readme_path = root / "desktop" / "README.md"
+        desktop_status_test_path = root / "backend" / "app" / "modules" / "butler_core" / "tests" / "test_desktop_status.py"
+        desktop_smoke_path = root / "frontend" / "scripts" / "smoke-desktop-runtime-bridge.mjs"
+        desktop_types_path = root / "frontend" / "src" / "desktop.d.ts"
+        frontend_api_path = root / "frontend" / "src" / "lib" / "api.ts"
+        desktop_doc_path = root / "docs" / "product" / "ELECTRON_FIRST_RUN_PRODUCTIZATION_SHELL.md"
+        commercial_ppt_path = root / "docs" / "productization" / "openbutler-commercial-concept-pitch" / "ppt" / "index.html"
+        desktop_main_text = desktop_main_path.read_text(encoding="utf-8") if desktop_main_path.exists() else ""
+        desktop_preload_text = desktop_preload_path.read_text(encoding="utf-8") if desktop_preload_path.exists() else ""
+        desktop_package_text = desktop_package_path.read_text(encoding="utf-8") if desktop_package_path.exists() else ""
+        desktop_status_test_text = desktop_status_test_path.read_text(encoding="utf-8") if desktop_status_test_path.exists() else ""
+        desktop_smoke_text = desktop_smoke_path.read_text(encoding="utf-8") if desktop_smoke_path.exists() else ""
+        frontend_api_text = frontend_api_path.read_text(encoding="utf-8") if frontend_api_path.exists() else ""
+        commercial_ppt_text = commercial_ppt_path.read_text(encoding="utf-8") if commercial_ppt_path.exists() else ""
 
         criteria_by_objective = {
             "OB-GOAL-001": [
@@ -2134,6 +2154,157 @@ class ButlerCoreService:
                         and "butler_core tests" in (root / "current_state.md").read_text(encoding="utf-8")
                         and "pc_activity_context tests" in (root / "current_state.md").read_text(encoding="utf-8"),
                         [{"kind": "file", "path": "current_state.md"}],
+                    ),
+            ],
+            "OB-GOAL-022": [
+                    criterion(
+                        "electron_desktop_shell_exists",
+                        "desktop/ Electron 应用存在",
+                        desktop_package_path.exists()
+                        and desktop_main_path.exists()
+                        and desktop_preload_path.exists()
+                        and "electron-builder" in desktop_package_text,
+                        [
+                            {"kind": "file", "path": "desktop/package.json"},
+                            {"kind": "file", "path": "desktop/src/main.cjs"},
+                            {"kind": "file", "path": "desktop/src/preload.cjs"},
+                        ],
+                    ),
+                    criterion(
+                        "backend_loopback_and_strict_defaults",
+                        "Electron 主进程可启动本地 FastAPI 服务并绑定 127.0.0.1",
+                        "127.0.0.1" in desktop_main_text
+                        and "uvicorn" in desktop_main_text
+                        and 'OPENBUTLER_DEFAULT_PRIVACY_MODE: "strict"' in desktop_main_text
+                        and 'OPENBUTLER_DISABLE_SEED_EVENTS: "1"' in desktop_main_text
+                        and 'OPENBUTLER_COPY_SCREENSHOTS: "0"' in desktop_main_text
+                        and 'OPENBUTLER_EXTERNAL_MODEL_ALLOWED: "0"' in desktop_main_text,
+                        [{"kind": "file", "path": "desktop/src/main.cjs"}],
+                    ),
+                    criterion(
+                        "desktop_mode_strict_privacy_defaults",
+                        "桌面模式默认 strict、禁用 seed、只读数据源、不复制截图、不调用外部模型",
+                        'OPENBUTLER_DEFAULT_PRIVACY_MODE: "strict"' in desktop_main_text
+                        and 'OPENBUTLER_DISABLE_SEED_EVENTS: "1"' in desktop_main_text
+                        and 'OPENBUTLER_COPY_SCREENSHOTS: "0"' in desktop_main_text
+                        and 'OPENBUTLER_EXTERNAL_MODEL_ALLOWED: "0"' in desktop_main_text
+                        and "read_only" in (root / "backend" / "app" / "main.py").read_text(encoding="utf-8")
+                        and "chooseMineContextHome" in desktop_preload_text,
+                        [
+                            {"kind": "file", "path": "desktop/src/main.cjs"},
+                            {"kind": "api", "path": "GET /api/desktop/status"},
+                        ],
+                    ),
+                    criterion(
+                        "backend_exe_packaging_scaffold",
+                        "后端可由 PyInstaller 打包为 openbutler-backend.exe",
+                        desktop_backend_entry_path.exists()
+                        and desktop_spec_path.exists()
+                        and "openbutler-backend" in desktop_spec_path.read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "desktop/backend_entry.py"},
+                            {"kind": "file", "path": "desktop/desktop_backend.spec"},
+                            {"kind": "file", "path": "backend/requirements-desktop.txt"},
+                        ],
+                    ),
+                    criterion(
+                        "frontend_runtime_bridge",
+                        "前端优先使用 window.openbutlerDesktop.apiBase",
+                        "window.openbutlerDesktop?.apiBase" in frontend_api_text
+                        and "/api/desktop/status" in frontend_api_text
+                        and desktop_types_path.exists(),
+                        [
+                            {"kind": "file", "path": "frontend/src/lib/api.ts"},
+                            {"kind": "file", "path": "frontend/src/desktop.d.ts"},
+                        ],
+                    ),
+                    criterion(
+                        "preload_minimal_interface",
+                        "preload 只暴露最小安全接口",
+                        "contextBridge.exposeInMainWorld" in desktop_preload_text
+                        and "getRuntime" in desktop_preload_text
+                        and "restartBackend" in desktop_preload_text
+                        and "chooseMineContextHome" in desktop_preload_text
+                        and "openDataFolder" in desktop_preload_text
+                        and "nodeIntegration: false" in desktop_main_text,
+                        [{"kind": "file", "path": "desktop/src/preload.cjs"}],
+                    ),
+                    criterion(
+                        "first_run_activation_v2",
+                        "首次激活流说明样例体验、本地模式、隐私承诺、数据源检测和预览确认",
+                        "像安装一个私人管家一样开始" in app_text
+                        and "让 OpenButler 整理我的本机记录" in app_text
+                        and "授权前只会检测和预览" in app_text
+                        and "activation-step-list" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "me_management_page_local_status",
+                        "/me 展示本机服务状态、授权线索、隐私检查和重新打开引导",
+                        "我的 OpenButler" in app_text
+                        and "本机服务" in app_text
+                        and "本地线索" in app_text
+                        and "选择本机记录目录" in app_text
+                        and "打开本地数据文件夹" in app_text
+                        and "重新打开引导" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "desktop_status_endpoint_redacted",
+                        "/api/desktop/status 只返回脱敏桌面状态",
+                        "/api/desktop/status" in (root / "backend" / "app" / "main.py").read_text(encoding="utf-8")
+                        and "raw_activity_titles_returned" in (root / "backend" / "app" / "main.py").read_text(encoding="utf-8")
+                        and "screenshot_paths_returned" in (root / "backend" / "app" / "main.py").read_text(encoding="utf-8")
+                        and "assertNotIn" in desktop_status_test_text,
+                        [
+                            {"kind": "api", "path": "GET /api/desktop/status"},
+                            {"kind": "test", "path": "backend/app/modules/butler_core/tests/test_desktop_status.py"},
+                        ],
+                    ),
+                    criterion(
+                        "desktop_static_validation_available",
+                        "桌面契约和前端桥接有静态 smoke",
+                        desktop_check_path.exists()
+                        and desktop_smoke_path.exists()
+                        and "smoke:desktop-runtime-bridge" in (root / "frontend" / "package.json").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "script", "path": "desktop/scripts/check-desktop-contract.mjs"},
+                            {"kind": "script", "path": "frontend/scripts/smoke-desktop-runtime-bridge.mjs"},
+                        ],
+                    ),
+                    criterion(
+                        "commercial_concept_ppt_exists",
+                        "商业概念 PPT 存在且不包含真实用户数据",
+                        commercial_ppt_path.exists()
+                        and "data-layout" in commercial_ppt_text
+                        and "[必填]" not in commercial_ppt_text
+                        and "C:\\Users" not in commercial_ppt_text
+                        and "Sponsor" not in commercial_ppt_text
+                        and "OpenButler Commercial Concept" in commercial_ppt_text,
+                        [{"kind": "file", "path": "docs/productization/openbutler-commercial-concept-pitch/ppt/index.html"}],
+                    ),
+                    criterion(
+                        "desktop_validation_available",
+                        "前端 build、后端核心测试和桌面合同检查通过",
+                        desktop_doc_path.exists()
+                        and desktop_check_path.exists()
+                        and desktop_smoke_path.exists()
+                        and desktop_status_test_path.exists()
+                        and "不读取真实活动标题" in desktop_doc_path.read_text(encoding="utf-8")
+                        and "不复制截图" in desktop_doc_path.read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "docs/product/ELECTRON_FIRST_RUN_PRODUCTIZATION_SHELL.md"},
+                            {"kind": "script", "path": "desktop/scripts/check-desktop-contract.mjs"},
+                            {"kind": "script", "path": "frontend/scripts/smoke-desktop-runtime-bridge.mjs"},
+                            {"kind": "test", "path": "backend/app/modules/butler_core/tests/test_desktop_status.py"},
+                        ],
+                    ),
+                    criterion(
+                        "desktop_scope_no_cloud_api_added",
+                        "本轮不新增云端 API 或 dedicated evidence endpoint",
+                        "/insights/{insight_id}/evidence" not in router_text
+                        and "external_model" in (root / "backend" / "app" / "main.py").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "backend/app/modules/butler_core/router.py"}],
                     ),
             ],
         }
