@@ -5,6 +5,10 @@ backend/data/
 data/
 frontend/dist/
 frontend/node_modules/
+desktop/node_modules/
+desktop/dist/
+desktop/build/
+desktop/.tmp/
 **/__pycache__/
 **/*.pyc
 *.sqlite3
