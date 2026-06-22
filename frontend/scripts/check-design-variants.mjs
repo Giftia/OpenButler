@@ -33,9 +33,12 @@ const requiredDesignSnippets = [
   'function IosConcept',
   'function DeckConcept',
   'function DesignVariantFooter',
+  'function SetupPathPanel',
   '米家式状态中控',
   'iOS Home 式私人管家',
   '大屏 PPT 式汇报版',
+  '先看样例，再启动桌面版整理你的本机记录',
+  '本机记录和 API Key 是什么',
 ];
 
 for (const snippet of requiredDesignSnippets) {
@@ -50,6 +53,7 @@ const requiredCssSnippets = [
   '.mijia-tile-grid',
   '.mijia-action-strip',
   '.design-variant-footer',
+  '.setup-path-panel',
   '.ios-card-stack',
   '.deck-hero',
   '.scene-dashboard-main .scene-dashboard-grid',

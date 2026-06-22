@@ -130,6 +130,28 @@ function DesignVariantFooter({active}: {active?: DesignVariant}) {
   );
 }
 
+function SetupPathPanel({compact = false}: {compact?: boolean}) {
+  return (
+    <section className={compact ? "setup-path-panel compact" : "setup-path-panel"} aria-label="从样例到本地模式">
+      <div>
+        <span>怎么开始真实使用</span>
+        <strong>先看样例，再启动桌面版整理你的本机记录。</strong>
+        <p>网页只展示样例。真实使用时，你需要在桌面版里粘贴自己的 API Key，再授权 OpenButler 读取本机记录。</p>
+      </div>
+      <ol>
+        <li><b>1</b><span>先看样例</span></li>
+        <li><b>2</b><span>打开桌面版</span></li>
+        <li><b>3</b><span>粘贴 API Key</span></li>
+        <li><b>4</b><span>授权本机记录</span></li>
+      </ol>
+      <details>
+        <summary>本机记录和 API Key 是什么？</summary>
+        <p>本机记录指你主动授权的电脑活动、时间线片段和本地线索。API Key 是你在模型服务商控制台创建的一把钥匙，用来让桌面版把记录整理成摘要和提醒。样例页不会读取这些内容。</p>
+      </details>
+    </section>
+  );
+}
+
 export function DesignLabPage() {
   return (
     <section className="design-lab-page">
@@ -181,6 +203,7 @@ function MijiaConcept({view, moments, loading}: {view: ReturnType<typeof buildTo
         <strong>这是一个私人管家中控。</strong>
         <span>它把你授权的本地线索整理成今日重点、生活记录和可查看的依据。样例体验不会读取真实数据。</span>
       </div>
+      <SetupPathPanel />
       <div className="mijia-hero-card">
         <div>
           <span>{command.dataMode === "sample" ? "样例体验" : "本地整理"}</span>
@@ -222,6 +245,7 @@ function IosConcept({view, moments, loading}: {view: ReturnType<typeof buildToda
         <h1>今天先看这几件事</h1>
         <p>{command.oneLineStatus}</p>
       </div>
+      <SetupPathPanel compact />
       <div className="ios-card-stack">
         <article className="ios-main-card">
           <small>今日摘要</small>
@@ -258,6 +282,7 @@ function DeckConcept({view, moments, loading}: {view: ReturnType<typeof buildTod
         </div>
         <strong>{command.keyNumbers[0]?.value ?? "4 条"}</strong>
       </div>
+      <SetupPathPanel compact />
       <div className="deck-grid">
         <article className="deck-statement">
           <span>核心判断</span>
