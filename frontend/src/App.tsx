@@ -466,7 +466,7 @@ function App() {
               <span>生成演示记录</span>
             </button>
           </header>}
-          {error && <div className="error" title={error}>本地服务暂时没连上，页面会先展示样例内容。</div>}
+          {error && <div className="error">本机服务暂时没连上，页面会先展示样例内容。安装桌面版后可以启用真实本地模式。</div>}
           {CurrentPage}
         </main>
       </div>
@@ -2905,6 +2905,7 @@ ${sampleLine}
             {message.text}
           </div>
         ))}
+        {pending && <div className="bubble butler pending-answer">正在整理回答。如果本机服务没连上，我会先给你一条样例说明。</div>}
       </div>
       <div className="composer">
         <input
@@ -3289,26 +3290,36 @@ function FirstRunGuide({
                 <StatusItem label="后台状态" value={mineContextStatus?.reachable ? "可连接" : "未连接"} />
                 <StatusItem label="写入模型" value={mineContextStatus?.configured ? "已完成" : "待确认"} />
               </div>
-              <div className="desktop-action-row">
-                <button className="secondary" onClick={scanMineContext} disabled={!isDesktopRuntime || checkingMineContext || !modelReady}>
-                  {checkingMineContext ? "扫描中" : "扫描本机记录组件"}
-                </button>
-                <button className="secondary" onClick={startMineContext} disabled={!isDesktopRuntime || checkingMineContext || !modelReady}>
-                  启动并连接
-                </button>
-                <button className="secondary" onClick={downloadAndInstallMineContext} disabled={!isDesktopRuntime || checkingMineContext || !modelReady}>
-                  自动安装
-                </button>
-                <button className="secondary" onClick={openMineContextDownloadPage} disabled={!isDesktopRuntime}>
-                  手动安装
-                </button>
-                <button className="secondary" onClick={chooseInstaller} disabled={!isDesktopRuntime}>
-                  选择安装包
-                </button>
-                <button className="primary" onClick={applyModelConfig} disabled={!isDesktopRuntime || savingModel || !modelReady || !mineContextStatus?.reachable}>
-                  {savingModel ? "写入中" : "写入记录组件配置并完成"}
-                </button>
-              </div>
+              {!isDesktopRuntime ? (
+                <div className="web-only-setup-note">
+                  <strong>这里是网页样例，不能扫描你的电脑。</strong>
+                  <p>真实使用需要打开 OpenButler 桌面版。桌面版会在本机启动服务，然后这里的扫描、安装和写入配置按钮才会变成可用。</p>
+                  <button className="primary" onClick={() => setSetupMessage("请安装或打开 OpenButler 桌面版，再回到引导里选择“启用本地完全体”。网页样例不会读取或安装任何本机内容。")}>
+                    我知道了，去打开桌面版
+                  </button>
+                </div>
+              ) : (
+                <div className="desktop-action-row">
+                  <button className="secondary" onClick={scanMineContext} disabled={checkingMineContext || !modelReady} title={!modelReady ? "请先保存模型配置" : undefined}>
+                    {checkingMineContext ? "扫描中" : "扫描本机记录组件"}
+                  </button>
+                  <button className="secondary" onClick={startMineContext} disabled={checkingMineContext || !modelReady} title={!modelReady ? "请先保存模型配置" : undefined}>
+                    启动并连接
+                  </button>
+                  <button className="secondary" onClick={downloadAndInstallMineContext} disabled={checkingMineContext || !modelReady} title={!modelReady ? "请先保存模型配置" : undefined}>
+                    自动安装
+                  </button>
+                  <button className="secondary" onClick={openMineContextDownloadPage}>
+                    手动安装
+                  </button>
+                  <button className="secondary" onClick={chooseInstaller}>
+                    选择安装包
+                  </button>
+                  <button className="primary" onClick={applyModelConfig} disabled={savingModel || !modelReady || !mineContextStatus?.reachable} title={!modelReady ? "请先保存模型配置" : !mineContextStatus?.reachable ? "请先连接本机记录组件" : undefined}>
+                    {savingModel ? "写入中" : "写入记录组件配置并完成"}
+                  </button>
+                </div>
+              )}
               <small>如果没有找到本机记录组件，自动安装会先请求确认，再从官方 Releases 下载最新安装包。无法识别安装包时会转为手动安装。</small>
             </div>
             {setupMessage && <p className="policy-note">{setupMessage}</p>}
