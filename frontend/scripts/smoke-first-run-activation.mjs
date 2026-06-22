@@ -299,8 +299,8 @@ try {
   const afterResumeSetup = await evaluate(cdp, `(() => ({
     status: localStorage.getItem('openbutler:first_run_activation:v1'),
     hasDialog: !!document.querySelector('.first-run-guide'),
-    hasModelConfig: document.body.innerText.includes('模型供应商'),
-    hasLocalRecordScan: document.body.innerText.includes('扫描本机记录组件'),
+    hasModelConfig: document.body.innerText.includes('智能整理能力'),
+    hasLocalRecordScan: document.body.innerText.includes('查找本机记录服务'),
     hasPrimaryNav: !!document.querySelector('[data-nav-key="butler"]'),
     width: innerWidth,
     scrollWidth: document.documentElement.scrollWidth
@@ -318,9 +318,9 @@ try {
   const afterReal = await evaluate(cdp, `(() => ({
     path: location.pathname,
     status: localStorage.getItem('openbutler:first_run_activation:v1'),
-    hasLocalSetup: document.body.innerText.includes('启用完整功能前，需要完成这些设置'),
-    hasModelConfig: document.body.innerText.includes('模型供应商'),
-    hasLocalRecordScan: document.body.innerText.includes('扫描本机记录组件'),
+    hasLocalSetup: document.body.innerText.includes('启用完整功能前，先完成两步'),
+    hasModelConfig: document.body.innerText.includes('智能整理能力'),
+    hasLocalRecordScan: document.body.innerText.includes('查找本机记录服务'),
     hasAutoInstall: document.body.innerText.includes('自动安装'),
     hasManualInstall: document.body.innerText.includes('手动安装'),
     hasPrimaryNav: !!document.querySelector('[data-nav-key="butler"]'),
@@ -330,7 +330,7 @@ try {
   }))()`);
   assertCondition(afterReal.path === "/butler", `Real setup should stay in activation dialog, got ${afterReal.path}`);
   assertCondition(afterReal.status === "real_setup_started", "Real setup did not persist real_setup_started.");
-  assertCondition(afterReal.hasLocalSetup && afterReal.hasModelConfig && afterReal.hasLocalRecordScan && afterReal.hasAutoInstall && afterReal.hasManualInstall && afterReal.hasNoRealImport, "Real setup did not show model config and local record bootstrap panel.");
+  assertCondition(afterReal.hasLocalSetup && afterReal.hasModelConfig && afterReal.hasLocalRecordScan && afterReal.hasAutoInstall && afterReal.hasManualInstall && afterReal.hasNoRealImport, "Real setup did not show smart setup and local record bootstrap panel.");
   assertCondition(!afterReal.hasPrimaryNav, "Real setup should not reveal the main navigation before completion.");
   assertNoHorizontalOverflow(afterReal, "Real setup");
 

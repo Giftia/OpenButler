@@ -2378,7 +2378,7 @@ class ButlerCoreService:
                         and "installMineContextWithApproval" in desktop_main_text
                         and "openMineContextDownloadPage" in desktop_preload_text
                         and "https://api.github.com/repos/volcengine/MineContext/releases/latest" in desktop_main_text
-                        and ("扫描本机 MineContext" in app_text or "扫描本机记录组件" in app_text)
+                        and ("扫描本机 MineContext" in app_text or "扫描本机记录组件" in app_text or "查找本机记录服务" in app_text)
                         and "自动安装" in app_text
                         and "手动安装" in app_text,
                         [
@@ -2390,10 +2390,14 @@ class ButlerCoreService:
                     criterion(
                         "activation_v3_model_provider_ui",
                         "首次激活流包含 MineContext 检测、隐私承诺、模型供应商配置和确认写入",
-                        "模型供应商" in app_text
-                        and ("写入 MineContext 配置" in app_text or "写入记录组件配置" in app_text)
-                        and "Embedding 模型 ID" in app_text
-                        and "不调用外部模型" in app_text,
+                        ("模型供应商" in app_text or "智能整理能力" in app_text)
+                        and (
+                            "写入 MineContext 配置" in app_text
+                            or "写入记录组件配置" in app_text
+                            or "保存到本机记录服务" in app_text
+                        )
+                        and ("Embedding 模型 ID" in app_text or "高级向量模型 / ID" in app_text)
+                        and ("不调用外部模型" in app_text or "不会发起模型调用" in app_text),
                         [{"kind": "file", "path": "frontend/src/App.tsx"}],
                     ),
                     criterion(
@@ -2401,8 +2405,8 @@ class ButlerCoreService:
                         "/me 展示本地完全体检查，包括服务、MineContext、模型配置和 strict 状态",
                         "本地完全体检查" in app_text
                         and "本机服务" in app_text
-                        and ("MineContext 后台" in app_text or "本机记录组件" in app_text)
-                        and "模型配置" in app_text
+                        and ("MineContext 后台" in app_text or "本机记录组件" in app_text or "本机记录服务" in app_text)
+                        and ("模型配置" in app_text or "智能整理" in app_text)
                         and "严格隐私" in app_text,
                         [{"kind": "file", "path": "frontend/src/App.tsx"}],
                     ),

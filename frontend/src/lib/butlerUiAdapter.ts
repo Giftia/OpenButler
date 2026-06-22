@@ -260,9 +260,9 @@ export function buildTodayHomeViewModel(
         tone: "amber",
       },
       {
-        title: "生活记录",
-        value: numberText(timelineItems.length, " 条"),
-        description: "已经整理进时间线的片段",
+        title: demoMode ? "样例记录" : "生活记录",
+        value: demoMode ? "3 条" : numberText(timelineItems.length, " 条"),
+        description: demoMode ? "用于演示时间线效果" : "已经整理进时间线的片段",
         tone: "blue",
       },
       {
