@@ -135,8 +135,12 @@ function SetupPathPanel({compact = false}: {compact?: boolean}) {
     <section className={compact ? "setup-path-panel compact" : "setup-path-panel"} aria-label="从样例到本地模式">
       <div>
         <span>怎么开始真实使用</span>
-        <strong>先看样例，再启动桌面版整理你的本机记录。</strong>
-        <p>网页只展示样例。真实使用时，你需要在桌面版里粘贴自己的 API Key，再授权 OpenButler 读取本机记录。</p>
+        <strong>先看样例，再用桌面版整理你的本机记录。</strong>
+        <p>网页只展示样例。真实使用需要打开桌面版、填写模型服务的 API Key，再选择你愿意授权的本机记录。</p>
+        <div className="setup-path-actions">
+          <button className="primary" onClick={() => navigateClient("/me")}>获取桌面版并开始配置</button>
+          <button className="secondary" onClick={() => navigateClient("/butler")}>先看样例</button>
+        </div>
       </div>
       <ol>
         <li><b>1</b><span>先看样例</span></li>
@@ -146,7 +150,7 @@ function SetupPathPanel({compact = false}: {compact?: boolean}) {
       </ol>
       <details>
         <summary>本机记录和 API Key 是什么？</summary>
-        <p>本机记录指你主动授权的电脑活动、时间线片段和本地线索。API Key 是你在模型服务商控制台创建的一把钥匙，用来让桌面版把记录整理成摘要和提醒。样例页不会读取这些内容。</p>
+        <p>本机记录包括你主动授权的电脑活动、时间线片段，以及以后单独开启的相册或工位线索；不会默认读取聊天、密码、文件内容或截图原图。API Key 从你选择的模型服务商控制台创建，例如火山引擎 Ark。它用来让桌面版把授权记录整理成摘要和提醒；是否产生费用取决于服务商账户。真实模式会先预览会读取什么，确认前不会开始整理。</p>
       </details>
     </section>
   );
@@ -318,6 +322,15 @@ function ConceptEventRow({moment, compact = false}: {moment: TimelineMoment; com
       <div className={`concept-thumb tone-${moment.thumbnail.tone}`} aria-label={moment.thumbnail.alt}>
         {moment.thumbnail.kind === "image" && moment.thumbnail.url ? <img src={moment.thumbnail.url} alt={moment.thumbnail.alt} /> : <span>{moment.eventLabel.slice(0, 2)}</span>}
       </div>
+      <details className="concept-evidence">
+        <summary>查看依据</summary>
+        <div>
+          <span>来源：{moment.sourceLabel}</span>
+          <span>可信度：{moment.confidenceLabel}</span>
+          <span>边界：{moment.evidenceBoundary}</span>
+          <span>隐私：未上传数据，未显示本地路径。{moment.thumbnail.privacyLabel ? ` ${moment.thumbnail.privacyLabel}` : ""}</span>
+        </div>
+      </details>
     </article>
   );
 }

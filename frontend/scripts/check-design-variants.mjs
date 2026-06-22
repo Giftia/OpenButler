@@ -37,8 +37,10 @@ const requiredDesignSnippets = [
   '米家式状态中控',
   'iOS Home 式私人管家',
   '大屏 PPT 式汇报版',
-  '先看样例，再启动桌面版整理你的本机记录',
+  '先看样例，再用桌面版整理你的本机记录',
   '本机记录和 API Key 是什么',
+  '获取桌面版并开始配置',
+  '查看依据',
 ];
 
 for (const snippet of requiredDesignSnippets) {
@@ -54,6 +56,7 @@ const requiredCssSnippets = [
   '.mijia-action-strip',
   '.design-variant-footer',
   '.setup-path-panel',
+  '.concept-evidence',
   '.ios-card-stack',
   '.deck-hero',
   '.scene-dashboard-main .scene-dashboard-grid',

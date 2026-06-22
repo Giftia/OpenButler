@@ -5092,3 +5092,72 @@ h2 {
     white-space: normal;
   }
 }
+
+.setup-path-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.setup-path-actions button {
+  min-height: 44px;
+}
+
+.concept-evidence {
+  grid-column: 2 / -1;
+  min-width: 0;
+}
+
+.concept-evidence summary {
+  width: fit-content;
+  min-height: 36px;
+  cursor: pointer;
+  padding: 8px 12px;
+  border: 1px solid rgb(15 118 110 / 22%);
+  border-radius: 999px;
+  color: #0f766e;
+  background: rgb(240 253 250 / 86%);
+  font-size: 13px;
+  font-weight: 900;
+  list-style: none;
+}
+
+.concept-evidence summary::-webkit-details-marker {
+  display: none;
+}
+
+.concept-evidence div {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 11px 12px;
+  border: 1px solid rgb(15 23 42 / 7%);
+  border-radius: 14px;
+  color: #475569;
+  background: rgb(248 250 252 / 86%);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.concept-deck .concept-evidence summary {
+  border-color: rgb(255 255 255 / 18%);
+  color: #eaff00;
+  background: rgb(255 255 255 / 8%);
+}
+
+.concept-deck .concept-evidence div {
+  border-color: rgb(255 255 255 / 10%);
+  color: #cbd5e1;
+  background: rgb(255 255 255 / 6%);
+}
+
+@media (max-width: 640px) {
+  .setup-path-actions button {
+    width: 100%;
+  }
+
+  .concept-evidence {
+    grid-column: 1 / -1;
+  }
+}
