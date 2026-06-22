@@ -466,7 +466,7 @@ function App() {
               <span>生成演示记录</span>
             </button>
           </header>}
-          {error && <div className="error">本机服务暂时没连上，页面会先展示样例内容。安装桌面版后可以启用真实本地模式。</div>}
+          {error && <div className="mode-notice">当前为样例模式，未读取你的真实数据。安装桌面版后可以启用真实本地模式。</div>}
           {CurrentPage}
         </main>
       </div>
@@ -3027,13 +3027,13 @@ function FirstRunGuide({
     const labels: Record<keyof ModelProviderConfig, string> = {
       modelPlatform: "服务商",
       modelId: "模型名称 / ID",
-      baseUrl: "访问密钥",
+      baseUrl: "服务地址",
       apiKey: "访问密钥",
       useSeparateEmbedding: "独立高级向量配置",
       embeddingModelPlatform: "高级向量服务商",
       embeddingModelId: "高级向量模型 / ID",
-      embeddingBaseUrl: "访问密钥访问密钥访问密钥?",
-      embeddingApiKey: "访问密钥访问密钥访问密钥?",
+      embeddingBaseUrl: "高级向量服务地址",
+      embeddingApiKey: "高级向量访问密钥",
     };
     const missing: string[] = [];
     (["modelPlatform", "modelId", "baseUrl", "apiKey"] as Array<keyof ModelProviderConfig>).forEach((key) => {
@@ -3163,17 +3163,34 @@ function FirstRunGuide({
           {status === "dismissed" && (
             <p className="policy-note">你可以稍后回来继续设置。完成样例体验或本地完全体设置前，不会进入空控制台。</p>
           )}
-          <div className="activation-step-list" aria-label="首次激活步骤">
-            {activationSteps.map((item) => (
-              <article key={item.step}>
-                <span>{item.step}</span>
-                <div>
-                  <strong>{item.title}</strong>
-                  <small>{item.text}</small>
-                </div>
-              </article>
-            ))}
+          <div className="first-run-signal-strip" aria-label="首次使用会得到什么">
+            <article>
+              <strong>今天重点</strong>
+              <span>先看到最值得处理的 1-3 件事。</span>
+            </article>
+            <article>
+              <strong>完整记录</strong>
+              <span>把重要片段整理进可回看的时间线。</span>
+            </article>
+            <article>
+              <strong>依据说明</strong>
+              <span>每条建议都能展开看来源和边界。</span>
+            </article>
           </div>
+          <details className="activation-step-details">
+            <summary>完整使用会怎么开始</summary>
+            <div className="activation-step-list" aria-label="首次激活步骤">
+              {activationSteps.map((item) => (
+                <article key={item.step}>
+                  <span>{item.step}</span>
+                  <div>
+                    <strong>{item.title}</strong>
+                    <small>{item.text}</small>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </details>
           <div className="activation-choice-grid" aria-label="选择开始方式">
             <button className="activation-choice primary-choice" onClick={onChooseDemo}>
               <CheckCircle2 size={17} />
@@ -3222,131 +3239,152 @@ function FirstRunGuide({
               <StatusItem label="本机记录服务" value={mineContextStatus?.reachable ? "运行中" : checkingMineContext ? "检测中" : "未检测到"} />
             </div>
 
-            <div className="model-config-panel">
-              <div className="section-title compact-title">
-                <div>
-                  <p className="eyebrow">智能整理能力</p>
-                  <h3>配置后，OpenButler 才能把本机记录整理成提醒</h3>
-                </div>
-              </div>
-              <div className="api-key-help-card">
-                <KeyRound size={19} />
-                <div>
-                  <strong>我该从哪里获得访问密钥？</strong>
-                  <p>访问密钥通常在模型服务商控制台生成。下一步可以去服务商页面创建一个 Key，再回到这里粘贴。</p>
-                  <small>如果你还没有服务商账号，先用样例体验即可；访问密钥只保存在本机记录服务里，不会显示在状态页、日志或摘要里。</small>
-                  <a className="inline-help-link" href="https://console.volcengine.com/ark" target="_blank" rel="noreferrer">打开火山引擎 Ark 控制台</a>
-                </div>
-              </div>
-              <label>
-                <span>服务商</span>
-                <input value={modelConfig.modelPlatform} onChange={(event) => updateModelConfig("modelPlatform", event.target.value)} placeholder="doubao" />
-              </label>
-              <label>
-                <span>模型名称 / ID</span>
-                <input value={modelConfig.modelId} onChange={(event) => updateModelConfig("modelId", event.target.value)} placeholder="ark-code-latest" />
-              </label>
-              <label>
-                <span>服务地址</span>
-                <input value={modelConfig.baseUrl} onChange={(event) => updateModelConfig("baseUrl", event.target.value)} placeholder="https://..." />
-              </label>
-              <label>
-                <span>访问密钥</span>
-                <input type="password" value={modelConfig.apiKey} onChange={(event) => updateModelConfig("apiKey", event.target.value)} placeholder="只保存在本机" />
-              </label>
-              <details className="advanced-model-settings">
-                <summary>高级模型设置</summary>
-                <p>大多数用户不用改这里。只有服务商要求单独配置向量模型时，再展开填写。</p>
-                <label className="checkbox-line">
-                  <input type="checkbox" checked={modelConfig.useSeparateEmbedding} onChange={(event) => updateModelConfig("useSeparateEmbedding", event.target.checked)} />
-                  <span>我需要单独填写高级向量模型</span>
-                </label>
-                {modelConfig.useSeparateEmbedding && (
-                  <div className="embedding-config-grid">
-                    <label>
-                      <span>高级向量服务商</span>
-                      <input value={modelConfig.embeddingModelPlatform} onChange={(event) => updateModelConfig("embeddingModelPlatform", event.target.value)} placeholder="doubao" />
-                    </label>
-                    <label>
-                      <span>高级向量模型 / ID</span>
-                      <input value={modelConfig.embeddingModelId} onChange={(event) => updateModelConfig("embeddingModelId", event.target.value)} placeholder="doubao-embedding-vision" />
-                    </label>
-                    <label>
-                      <span>高级向量服务地址</span>
-                      <input value={modelConfig.embeddingBaseUrl} onChange={(event) => updateModelConfig("embeddingBaseUrl", event.target.value)} placeholder="https://..." />
-                    </label>
-                    <label>
-                      <span>高级向量访问密钥</span>
-                      <input type="password" value={modelConfig.embeddingApiKey} onChange={(event) => updateModelConfig("embeddingApiKey", event.target.value)} placeholder="只保存在本机" />
-                    </label>
+            {!isDesktopRuntime ? (
+              <div className="local-mode-preview-panel">
+                <div className="section-title compact-title">
+                  <div>
+                    <p className="eyebrow">完整使用需要桌面版</p>
+                    <h3>桌面版会带你完成本机设置</h3>
                   </div>
-                )}
-              </details>
-              <div className="desktop-action-row">
-                <button className="secondary" onClick={testModelConfig} disabled={!isDesktopRuntime || savingModel}>
-                  {savingModel ? "检查中" : "检查配置"}
-                </button>
-                <button className="primary" onClick={saveModelConfigForScan} disabled={!isDesktopRuntime || savingModel}>
-                  保存配置，继续查找
-                </button>
-              </div>
-              <small>这里不会发起模型调用，只准备把配置保存到本机记录服务。</small>
-              <details className="technical-note">
-                <summary>高级说明</summary>
-                <small>高级说明：本机记录服务的底层项目名是 MineContext。普通使用时不需要理解这个名字。</small>
-              </details>
-            </div>
-
-            <div className="model-config-panel">
-              <div className="section-title compact-title">
-                <div>
-                  <p className="eyebrow">本机记录服务</p>
-                  <h3>查找本机记录服务</h3>
                 </div>
-              </div>
-              <p className="policy-note">查找只检查安装位置和运行状态，不读取活动标题、URL、截图或原始记录。</p>
-              <div className="local-setup-status">
-                <StatusItem label="查找结果" value={mineContextScan?.found ? `找到 ${mineContextScan?.candidates?.length ?? 0} 个线索` : "待扫描"} />
-                <StatusItem label="连接状态" value={mineContextStatus?.reachable ? "可连接" : "未连接"} />
-                <StatusItem label="保存配置" value={mineContextStatus?.configured ? "已完成" : "待确认"} />
-              </div>
-              {!isDesktopRuntime ? (
+                <p>公开网页只提供样例体验，不会扫描你的电脑。安装桌面版后，OpenButler 会在本机一步步完成下面三件事。</p>
+                <div className="local-mode-step-grid">
+                  <article>
+                    <strong>连接智能整理能力</strong>
+                    <span>如果你已有访问密钥，桌面版会引导你保存到本机记录服务。</span>
+                  </article>
+                  <article>
+                    <strong>查找本机记录服务</strong>
+                    <span>只检查安装位置和运行状态，不读取活动标题、URL 或截图。</span>
+                  </article>
+                  <article>
+                    <strong>预览后再开始</strong>
+                    <span>确认前不会导入真实活动；找不到服务时才会询问自动安装或手动安装。</span>
+                  </article>
+                </div>
                 <div className="web-only-setup-note">
-                  <strong>这里是网页样例，不能扫描你的电脑。</strong>
-                  <p>真实使用需要打开 OpenButler 桌面版。桌面版会在本机启动服务，然后这里的查找、安装和保存配置按钮才会变成可用。</p>
+                  <strong>你现在可以先看样例。</strong>
+                  <p>等桌面版准备好后，再回来开启本地模式。样例体验不会读取或安装任何本机内容。</p>
                   <div className="desktop-action-row compact-actions">
-                    <button className="primary" onClick={() => setSetupMessage("请打开你安装的 OpenButler 桌面应用，再回到引导里选择“启用本地完全体”。网页样例不会读取或安装任何本机内容。")}> 
-                      我已经安装，稍后打开桌面版
-                    </button>
-                    <button className="secondary" onClick={() => setSetupMessage("当前公开网页只提供样例体验。请使用本机安装包启动桌面版，才能查找本机记录服务并保存智能整理配置。")}> 
-                      我还没有桌面版
-                    </button>
+                    <button className="primary" onClick={onChooseDemo}>先继续看样例</button>
+                    <button className="secondary" onClick={() => setSetupMessage("请使用本机安装包启动 OpenButler 桌面版。桌面版才能查找本机记录服务并保存智能整理配置。")}>我还没有桌面版</button>
                   </div>
                 </div>
-              ) : (
-                <div className="desktop-action-row">
-                  <button className="secondary" onClick={scanMineContext} disabled={checkingMineContext || !modelReady} title={!modelReady ? "请先保存智能整理" : undefined}>
-                    {checkingMineContext ? "查找中" : "查找本机记录服务"}
-                  </button>
-                  <button className="secondary" onClick={startMineContext} disabled={checkingMineContext || !modelReady} title={!modelReady ? "请先保存智能整理" : undefined}>
-                    启动并连接
-                  </button>
-                  <button className="secondary" onClick={downloadAndInstallMineContext} disabled={checkingMineContext || !modelReady} title={!modelReady ? "请先保存智能整理" : undefined}>
-                    自动安装
-                  </button>
-                  <button className="secondary" onClick={openMineContextDownloadPage}>
-                    手动安装
-                  </button>
-                  <button className="secondary" onClick={chooseInstaller}>
-                    选择安装包
-                  </button>
-                  <button className="primary" onClick={applyModelConfig} disabled={savingModel || !modelReady || !mineContextStatus?.reachable} title={!modelReady ? "请先保存智能整理" : !mineContextStatus?.reachable ? "请先连接本机记录服务" : undefined}>
-                    {savingModel ? "写入中" : "保存到本机记录服务并完成"}
-                  </button>
+              </div>
+            ) : (
+              <>
+                <div className="model-config-panel">
+                  <div className="section-title compact-title">
+                    <div>
+                      <p className="eyebrow">智能整理能力</p>
+                      <h3>配置后，OpenButler 才能把本机记录整理成提醒</h3>
+                    </div>
+                  </div>
+                  <div className="api-key-help-card">
+                    <KeyRound size={19} />
+                    <div>
+                      <strong>我该从哪里获得访问密钥？</strong>
+                      <p>访问密钥通常在模型服务商控制台生成。下一步可以去服务商页面创建一个 Key，再回到这里粘贴。</p>
+                      <small>如果你还没有服务商账号，先用样例体验即可；访问密钥只保存在本机记录服务里，不会显示在状态页、日志或摘要里。</small>
+                      <a className="inline-help-link" href="https://console.volcengine.com/ark" target="_blank" rel="noreferrer">打开火山引擎 Ark 控制台</a>
+                    </div>
+                  </div>
+                  <label>
+                    <span>服务商</span>
+                    <input value={modelConfig.modelPlatform} onChange={(event) => updateModelConfig("modelPlatform", event.target.value)} placeholder="doubao" />
+                  </label>
+                  <label>
+                    <span>模型名称 / ID</span>
+                    <input value={modelConfig.modelId} onChange={(event) => updateModelConfig("modelId", event.target.value)} placeholder="ark-code-latest" />
+                  </label>
+                  <label>
+                    <span>服务地址</span>
+                    <input value={modelConfig.baseUrl} onChange={(event) => updateModelConfig("baseUrl", event.target.value)} placeholder="https://..." />
+                  </label>
+                  <label>
+                    <span>访问密钥</span>
+                    <input type="password" value={modelConfig.apiKey} onChange={(event) => updateModelConfig("apiKey", event.target.value)} placeholder="只保存在本机" />
+                  </label>
+                  <details className="advanced-model-settings">
+                    <summary>高级模型设置</summary>
+                    <p>大多数用户不用改这里。只有服务商要求单独配置向量模型时，再展开填写。</p>
+                    <label className="checkbox-line">
+                      <input type="checkbox" checked={modelConfig.useSeparateEmbedding} onChange={(event) => updateModelConfig("useSeparateEmbedding", event.target.checked)} />
+                      <span>我需要单独填写高级向量模型</span>
+                    </label>
+                    {modelConfig.useSeparateEmbedding && (
+                      <div className="embedding-config-grid">
+                        <label>
+                          <span>高级向量服务商</span>
+                          <input value={modelConfig.embeddingModelPlatform} onChange={(event) => updateModelConfig("embeddingModelPlatform", event.target.value)} placeholder="doubao" />
+                        </label>
+                        <label>
+                          <span>高级向量模型 / ID</span>
+                          <input value={modelConfig.embeddingModelId} onChange={(event) => updateModelConfig("embeddingModelId", event.target.value)} placeholder="doubao-embedding-vision" />
+                        </label>
+                        <label>
+                          <span>高级向量服务地址</span>
+                          <input value={modelConfig.embeddingBaseUrl} onChange={(event) => updateModelConfig("embeddingBaseUrl", event.target.value)} placeholder="https://..." />
+                        </label>
+                        <label>
+                          <span>高级向量访问密钥</span>
+                          <input type="password" value={modelConfig.embeddingApiKey} onChange={(event) => updateModelConfig("embeddingApiKey", event.target.value)} placeholder="只保存在本机" />
+                        </label>
+                      </div>
+                    )}
+                  </details>
+                  <div className="desktop-action-row">
+                    <button className="secondary" onClick={testModelConfig} disabled={!isDesktopRuntime || savingModel}>
+                      {savingModel ? "检查中" : "检查配置"}
+                    </button>
+                    <button className="primary" onClick={saveModelConfigForScan} disabled={!isDesktopRuntime || savingModel}>
+                      保存配置，继续查找
+                    </button>
+                  </div>
+                  <small>这里不会发起模型调用，只准备把配置保存到本机记录服务。</small>
+                  <details className="technical-note">
+                    <summary>高级说明</summary>
+                    <small>高级说明：本机记录服务的底层项目名是 MineContext。普通使用时不需要理解这个名字。</small>
+                  </details>
                 </div>
-              )}
-              <small>如果没有找到本机记录服务，自动安装会先请求确认，再从官方 Releases 下载最新安装包。无法识别安装包时会转为手动安装。</small>
-            </div>
+
+                <div className="model-config-panel">
+                  <div className="section-title compact-title">
+                    <div>
+                      <p className="eyebrow">本机记录服务</p>
+                      <h3>查找本机记录服务</h3>
+                    </div>
+                  </div>
+                  <p className="policy-note">查找只检查安装位置和运行状态，不读取活动标题、URL、截图或原始记录。</p>
+                  <div className="local-setup-status">
+                    <StatusItem label="查找结果" value={mineContextScan?.found ? `找到 ${mineContextScan?.candidates?.length ?? 0} 个线索` : "待扫描"} />
+                    <StatusItem label="连接状态" value={mineContextStatus?.reachable ? "可连接" : "未连接"} />
+                    <StatusItem label="保存配置" value={mineContextStatus?.configured ? "已完成" : "待确认"} />
+                  </div>
+                  <div className="desktop-action-row">
+                    <button className="secondary" onClick={scanMineContext} disabled={checkingMineContext || !modelReady} title={!modelReady ? "请先保存智能整理" : undefined}>
+                      {checkingMineContext ? "查找中" : "查找本机记录服务"}
+                    </button>
+                    <button className="secondary" onClick={startMineContext} disabled={checkingMineContext || !modelReady} title={!modelReady ? "请先保存智能整理" : undefined}>
+                      启动并连接
+                    </button>
+                    <button className="secondary" onClick={downloadAndInstallMineContext} disabled={checkingMineContext || !modelReady} title={!modelReady ? "请先保存智能整理" : undefined}>
+                      自动安装
+                    </button>
+                    <button className="secondary" onClick={openMineContextDownloadPage}>
+                      手动安装
+                    </button>
+                    <button className="secondary" onClick={chooseInstaller}>
+                      选择安装包
+                    </button>
+                    <button className="primary" onClick={applyModelConfig} disabled={savingModel || !modelReady || !mineContextStatus?.reachable} title={!modelReady ? "请先保存智能整理" : !mineContextStatus?.reachable ? "请先连接本机记录服务" : undefined}>
+                      {savingModel ? "写入中" : "保存到本机记录服务并完成"}
+                    </button>
+                  </div>
+                  <small>如果没有找到本机记录服务，自动安装会先请求确认，再从官方 Releases 下载最新安装包。无法识别安装包时会转为手动安装。</small>
+                </div>
+              </>
+            )}
             {setupMessage && <p className="policy-note">{setupMessage}</p>}
           </div>
         )}

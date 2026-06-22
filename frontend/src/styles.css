@@ -3947,3 +3947,115 @@ h2 {
 .web-only-setup-note .compact-actions {
   justify-content: flex-start;
 }
+
+
+.first-run-signal-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.first-run-signal-strip article {
+  display: grid;
+  gap: 6px;
+  min-height: 82px;
+  padding: 14px;
+  border: 1px solid rgb(15 23 42 / 8%);
+  border-radius: 18px;
+  background: rgb(255 255 255 / 78%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 70%);
+}
+
+.first-run-signal-strip strong {
+  color: #0f172a;
+  font-size: 15px;
+}
+
+.first-run-signal-strip span {
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.activation-step-details {
+  padding: 10px 12px;
+  border: 1px solid rgb(15 23 42 / 8%);
+  border-radius: 16px;
+  background: rgb(248 250 252 / 70%);
+}
+
+.activation-step-details summary {
+  cursor: pointer;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.activation-step-details .activation-step-list {
+  margin-top: 10px;
+}
+
+.local-mode-preview-panel {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgb(15 23 42 / 8%);
+  border-radius: 24px;
+  background: rgb(255 255 255 / 76%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 82%);
+}
+
+.local-mode-preview-panel > p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.6;
+}
+
+.local-mode-step-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.local-mode-step-grid article {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border: 1px solid rgb(15 23 42 / 8%);
+  border-radius: 18px;
+  background: #f8fafc;
+}
+
+.local-mode-step-grid strong {
+  color: #0f172a;
+  font-size: 15px;
+}
+
+.local-mode-step-grid span {
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .first-run-signal-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .first-run-signal-strip article {
+    min-height: 0;
+  }
+}
+
+
+.mode-notice {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid rgb(14 165 233 / 18%);
+  border-radius: 18px;
+  color: #075985;
+  background: linear-gradient(135deg, rgb(240 249 255 / 92%), rgb(240 253 250 / 82%));
+  font-size: 13px;
+  font-weight: 800;
+}
