@@ -104,6 +104,7 @@ import {
 } from "./lib/timelineUiAdapter";
 import {insightTypeLabel, privacyModeLabel, sourceLabel, statusLabel, userFacingDemoText} from "./lib/userFacingLabels";
 import type {EventItem, PluginManifest, PrivacyMode} from "./types";
+import {DesignConceptPage, DesignLabPage} from "./pages/DesignVariants";
 
 type PageKey =
   | "butler"
@@ -118,7 +119,11 @@ type PageKey =
   | "butlerInbox"
   | "metrics"
   | "goals"
-  | "privacy";
+  | "privacy"
+  | "designLab"
+  | "designMijia"
+  | "designIos"
+  | "designDeck";
 
 const primaryNavItems: Array<{key: PageKey; label: string; icon: typeof Home}> = [
   {key: "butler", label: "今日", icon: Inbox},
@@ -136,7 +141,8 @@ const advancedNavItems: Array<{key: PageKey; label: string; icon: typeof Home}> 
   {key: "metrics", label: "今日量化", icon: BrainCircuit},
   {key: "goals", label: "目标设置", icon: Target},
   {key: "butlerInbox", label: "提醒收件箱", icon: ClipboardList},
-  {key: "ingest", label: "数据接入", icon: PlugZap}
+  {key: "ingest", label: "数据接入", icon: PlugZap},
+  {key: "designLab", label: "设计实验室", icon: Boxes}
 ];
 
 const navItems = [...primaryNavItems, ...advancedNavItems];
@@ -211,12 +217,29 @@ function routeForPage(key: PageKey) {
     metrics: "/metrics",
     goals: "/goals",
     butlerInbox: "/butler/inbox",
-    ingest: "/ingest"
+    ingest: "/ingest",
+    designLab: "/design-lab",
+    designMijia: "/design/mijia",
+    designIos: "/design/ios",
+    designDeck: "/design/deck"
   }[key];
 }
 
+function navigateClient(path: string) {
+  window.history.replaceState(null, "", path);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
 function pageForPath(path: string): PageKey {
-  return path.includes("butler/inbox")
+  return path.includes("design/mijia")
+    ? "designMijia"
+    : path.includes("design/ios")
+      ? "designIos"
+      : path.includes("design/deck")
+        ? "designDeck"
+        : path.includes("design-lab")
+          ? "designLab"
+          : path.includes("butler/inbox")
     ? "butlerInbox"
     : path.includes("metrics")
       ? "metrics"
@@ -360,6 +383,8 @@ function App() {
     return {objectCount, avgLight, achievements, events: events.length};
   }, [events]);
 
+  const isDesignPage = page === "designLab" || page === "designMijia" || page === "designIos" || page === "designDeck";
+
   const CurrentPage = {
     butler: <ButlerHome activationStatus={activationStatus} onActivation={updateActivation} onOpenGuide={() => setShowFirstRunGuide(true)} />,
     dashboard: (
@@ -382,6 +407,10 @@ function App() {
     butlerInbox: <ButlerInbox />,
     metrics: <MetricsPage />,
     goals: <GoalsPage />,
+    designLab: <DesignLabPage />,
+    designMijia: <DesignConceptPage variant="mijia" activationStatus={activationStatus} />,
+    designIos: <DesignConceptPage variant="ios" activationStatus={activationStatus} />,
+    designDeck: <DesignConceptPage variant="deck" activationStatus={activationStatus} />,
     privacy: (
       <Privacy
         mode={privacyMode}
@@ -393,7 +422,7 @@ function App() {
     )
   }[page];
 
-  const activationGateOpen = activationStatus !== "demo_selected" && activationStatus !== "completed";
+  const activationGateOpen = !isDesignPage && activationStatus !== "demo_selected" && activationStatus !== "completed";
 
   if (activationGateOpen) {
     return (
@@ -456,7 +485,7 @@ function App() {
         </aside>
 
         <main>
-          {!primaryNavItems.some((item) => item.key === page) && <header className="topbar">
+          {!isDesignPage && !primaryNavItems.some((item) => item.key === page) && <header className="topbar">
             <div>
               <p className="eyebrow">个人/家庭多模态事件湖原型</p>
               <h1>{navItems.find((item) => item.key === page)?.label}</h1>
@@ -488,6 +517,7 @@ function App() {
     </>
   );
 }
+
 
 function AchievementsPage() {
   const [events, setEvents] = useState<Array<Record<string, any>>>([]);
@@ -1076,15 +1106,15 @@ function ButlerHome({
             <div className="setup-resume-checklist" aria-label="本地完全体开始步骤">
               <article>
                 <strong>1. 打开桌面版</strong>
-                <span>网页只能看样例。请先安装并打开 OpenButler 桌面版；正式发布后这里会提供下载入口。</span>
+                <span>网页只能看样例。要使用自己的记录，请先获取并打开 OpenButler 桌面版。</span>
               </article>
               <article>
                 <strong>2. 准备 API Key</strong>
-                <span>推荐先用火山引擎 Ark 控制台，在 API Key 管理页创建 Key，再粘贴到设置页。</span>
+                <span>推荐先用火山引擎 Ark 控制台创建 API Key。它相当于你给本机整理能力的一把钥匙。</span>
               </article>
               <article>
                 <strong>3. 授权本机记录</strong>
-                <span>OpenButler 只先检查本机记录组件是否存在；你确认前不会读取活动明细。</span>
+                <span>OpenButler 只先确认本机记录来源是否可用；你确认前不会读取活动明细。</span>
               </article>
             </div>
           </div>
@@ -1113,6 +1143,27 @@ function ButlerHome({
         </section>
       </details>
 
+      <section className="today-panel scene-dashboard-panel scene-dashboard-main" aria-label="今日场景信号">
+        <div className="section-title">
+          <div>
+            <h2>场景信号</h2>
+            <p>像米家状态卡一样，只放今天最有用的数字和线索。</p>
+          </div>
+          <button className="ghost" onClick={() => navigateTo("/timeline")}>查看全部记录</button>
+        </div>
+        <div className="scene-dashboard-grid">
+          {sceneLead && (
+            <article className={`scene-lead-card tone-${sceneLead.tone}`}>
+              <span>{sceneLead.title}</span>
+              <strong>{sceneLead.value}</strong>
+              <small>{sceneLead.description}</small>
+            </article>
+          )}
+          <div className="scene-card-grid scene-card-list">
+            {sceneRest.map((card) => <SceneSignalCard card={card} key={card.title} />)}
+          </div>
+        </div>
+      </section>
       <section className="today-focus-layout">
         <div className="today-main-column">
           <section className="today-panel" id="today-suggestions">
@@ -1172,25 +1223,6 @@ function ButlerHome({
         </div>
 
         <aside className="today-side-column">
-          <section className="today-panel scene-dashboard-panel">
-            <div className="section-title">
-              <div>
-                <h2>场景信号</h2>
-                <p>把今天最重要的线索放大显示，其他入口先收成清楚的数据项。</p>
-              </div>
-            </div>
-            {sceneLead && (
-              <article className={`scene-lead-card tone-${sceneLead.tone}`}>
-                <span>{sceneLead.title}</span>
-                <strong>{sceneLead.value}</strong>
-                <small>{sceneLead.description}</small>
-              </article>
-            )}
-            <div className="scene-card-grid scene-card-list">
-              {sceneRest.map((card) => <SceneSignalCard card={card} key={card.title} />)}
-            </div>
-          </section>
-
           <section className="today-panel">
             <div className="section-title"><h2>下一步</h2></div>
             <div className="next-action-card">
@@ -1215,326 +1247,6 @@ function ButlerHome({
 
    </div>
   );
-  /*
-  return (
-    <div className="workstation-page">
-      <section className="wide-panel">
-        <div className="section-title">
-          <div>
-            <h2>今日主动概览</h2>
-            <p>{home?.overview?.headline ?? "正在读取今日 OpenButler 时间线。"}</p>
-          </div>
-          <div className="inline-actions">
-            <button className="primary" onClick={runDemoPath} disabled={demoBusy}>
-              {demoBusy ? <Loader2 className="spin" size={17} /> : <CheckCircle2 size={17} />}
-              <span>运行演示闭环</span>
-            </button>
-            <button className="secondary" onClick={resetDemoPath} disabled={resetBusy}>
-              {resetBusy ? <Loader2 className="spin" size={17} /> : <RefreshCw size={17} />}
-              <span>重置演示数据</span>
-            </button>
-            <button className="secondary" onClick={runDataInsufficientDrill} disabled={drillBusy}>
-              {drillBusy ? <Loader2 className="spin" size={17} /> : <CloudOff size={17} />}
-              <span>演练空数据路径</span>
-            </button>
-            <button className="secondary" onClick={generate} disabled={busy}>
-              {busy ? <Loader2 className="spin" size={17} /> : <RefreshCw size={17} />}
-              <span>生成今日洞察</span>
-            </button>
-          </div>
-        </div>
-        <div className="suggestion-box">
-          <strong>一键演示路径</strong>
-          <span>按顺序执行：导入今日 PC Activity、重建统一时间线、生成主动洞察、生成晚间简报，并刷新 MVP readiness 面板。</span>
-          <span>重置演示数据只清理 OpenButler 派生的 timeline、metrics、insights、briefings 和 Harness summaries；不会删除 PC Activity、MineContext 数据库或 MineContext 截图文件。</span>
-          {demoMessage && <small>{demoMessage}</small>}
-        </div>
-        <div className="suggestion-box">
-          <strong>数据不足恢复演练</strong>
-          <span>只读调用 `/api/butler/demo/data-insufficient-drill`，验证没有 PC Activity 时的 next_action、证据边界和 strict 隐私字段；不会导入、重建、复制截图或删除 MineContext 源数据。</span>
-          {drillMessage && <small>{drillMessage}</small>}
-          {drillReport && (
-            <div className="status-grid readiness-grid">
-              {(drillReport.acceptance ?? []).slice(0, 5).map((check: Record<string, any>) => (
-                <article
-                  className={check.status === "passed" ? "status-item readiness-ready" : "status-item readiness-data_insufficient"}
-                  key={check.id}
-                >
-                  <span>{String(check.status)}</span>
-                  <strong>{String(check.next_action?.label ?? check.title)}</strong>
-                  <small>{String(check.next_action?.type ?? "none")}</small>
-                </article>
-              ))}
-            </div>
-          )}
-          {drillReport && (
-            <small>
-              演练边界：{String(drillReport.evidence_boundary)} strict: external_model_used={String(drillReport.privacy?.external_model_used)} ·
-              minecontext_source_deleted={String(drillReport.privacy?.minecontext_source_deleted)} · copied_screenshots={String(drillReport.privacy?.copied_screenshots)}
-            </small>
-          )}
-        </div>
-        <div className="suggestion-box">
-          <strong>证据边界</strong>
-          <span>{home?.overview?.evidence_boundary ?? "结论只基于你授权的本地线索。"}</span>
-        </div>
-        {dataInsufficient && (
-          <div className="suggestion-box">
-            <strong>数据不足</strong>
-            <span>当前没有足够的 MineContext PC 活动事件，OpenButler 不会编造今日结论。可以先导入今日活动，再重新生成洞察。</span>
-            <div className="inline-actions">
-              <button className="primary" onClick={importTodayForButler} disabled={importBusy}>
-                {importBusy ? <Loader2 className="spin" size={17} /> : <Database size={17} />}
-                <span>导入今日 PC 活动</span>
-              </button>
-              <button
-                className="secondary"
-                onClick={() => {
-                  window.history.replaceState(null, "", "/pc-activity-context");
-                  window.dispatchEvent(new PopStateEvent("popstate"));
-                }}
-              >
-                打开 PC 操作感知
-              </button>
-            </div>
-            {importMessage && <small>{importMessage}</small>}
-          </div>
-        )}
-      </section>
-
-      <section className="wide-panel readiness-panel">
-        <div className="section-title">
-          <div>
-            <h2>MVP 可演示状态</h2>
-            <p>状态：{readiness?.status ?? "checking"} · 只读取 OpenButler 派生数据，不触碰 MineContext 原始数据。</p>
-          </div>
-          <div className={readiness?.status === "ready" ? "live-indicator on" : "live-indicator"}>
-            <ShieldCheck size={16} />
-            <span>{readiness?.status ?? "checking"}</span>
-          </div>
-        </div>
-        <div className="status-grid readiness-grid">
-          {(readiness?.checks ?? []).map((check: Record<string, any>) => (
-            <article className={`status-item readiness-${String(check.status)}`} key={check.id}>
-              <span>{String(check.status)}</span>
-              <strong>{String(check.title)}</strong>
-              <small>{Object.entries(check.details ?? {}).map(([key, value]) => `${key}: ${String(value)}`).join(" · ")}</small>
-            </article>
-          ))}
-        </div>
-        {readiness?.status === "data_insufficient" && (
-          <div className="suggestion-box">
-            <strong>自检显示数据不足</strong>
-            <span>主动管家核心可运行，但缺少今日 PC Activity 事件。先导入今日活动后，再重新生成洞察和简报。</span>
-          </div>
-        )}
-        <p className="policy-note">{readiness?.evidence_boundary ?? "自检结果会保留证据边界。"}</p>
-      </section>
-
-      <section className="wide-panel mvp-report-panel">
-        <div className="section-title">
-          <div>
-            <h2>Productization Harness</h2>
-            <p>状态：{mvpReport?.status ?? "checking"} · 北极星：{mvpReport?.north_star ?? "60 秒内理解今天发生了什么、什么值得注意、下一步应该做什么。"}</p>
-          </div>
-          <div className={mvpReport?.status === "ready" ? "live-indicator on" : "live-indicator"}>
-            <ShieldCheck size={16} />
-            <span>{mvpReport?.status ?? "checking"}</span>
-          </div>
-        </div>
-        <div className="mvp-chain">
-          {(mvpReport?.mvp_chain ?? []).map((stage: Record<string, any>) => (
-            <article key={String(stage.stage)}>
-              <span>{String(stage.stage)}</span>
-              <strong>{String(stage.count ?? 0)}</strong>
-              <small>{String(stage.status ?? "unknown")}</small>
-            </article>
-          ))}
-        </div>
-        <div className="suggestion-box">
-          <strong>最近 Harness 结果</strong>
-          <span>这些是本地 Productization Harness 摘要，只保存状态、失败项、隐私计数和证据边界；不保存 MineContext 原始记录或截图内容。</span>
-          <div className="status-grid readiness-grid">
-            {latestHarnessRuns.map((run: Record<string, any>) => (
-              <article
-                className={run.status === "ready" ? "status-item readiness-ready" : "status-item readiness-data_insufficient"}
-                key={run.id}
-              >
-                <span>{String(run.kind)}</span>
-                <strong>{String(run.status)}</strong>
-                <small>{String(run.created_at)}</small>
-                <small>dry_run={String(run.dry_run)} · mutates_data={String(run.mutates_data)}</small>
-                <small>failed_checks={(run.failed_checks ?? []).length}</small>
-              </article>
-            ))}
-            {latestHarnessRuns.length === 0 && (
-              <article className="status-item readiness-data_insufficient">
-                <span>empty</span>
-                <strong>暂无 Harness 运行记录</strong>
-                <small>运行 MVP 报告或空数据演练后会在这里显示最近结果。</small>
-              </article>
-            )}
-          </div>
-        </div>
-        <div className="suggestion-box">
-          <strong>目标完成度自检</strong>
-          <span>把 `.openbutler/goals.yaml` 的 active objectives 映射到当前本地 API、UI 文件和文档证据；不验证远程仓库、CI、云效或部署状态。</span>
-          <div className="status-grid readiness-grid">
-            {(objectiveStatus?.objectives ?? []).map((objective: Record<string, any>) => (
-              <article
-                className={objective.status === "proven" ? "status-item readiness-ready" : "status-item readiness-attention_needed"}
-                key={objective.id}
-              >
-                <span>{String(objective.status)}</span>
-                <strong>{String(objective.id)}</strong>
-                <small>{String(objective.title)}</small>
-                <small>priority={String(objective.priority ?? "unknown")} · source={String(objective.source_ref?.path ?? "unknown")}</small>
-                <small>{String(objective.proven_count ?? 0)}/{String(objective.criteria_count ?? 0)} criteria proven</small>
-                {(objective.success_criteria ?? []).slice(0, 2).map((item: string, index: number) => (
-                  <small key={`${objective.id}-success-${index}`}>目标：{String(item)}</small>
-                ))}
-                {(objective.criteria ?? [])
-                  .filter((criterion: Record<string, any>) => criterion.status !== "proven")
-                  .slice(0, 2)
-                  .map((criterion: Record<string, any>) => (
-                    <small key={`${objective.id}-${criterion.id}`}>
-                      {criterion.id === "evidence_mapper_missing" ? "缺少 evidence mapper" : "待处理"}：{String(criterion.title)}
-                    </small>
-                  ))}
-              </article>
-            ))}
-            {!objectiveStatus && (
-              <article className="status-item readiness-data_insufficient">
-                <span>checking</span>
-                <strong>正在读取目标自检</strong>
-                <small>刷新 Productization Harness 后显示。</small>
-              </article>
-            )}
-          </div>
-          {objectiveStatus?.evidence_boundary && <small>目标边界：{String(objectiveStatus.evidence_boundary)}</small>}
-        </div>
-        <div className="suggestion-box">
-          <strong>一页演示包</strong>
-          <span>
-            汇总 readiness、MVP report、active objectives 和最近 Harness 摘要，供本地验收时一次性查看；不调用外部模型、不复制截图、不删除 MineContext 源数据。
-          </span>
-          <div className="status-grid readiness-grid">
-            <article className={demoPack?.status === "ready" ? "status-item readiness-ready" : "status-item readiness-attention_needed"}>
-              <span>{String(demoPack?.status ?? "checking")}</span>
-              <strong>demo pack</strong>
-              <small>{String(demoPack?.schema_version ?? "productization_demo_pack_v1")}</small>
-            </article>
-            <article className={demoPack?.readiness?.status === "ready" ? "status-item readiness-ready" : "status-item readiness-data_insufficient"}>
-              <span>{String(demoPack?.readiness?.status ?? "checking")}</span>
-              <strong>readiness</strong>
-              <small>timeline={String(demoPack?.readiness?.summary?.timeline_events ?? 0)} · insights={String(demoPack?.readiness?.summary?.insights ?? 0)}</small>
-            </article>
-            <article className={demoPack?.mvp_report?.status === "ready" ? "status-item readiness-ready" : "status-item readiness-data_insufficient"}>
-              <span>{String(demoPack?.mvp_report?.status ?? "checking")}</span>
-              <strong>MVP report</strong>
-              <small>acceptance={(demoPack?.mvp_report?.acceptance ?? []).length}</small>
-            </article>
-            <article className={demoPack?.objective_status?.status === "proven" ? "status-item readiness-ready" : "status-item readiness-attention_needed"}>
-              <span>{String(demoPack?.objective_status?.status ?? "checking")}</span>
-              <strong>active objectives</strong>
-              <small>harness_runs={String(demoPack?.latest_harness_runs?.count ?? 0)}</small>
-            </article>
-          </div>
-          <small>
-            strict: external_model_used={String(demoPack?.privacy?.external_model_used ?? false)} ·
-            external_model_allowed={String(demoPack?.privacy?.external_model_allowed ?? false)} ·
-            minecontext_source_deleted={String(demoPack?.privacy?.minecontext_source_deleted ?? 0)} ·
-            copied_screenshots={String(demoPack?.privacy?.copied_screenshots ?? 0)}
-          </small>
-          {demoPack?.evidence_boundary && <small>演示包边界：{String(demoPack.evidence_boundary)}</small>}
-        </div>
-        <div className="status-grid readiness-grid">
-          {(mvpReport?.acceptance ?? []).slice(0, 6).map((check: Record<string, any>) => (
-            <article
-              className={check.status === "passed" ? "status-item readiness-ready" : "status-item readiness-attention_needed"}
-              key={check.id}
-            >
-              <span>{String(check.status)}</span>
-              <strong>{String(check.title)}</strong>
-              <small>{Object.entries(check.details ?? {}).map(([key, value]) => `${key}: ${String(value)}`).join(" · ")}</small>
-              <small>下一步：{String(check.next_action?.label ?? "查看验收报告")}</small>
-            </article>
-          ))}
-        </div>
-        {mvpReport?.status !== "ready" && (
-          <div className="suggestion-box">
-            <strong>可执行修复建议</strong>
-            {(mvpReport?.acceptance ?? [])
-              .filter((check: Record<string, any>) => check.status !== "passed")
-              .slice(0, 3)
-              .map((check: Record<string, any>) => (
-                <div className="action-suggestion" key={check.id}>
-                  <span>
-                    {String(check.next_action?.label ?? check.title)}：{String(check.next_action?.description ?? "检查该验收项详情。")}
-                  </span>
-                  <button
-                    className="secondary"
-                    onClick={() => handleMvpNextAction(check.next_action ?? {})}
-                    disabled={Boolean(mvpActionBusy)}
-                  >
-                    {mvpActionBusy === check.next_action?.type ? <Loader2 className="spin" size={16} /> : <CheckCircle2 size={16} />}
-                    <span>执行建议</span>
-                  </button>
-                </div>
-              ))}
-            {mvpActionMessage && <small>{mvpActionMessage}</small>}
-          </div>
-        )}
-        <div className="suggestion-box">
-          <strong>验收边界</strong>
-          <span>{mvpReport?.evidence_boundary ?? "MVP 验收报告会保留证据边界。"}</span>
-          <span>
-            strict: external_model_used={String(mvpReport?.privacy?.external_model_used ?? false)} ·
-            external_model_allowed={String(mvpReport?.privacy?.external_model_allowed ?? false)} ·
-            minecontext_source_deleted={String(mvpReport?.privacy?.minecontext_source_deleted ?? 0)} ·
-            copied_screenshots={String(mvpReport?.privacy?.copied_screenshots ?? 0)}
-          </span>
-        </div>
-      </section>
-
-      <section className="metrics">
-        <Metric icon={Database} label="PC 活跃" value={`${metrics.pc_active_minutes ?? 0} 分钟`} tone="blue" />
-        <Metric icon={BrainCircuit} label="深度工作" value={`${metrics.focus_minutes ?? 0} 分钟`} tone="green" />
-        <Metric icon={RefreshCw} label="上下文切换" value={metrics.context_switch_count ?? 0} tone="amber" />
-        <Metric icon={Inbox} label="主动洞察" value={insights.length} tone="red" />
-      </section>
-
-      <section className="wide-panel">
-        <div className="section-title"><h2>主动洞察</h2></div>
-        <InsightList insights={insights} onChanged={refreshHome} />
-      </section>
-
-      <section className="panel">
-        <div className="section-title"><h2>建议下一步</h2></div>
-        <div className="plugin-list">
-          {(home?.suggested_next_actions ?? []).map((action: Record<string, any>, index: number) => (
-            <article className="plugin" key={`${action.type}-${index}`}>
-              <strong>{String(action.label)}</strong>
-              <span>{String(action.type)}</span>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="panel">
-        <div className="section-title"><h2>今日简报</h2></div>
-        <div className="plugin-list">
-          {briefings.slice(0, 2).map((briefing) => (
-            <article className="plugin" key={briefing.id}>
-              <strong>{briefing.title}</strong>
-              <span>{briefing.evidence_boundary}</span>
-            </article>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
-  */
 }
 
 function TodayStatusTile({card}: {card: {title: string; value: string; description: string; tone: string}}) {
@@ -3283,11 +2995,11 @@ function FirstRunGuide({
                     <h3>桌面版会带你完成本机设置</h3>
                   </div>
                 </div>
-                <p>公开网页只提供样例体验，不会扫描你的电脑。打开桌面版后，OpenButler 会在本机一步步完成下面三件事。</p>
+                <p>公开网页只提供样例体验，不会扫描你的电脑。桌面版会在本机一步步带你完成下面三件事。</p>
                 <div className="local-mode-step-grid">
                   <article>
                     <strong>连接智能整理能力</strong>
-                    <span>API Key 是模型服务商给你的访问凭证。桌面版会把它写入本机记录组件，用来把记录整理成摘要和提醒。</span>
+                    <span>API Key 是服务商给你的访问凭证。桌面版会把它交给本机整理能力，用来把记录整理成摘要和提醒。</span>
                   </article>
                   <article>
                     <strong>查找本机记录组件</strong>
@@ -3300,21 +3012,22 @@ function FirstRunGuide({
                 </div>
                 <div className="setup-link-grid" aria-label="真实模式准备说明">
                   <article>
-                    <strong>桌面版从哪里来？</strong>
-                    <span>当前公开样例不直接下载安装包。内测用户请使用收到的 OpenButler 桌面版安装包；正式版会在这里提供下载入口。</span>
+                    <strong>桌面版从哪里获取？</strong>
+                    <span>你可以从桌面版发布页获取安装包。内测阶段如果发布页暂未开放，请使用收到的内测安装包。</span>
+                    <a className="inline-help-link" href="https://github.com/Giftia/OpenButler/releases" target="_blank" rel="noreferrer">查看桌面版发布页</a>
                   </article>
                   <article>
                     <strong>API Key 去哪里拿？</strong>
-                    <span>推荐从火山引擎 Ark 控制台创建 Key。桌面版会带默认配置，你通常只需要粘贴 API Key。</span>
+                    <span>推荐从火山引擎 Ark 控制台创建 Key。桌面版会带默认配置，你通常只需要粘贴这一项。</span>
                     <a className="inline-help-link" href="https://console.volcengine.com/ark" target="_blank" rel="noreferrer">打开 Ark 控制台</a>
                   </article>
                 </div>
                 <div className="web-only-setup-note">
                   <strong>你现在可以先看样例。</strong>
-                  <p>现在可以继续看样例。要接入真实记录，请安装并打开 OpenButler 桌面版；打开桌面版后选择“打开完整设置”，再按页面填写 API Key、扫描本机记录组件。</p>
+                  <p>现在可以继续看样例。要接入真实记录，请先获取桌面版；打开后选择“打开完整设置”，粘贴 API Key，再按提示授权本机记录。</p>
                   <div className="desktop-action-row compact-actions">
                     <button className="primary" onClick={onChooseDemo}>先继续看样例</button>
-                    <button className="secondary" onClick={() => setSetupMessage("请使用你收到的 OpenButler 桌面版安装包。安装并打开后点“打开完整设置”，粘贴 API Key，再授权本机记录。网页样例不能扫描你的电脑。")}>我还没有桌面版</button>
+                    <button className="secondary" onClick={() => setSetupMessage("请先打开桌面版发布页获取安装包。安装并打开后点“打开完整设置”，粘贴 API Key，再授权本机记录。网页样例不能扫描你的电脑。")}>我还没有桌面版</button>
                   </div>
                 </div>
               </div>
@@ -3331,8 +3044,8 @@ function FirstRunGuide({
                     <KeyRound size={19} />
                     <div>
                       <strong>我该从哪里获得 API Key？</strong>
-                      <p>API Key 是服务商给你的访问凭证。你可以先打开 Ark 控制台创建 Key，再回到这里粘贴。OpenButler 会把它交给本机记录组件保存，用来在本机整理记录。</p>
-                      <small>如果你还没有服务商账号，先用样例体验即可。API Key 只会写入本机记录组件，不会显示在状态页、日志或摘要里。</small>
+                      <p>API Key 是服务商给你的访问凭证。OpenButler 不内置云模型，所以需要你提供自己的 Key；你可以先打开 Ark 控制台创建，再回到这里粘贴。</p>
+                      <small>如果你还没有服务商账号，先用样例体验即可。API Key 只会保存在本机记录来源里，不会显示在状态页、日志或摘要里。</small>
                       <a className="inline-help-link" href="https://console.volcengine.com/ark" target="_blank" rel="noreferrer">打开火山引擎 Ark 控制台</a>
                     </div>
                   </div>
@@ -3388,7 +3101,7 @@ function FirstRunGuide({
                       保存配置，继续查找
                     </button>
                   </div>
-                  <small>这里不会发起模型调用，只准备把配置保存到本机记录组件。</small>
+                  <small>这里不会发起模型调用，只准备把配置保存到本机记录来源。</small>
                   <details className="technical-note">
                     <summary>高级说明</summary>
                     <small>高级说明：本机记录组件的底层项目名是 MineContext。普通使用时不需要理解这个名字。</small>

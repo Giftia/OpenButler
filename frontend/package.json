@@ -39,6 +39,7 @@
     "test:demo-pack-artifact-script": "node scripts/check-butler-demo-pack-artifact-script.mjs",
     "test:demo-pack-artifact-file": "node scripts/check-butler-demo-pack-artifact-file.mjs",
     "test:product-shell-ordinary-ux": "node scripts/check-product-shell-ordinary-ux.mjs",
+    "test:design-variants": "node scripts/check-design-variants.mjs",
     "test:productization-records": "node scripts/check-productization-records.mjs",
     "test:productization-verify-script": "node scripts/check-productization-verify-script.mjs",
     "test:metrics-trend-panel": "node scripts/check-butler-metrics-trend-panel.mjs",

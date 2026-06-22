@@ -1,0 +1,280 @@
+import {useEffect, useState} from "react";
+import {getButlerHome, getButlerTimeline} from "../lib/api";
+import {buildTodayHomeViewModel, type ActivationMode} from "../lib/butlerUiAdapter";
+import {toTimelineMoment, type TimelineMoment} from "../lib/timelineUiAdapter";
+
+type ActivationStatus = "unseen" | "demo_selected" | "real_setup_started" | "dismissed" | "completed";
+type DesignVariant = "mijia" | "ios" | "deck";
+
+const designVariantMeta: Record<DesignVariant, {title: string; subtitle: string; route: string; badge: string}> = {
+  mijia: {
+    title: "米家式状态中控",
+    subtitle: "用大卡片和场景信号回答：今天发生了什么，哪件事该先看。",
+    route: "/design/mijia",
+    badge: "状态优先",
+  },
+  ios: {
+    title: "iOS Home 式私人管家",
+    subtitle: "更克制的卡片、底部行动和自然语言，适合长期日常使用。",
+    route: "/design/ios",
+    badge: "日常使用",
+  },
+  deck: {
+    title: "大屏 PPT 式汇报版",
+    subtitle: "高信息密度、强数据叙事，适合产品演示和商业评估。",
+    route: "/design/deck",
+    badge: "演示汇报",
+  },
+};
+
+const designSampleEvents = [
+  {
+    id: "design-demo-object-location",
+    source: "phone_album_demo",
+    event_type: "object_location",
+    title: "钥匙可能在玄关托盘附近",
+    summary: "样例线索显示钥匙最后出现在玄关左侧托盘。你可以查看依据，理解管家如何说明不确定性。",
+    started_at: new Date().toISOString(),
+    confidence: 0.78,
+    evidence_boundary: "这是样例数据，只用于展示物品回溯体验；不代表你的真实相册或本机记录。",
+    evidence_refs: [{source: "phone_album_demo", evidence_level: "demo_reference"}],
+  },
+  {
+    id: "design-demo-follow-up",
+    source: "butler_demo",
+    event_type: "insight",
+    title: "会议后有一项待办适合收尾",
+    summary: "样例提醒显示一条会议后事项适合回看确认。OpenButler 不会替你判断远程任务状态。",
+    started_at: new Date().toISOString(),
+    confidence: 0.72,
+    evidence_boundary: "这是样例数据，用于展示提醒和依据说明；真实模式需要你在本机运行并主动授权。",
+    evidence_refs: [{source: "butler_demo", evidence_level: "demo_reference"}],
+  },
+  {
+    id: "design-demo-rest-rhythm",
+    source: "workstation_demo",
+    event_type: "lighting_context",
+    title: "可以安排 5 分钟活动一下",
+    summary: "样例节律显示你已经连续坐了一段时间，适合短暂活动肩颈或补充光照。",
+    started_at: new Date().toISOString(),
+    confidence: 0.7,
+    evidence_boundary: "这是样例数据，只说明 OpenButler 如何给出温和建议；不代表医学或心理判断。",
+    evidence_refs: [{source: "workstation_demo", evidence_level: "demo_reference"}],
+  },
+];
+
+function navigateClient(path: string) {
+  window.history.replaceState(null, "", path);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+function activationModeForDesign(status: ActivationStatus): ActivationMode {
+  if (status === "demo_selected") return "demo";
+  if (status === "real_setup_started" || status === "completed") return "real_local";
+  return "demo";
+}
+
+function useDesignConceptView(activationStatus: ActivationStatus) {
+  const [home, setHome] = useState<Record<string, any> | null>(null);
+  const [timelineItems, setTimelineItems] = useState<Array<Record<string, any>>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    void (async () => {
+      try {
+        const [homeResult, timelineResult] = await Promise.all([getButlerHome(), getButlerTimeline()]);
+        if (!mounted) return;
+        setHome(homeResult);
+        setTimelineItems(timelineResult.items ?? []);
+      } catch {
+        if (!mounted) return;
+        setHome(null);
+        setTimelineItems([]);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const view = buildTodayHomeViewModel(home, timelineItems, activationModeForDesign(activationStatus));
+  const moments = (timelineItems.length ? timelineItems : designSampleEvents).slice(0, 6).map(toTimelineMoment);
+  return {view, moments, loading};
+}
+
+function DesignSwitcher({active}: {active?: DesignVariant}) {
+  return (
+    <div className="design-switcher" aria-label="设计版本切换">
+      {(Object.keys(designVariantMeta) as DesignVariant[]).map((key) => {
+        const item = designVariantMeta[key];
+        return (
+          <button key={key} className={active === key ? "active" : ""} onClick={() => navigateClient(item.route)}>
+            <span>{item.badge}</span>
+            <strong>{item.title}</strong>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+export function DesignLabPage() {
+  return (
+    <section className="design-lab-page">
+      <div className="design-lab-hero">
+        <p className="eyebrow">设计实验室</p>
+        <h1>同一套能力，先试三种产品气质</h1>
+        <p>这里不改后端，也不读取真实数据。三套界面都用现有今日、时间线和提醒数据，用来判断普通用户最容易看懂哪一种。</p>
+      </div>
+      <div className="design-lab-grid">
+        {(Object.keys(designVariantMeta) as DesignVariant[]).map((key) => {
+          const item = designVariantMeta[key];
+          return (
+            <article className={`design-lab-card ${key}`} key={key}>
+              <span>{item.badge}</span>
+              <h2>{item.title}</h2>
+              <p>{item.subtitle}</p>
+              <button className="primary" onClick={() => navigateClient(item.route)}>体验这个版本</button>
+            </article>
+          );
+        })}
+      </div>
+      <div className="design-lab-note">
+        <strong>评估标准</strong>
+        <span>不看技术栈，只看新用户能否在 30 秒内明白：这是什么、对我有什么用、下一步该点哪里。</span>
+      </div>
+    </section>
+  );
+}
+
+export function DesignConceptPage({variant, activationStatus}: {variant: DesignVariant; activationStatus: ActivationStatus}) {
+  const {view, moments, loading} = useDesignConceptView(activationStatus);
+  if (variant === "mijia") return <MijiaConcept view={view} moments={moments} loading={loading} />;
+  if (variant === "ios") return <IosConcept view={view} moments={moments} loading={loading} />;
+  return <DeckConcept view={view} moments={moments} loading={loading} />;
+}
+
+function MijiaConcept({view, moments, loading}: {view: ReturnType<typeof buildTodayHomeViewModel>; moments: TimelineMoment[]; loading: boolean}) {
+  const command = view.commandCenter;
+  return (
+    <section className="concept-page concept-mijia">
+      <DesignSwitcher active="mijia" />
+      <div className="mijia-topbar">
+        <div>
+          <p>OpenButler</p>
+          <h1>今天</h1>
+        </div>
+        <span>{command.privacyHint}</span>
+      </div>
+      <div className="mijia-hero-card">
+        <div>
+          <span>{command.dataMode === "sample" ? "样例体验" : "本地整理"}</span>
+          <h2>{command.headline}</h2>
+          <p>{command.oneLineStatus}</p>
+          <button className="primary" onClick={() => navigateClient("/butler")}>{command.primaryAction}</button>
+        </div>
+        <article>
+          <small>建议先看</small>
+          <strong>{command.topSuggestion?.title ?? "先看样例"}</strong>
+          <p>{command.topSuggestion?.summary ?? "用一组样例先了解今日概览、时间线和依据。"}</p>
+        </article>
+      </div>
+      <div className="mijia-room-tabs"><button className="active">全部</button><button>工作</button><button>生活</button><button>家庭</button></div>
+      <div className="mijia-tile-grid">
+        {view.sceneCards.map((card) => <article key={card.title} className={`mijia-tile tone-${card.tone}`}><span>{card.title}</span><strong>{card.value}</strong><small>{card.description}</small></article>)}
+      </div>
+      <div className="mijia-list-panel">
+        <div className="section-title"><h2>最近记录</h2><button className="ghost" onClick={() => navigateClient("/timeline")}>全部</button></div>
+        {moments.slice(0, 4).map((moment) => <ConceptEventRow key={moment.id} moment={moment} />)}
+      </div>
+      {loading && <p className="concept-loading">正在读取当前样例状态...</p>}
+    </section>
+  );
+}
+
+function IosConcept({view, moments, loading}: {view: ReturnType<typeof buildTodayHomeViewModel>; moments: TimelineMoment[]; loading: boolean}) {
+  const command = view.commandCenter;
+  return (
+    <section className="concept-page concept-ios">
+      <DesignSwitcher active="ios" />
+      <div className="ios-header">
+        <span>{command.privacyHint}</span>
+        <h1>今天先看这几件事</h1>
+        <p>{command.oneLineStatus}</p>
+      </div>
+      <div className="ios-card-stack">
+        <article className="ios-main-card">
+          <small>今日摘要</small>
+          <strong>{command.headline}</strong>
+          <button className="primary" onClick={() => navigateClient("/butler")}>{command.primaryAction}</button>
+        </article>
+        <article className="ios-suggestion-card">
+          <small>下一步</small>
+          <strong>{command.topSuggestion?.title ?? "先浏览样例"}</strong>
+          <p>{command.topSuggestion?.summary ?? "样例不会读取你的真实数据。"}</p>
+        </article>
+      </div>
+      <div className="ios-number-row">
+        {command.keyNumbers.map((item) => <article key={item.label}><strong>{item.value}</strong><span>{item.label}</span><small>{item.description}</small></article>)}
+      </div>
+      <section className="ios-event-sheet">
+        <div className="section-title"><h2>今天留下的记录</h2><button className="ghost" onClick={() => navigateClient("/timeline")}>查看时间线</button></div>
+        {moments.slice(0, 5).map((moment) => <ConceptEventRow key={moment.id} moment={moment} compact />)}
+      </section>
+      {loading && <p className="concept-loading">正在整理...</p>}
+    </section>
+  );
+}
+
+function DeckConcept({view, moments, loading}: {view: ReturnType<typeof buildTodayHomeViewModel>; moments: TimelineMoment[]; loading: boolean}) {
+  const command = view.commandCenter;
+  return (
+    <section className="concept-page concept-deck">
+      <DesignSwitcher active="deck" />
+      <div className="deck-hero">
+        <div>
+          <p>OPENBUTLER / 概念汇报</p>
+          <h1>{command.headline}</h1>
+        </div>
+        <strong>{command.keyNumbers[0]?.value ?? "4 条"}</strong>
+      </div>
+      <div className="deck-grid">
+        <article className="deck-statement">
+          <span>核心判断</span>
+          <h2>{command.oneLineStatus}</h2>
+          <button className="primary" onClick={() => navigateClient("/butler")}>{command.primaryAction}</button>
+        </article>
+        {command.keyNumbers.map((item) => <article className="deck-metric" key={item.label}><span>{item.label}</span><strong>{item.value}</strong><small>{item.description}</small></article>)}
+      </div>
+      <div className="deck-evidence-wall">
+        <div>
+          <span>事件流</span>
+          <h2>这些片段构成今天的依据</h2>
+        </div>
+        <div>
+          {moments.slice(0, 4).map((moment) => <ConceptEventRow key={moment.id} moment={moment} />)}
+        </div>
+      </div>
+      {loading && <p className="concept-loading">正在载入样例内容...</p>}
+    </section>
+  );
+}
+
+function ConceptEventRow({moment, compact = false}: {moment: TimelineMoment; compact?: boolean}) {
+  return (
+    <article className={compact ? "concept-event compact" : "concept-event"}>
+      <time>{moment.time}</time>
+      <div>
+        <strong>{moment.title}</strong>
+        <p>{moment.summary}</p>
+        <span>{moment.sourceLabel} · {moment.stateLabel}</span>
+      </div>
+      <div className={`concept-thumb tone-${moment.thumbnail.tone}`} aria-label={moment.thumbnail.alt}>
+        {moment.thumbnail.kind === "image" && moment.thumbnail.url ? <img src={moment.thumbnail.url} alt={moment.thumbnail.alt} /> : <span>{moment.eventLabel.slice(0, 2)}</span>}
+      </div>
+    </article>
+  );
+}
