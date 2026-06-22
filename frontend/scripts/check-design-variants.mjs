@@ -43,6 +43,8 @@ const requiredDesignSnippets = [
   '创建智能整理钥匙',
   '桌面版里会继续带你完成',
   '查看依据',
+  '证据片段',
+  '09:22 的样例相册线索',
 ];
 
 for (const snippet of requiredDesignSnippets) {

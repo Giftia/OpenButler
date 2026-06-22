@@ -38,6 +38,7 @@ const designSampleEvents = [
     confidence: 0.78,
     evidence_boundary: "这是样例数据，只用于展示物品回溯体验；不代表你的真实相册或本机记录。",
     evidence_refs: [{source: "phone_album_demo", evidence_level: "demo_reference"}],
+    evidence_notes: ["09:22 的样例相册线索", "画面里出现玄关左侧托盘", "因此只说“可能在附近”"],
   },
   {
     id: "design-demo-follow-up",
@@ -49,6 +50,7 @@ const designSampleEvents = [
     confidence: 0.72,
     evidence_boundary: "这是样例数据，用于展示提醒和依据说明；真实模式需要你在本机运行并主动授权。",
     evidence_refs: [{source: "butler_demo", evidence_level: "demo_reference"}],
+    evidence_notes: ["14:10 的样例会议后记录", "同一事项今天没有收尾记录", "远程任务状态仍需回原系统确认"],
   },
   {
     id: "design-demo-rest-rhythm",
@@ -60,6 +62,7 @@ const designSampleEvents = [
     confidence: 0.7,
     evidence_boundary: "这是样例数据，只说明 OpenButler 如何给出温和建议；不代表医学或心理判断。",
     evidence_refs: [{source: "workstation_demo", evidence_level: "demo_reference"}],
+    evidence_notes: ["16:40 的样例节律片段", "连续坐着超过一段时间", "只给活动建议，不做健康判断"],
   },
 ];
 
@@ -174,6 +177,7 @@ export function DesignLabPage() {
         <h1>同一套能力，先试三种产品气质</h1>
         <p>这里不改后端，也不读取真实数据。三套界面都用现有今日、时间线和提醒数据，用来判断普通用户最容易看懂哪一种。</p>
       </div>
+      <SetupPathPanel compact />
       <div className="design-lab-grid">
         {(Object.keys(designVariantMeta) as DesignVariant[]).map((key) => {
           const item = designVariantMeta[key];
@@ -320,6 +324,15 @@ function DeckConcept({view, moments, loading}: {view: ReturnType<typeof buildTod
   );
 }
 
+function evidenceNotesFor(moment: TimelineMoment): string[] {
+  const notes = moment.details?.evidence_notes;
+  if (Array.isArray(notes) && notes.length) return notes.map((item) => String(item));
+  if (moment.eventKey === "object_location") return ["样例相册线索", "出现玄关托盘", "只给可能位置"];
+  if (moment.eventKey === "lighting_context") return ["样例节律片段", "连续坐着一段时间", "建议短暂活动"];
+  if (moment.eventKey === "insight") return ["样例提醒", "有待确认事项", "需要你决定是否处理"];
+  return ["本地时间线片段", "来源可查看", "结论保留边界"];
+}
+
 function ConceptEventRow({moment, compact = false}: {moment: TimelineMoment; compact?: boolean}) {
   return (
     <article className={compact ? "concept-event compact" : "concept-event"}>
@@ -336,6 +349,7 @@ function ConceptEventRow({moment, compact = false}: {moment: TimelineMoment; com
         <summary>查看依据</summary>
         <div>
           <span>来源：{moment.sourceLabel}</span>
+          <span>证据片段：{evidenceNotesFor(moment).join("；")}</span>
           <span>可信度：{moment.confidenceLabel}</span>
           <span>边界：{moment.evidenceBoundary}</span>
           <span>隐私：未上传数据，未显示本地路径。{moment.thumbnail.privacyLabel ? ` ${moment.thumbnail.privacyLabel}` : ""}</span>
