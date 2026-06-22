@@ -121,6 +121,15 @@ function DesignSwitcher({active}: {active?: DesignVariant}) {
   );
 }
 
+function DesignVariantFooter({active}: {active?: DesignVariant}) {
+  return (
+    <details className="design-variant-footer">
+      <summary>切换设计版本</summary>
+      <DesignSwitcher active={active} />
+    </details>
+  );
+}
+
 export function DesignLabPage() {
   return (
     <section className="design-lab-page">
@@ -161,13 +170,16 @@ function MijiaConcept({view, moments, loading}: {view: ReturnType<typeof buildTo
   const command = view.commandCenter;
   return (
     <section className="concept-page concept-mijia">
-      <DesignSwitcher active="mijia" />
       <div className="mijia-topbar">
         <div>
           <p>OpenButler</p>
           <h1>今天</h1>
         </div>
         <span>{command.privacyHint}</span>
+      </div>
+      <div className="mijia-product-note">
+        <strong>这是一个私人管家中控。</strong>
+        <span>它把你授权的本地线索整理成今日重点、生活记录和可查看的依据。样例体验不会读取真实数据。</span>
       </div>
       <div className="mijia-hero-card">
         <div>
@@ -182,6 +194,11 @@ function MijiaConcept({view, moments, loading}: {view: ReturnType<typeof buildTo
           <p>{command.topSuggestion?.summary ?? "用一组样例先了解今日概览、时间线和依据。"}</p>
         </article>
       </div>
+      <div className="mijia-action-strip" aria-label="快速开始">
+        <button className="active" onClick={() => navigateClient("/butler")}>看今天重点</button>
+        <button onClick={() => navigateClient("/timeline")}>查看生活记录</button>
+        <button onClick={() => navigateClient("/me")}>了解本地模式</button>
+      </div>
       <div className="mijia-room-tabs"><button className="active">全部</button><button>工作</button><button>生活</button><button>家庭</button></div>
       <div className="mijia-tile-grid">
         {view.sceneCards.map((card) => <article key={card.title} className={`mijia-tile tone-${card.tone}`}><span>{card.title}</span><strong>{card.value}</strong><small>{card.description}</small></article>)}
@@ -190,6 +207,7 @@ function MijiaConcept({view, moments, loading}: {view: ReturnType<typeof buildTo
         <div className="section-title"><h2>最近记录</h2><button className="ghost" onClick={() => navigateClient("/timeline")}>全部</button></div>
         {moments.slice(0, 4).map((moment) => <ConceptEventRow key={moment.id} moment={moment} />)}
       </div>
+      <DesignVariantFooter active="mijia" />
       {loading && <p className="concept-loading">正在读取当前样例状态...</p>}
     </section>
   );
@@ -199,7 +217,6 @@ function IosConcept({view, moments, loading}: {view: ReturnType<typeof buildToda
   const command = view.commandCenter;
   return (
     <section className="concept-page concept-ios">
-      <DesignSwitcher active="ios" />
       <div className="ios-header">
         <span>{command.privacyHint}</span>
         <h1>今天先看这几件事</h1>
@@ -224,6 +241,7 @@ function IosConcept({view, moments, loading}: {view: ReturnType<typeof buildToda
         <div className="section-title"><h2>今天留下的记录</h2><button className="ghost" onClick={() => navigateClient("/timeline")}>查看时间线</button></div>
         {moments.slice(0, 5).map((moment) => <ConceptEventRow key={moment.id} moment={moment} compact />)}
       </section>
+      <DesignVariantFooter active="ios" />
       {loading && <p className="concept-loading">正在整理...</p>}
     </section>
   );
@@ -233,7 +251,6 @@ function DeckConcept({view, moments, loading}: {view: ReturnType<typeof buildTod
   const command = view.commandCenter;
   return (
     <section className="concept-page concept-deck">
-      <DesignSwitcher active="deck" />
       <div className="deck-hero">
         <div>
           <p>OPENBUTLER / 概念汇报</p>
@@ -258,6 +275,7 @@ function DeckConcept({view, moments, loading}: {view: ReturnType<typeof buildTod
           {moments.slice(0, 4).map((moment) => <ConceptEventRow key={moment.id} moment={moment} />)}
         </div>
       </div>
+      <DesignVariantFooter active="deck" />
       {loading && <p className="concept-loading">正在载入样例内容...</p>}
     </section>
   );
