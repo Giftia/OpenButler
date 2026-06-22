@@ -17,6 +17,7 @@ let backendState = {
 };
 let selectedMineContextHome = "";
 let selectedMineContextInstaller = "";
+let staleBackendCleanupDone = false;
 
 const mineContextBaseUrl = "http://127.0.0.1:1733";
 const mineContextReleasesUrl = "https://github.com/volcengine/MineContext/releases";
@@ -303,6 +304,7 @@ async function probeMineContext() {
 
 async function startBackend() {
   if (backendProcess && backendState.running) return backendState;
+  cleanupStaleBackendProcessesOnce();
 
   const port = await findFreePort();
   const dataDir = userDataDir();
@@ -366,10 +368,24 @@ function killProcessTree(pid) {
   }
 }
 
+function killProcessByImageName(imageName) {
+  if (!imageName || process.platform !== "win32") return;
+  spawnSync("taskkill", ["/IM", imageName, "/T", "/F"], {stdio: "ignore", windowsHide: true});
+}
+
+function cleanupStaleBackendProcessesOnce() {
+  if (staleBackendCleanupDone) return;
+  staleBackendCleanupDone = true;
+  // Clear backend processes left behind by a previous crash, installer run, or older app version.
+  killProcessByImageName("openbutler-backend.exe");
+}
+
 function stopBackend() {
   const pid = backendProcess?.pid ?? backendState.pid;
-  if (!pid) return;
-  killProcessTree(pid);
+  if (pid) {
+    killProcessTree(pid);
+  }
+  killProcessByImageName("openbutler-backend.exe");
   backendProcess = null;
   backendState = {...backendState, running: false, pid: null};
 }
@@ -521,7 +537,7 @@ function createTray() {
     {label: "重启本机服务", click: async () => { await restartBackend(); showMainWindow(); }},
     {label: "打开本地数据文件夹", click: async () => { await shell.openPath(userDataDir()); }},
     {type: "separator"},
-    {label: "退出", click: () => { isQuitting = true; stopBackend(); app.quit(); }},
+    {label: "退出", click: () => { isQuitting = true; stopBackend(); app.exit(0); }},
   ]));
   tray.on("click", showMainWindow);
   return tray;
@@ -781,7 +797,7 @@ ipcMain.handle("openbutler:show-main-window", async () => {
 ipcMain.handle("openbutler:quit-app", async () => {
   isQuitting = true;
   stopBackend();
-  app.quit();
+  app.exit(0);
   return {ok: true};
 });
 
@@ -817,5 +833,14 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   isQuitting = true;
+  stopBackend();
+});
+
+app.on("will-quit", () => {
+  isQuitting = true;
+  stopBackend();
+});
+
+process.on("exit", () => {
   stopBackend();
 });

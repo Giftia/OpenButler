@@ -45,6 +45,8 @@ const expectations = [
   ["main has desktop load error page", main.includes("loadDesktopErrorPage") && main.includes("did-fail-load")],
   ["main writes packaged smoke state", main.includes("OPENBUTLER_DESKTOP_SMOKE_FILE") && main.includes("bodyTextLength")],
   ["main stops backend process tree on quit", main.includes("function killProcessTree") && main.includes('taskkill", ["/PID", String(pid), "/T", "/F"') && main.includes("OPENBUTLER_DESKTOP_SMOKE_QUIT_AFTER_MS")],
+  ["main kills stale backend by image name", main.includes("function killProcessByImageName") && main.includes('killProcessByImageName("openbutler-backend.exe")')],
+  ["main cleans backend on will-quit and process exit", main.includes('app.on("will-quit"') && main.includes('process.on("exit"')],
   ["backend entry guards missing standard streams", backendEntry.includes("_ensure_standard_streams") && backendEntry.includes("sys.stderr is None")],
   ["backend entry disables uvicorn default log config", backendEntry.includes("log_config=None") && backendEntry.includes("access_log=False")],
   ["windows prototype build skips signing/editing", packageJson.includes('"signAndEditExecutable": false')],
@@ -62,7 +64,8 @@ const expectations = [
   ["electron builder packages desktop assets", packageJson.includes('"from": "assets"') && packageJson.includes('"to": "assets"')],
   ["nsis installer includes lifecycle cleanup", packageJson.includes('"include": "installer/installer.nsh"')],
   ["nsis installer kills app and backend", installerNsh.includes('taskkill /IM "${PROCESS_NAME}" /T /F') && installerNsh.includes('"OpenButler.exe"') && installerNsh.includes('"openbutler-backend.exe"')],
-  ["nsis installer cleanup runs on install and uninstall", installerNsh.includes("customInit") && installerNsh.includes("customUnInit") && installerNsh.includes("customUnInstall")],
+  ["nsis installer cleanup runs on install and uninstall", installerNsh.includes("preInit") && installerNsh.includes("customInit") && installerNsh.includes("customInstall") && installerNsh.includes("customRemoveFiles") && installerNsh.includes("customUnInit") && installerNsh.includes("customUnInstall")],
+  ["nsis installer repeats backend cleanup", (installerNsh.match(/openbutler-backend\.exe/g) || []).length >= 2 && installerNsh.includes("customRemoveFiles")],
 ];
 
 const failed = expectations.filter(([, ok]) => !ok);

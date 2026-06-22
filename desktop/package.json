@@ -1,6 +1,6 @@
 {
   "name": "openbutler-desktop",
-  "version": "0.1.7",
+  "version": "0.1.9",
   "private": true,
   "description": "OpenButler Windows desktop shell",
   "main": "src/main.cjs",
@@ -12,7 +12,8 @@
     "dist": "node scripts/build-installer.mjs",
     "check": "node scripts/check-desktop-contract.mjs",
     "smoke:packaged": "node scripts/smoke-packaged-app.mjs",
-    "check:frontend-assets": "node scripts/check-desktop-frontend-assets.mjs"
+    "check:frontend-assets": "node scripts/check-desktop-frontend-assets.mjs",
+    "smoke:installer-lifecycle": "node scripts/smoke-installer-lifecycle.mjs"
   },
   "build": {
     "appId": "moe.giftia.openbutler",
