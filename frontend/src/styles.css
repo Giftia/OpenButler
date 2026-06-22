@@ -5100,7 +5100,8 @@ h2 {
   margin-top: 4px;
 }
 
-.setup-path-actions button {
+.setup-path-actions button,
+.setup-path-actions a {
   min-height: 44px;
 }
 
@@ -5153,11 +5154,56 @@ h2 {
 }
 
 @media (max-width: 640px) {
-  .setup-path-actions button {
+  .setup-path-actions button,
+.setup-path-actions a {
     width: 100%;
   }
 
   .concept-evidence {
     grid-column: 1 / -1;
+  }
+}
+
+.setup-download-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  padding: 0 16px;
+  text-decoration: none;
+}
+
+.setup-preview-mini {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgb(37 99 235 / 13%);
+  border-radius: 18px;
+  background: rgb(239 246 255 / 72%);
+}
+
+.setup-preview-mini strong {
+  grid-column: 1 / -1;
+  font-size: 14px;
+}
+
+.setup-preview-mini span {
+  display: grid;
+  place-items: center;
+  min-height: 38px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  color: #1e3a8a;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+}
+
+@media (max-width: 980px) {
+  .setup-preview-mini {
+    grid-template-columns: 1fr;
   }
 }

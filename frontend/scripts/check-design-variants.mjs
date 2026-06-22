@@ -38,8 +38,10 @@ const requiredDesignSnippets = [
   'iOS Home 式私人管家',
   '大屏 PPT 式汇报版',
   '先看样例，再用桌面版整理你的本机记录',
-  '本机记录和 API Key 是什么',
-  '获取桌面版并开始配置',
+  '本机记录和智能整理钥匙是什么',
+  '获取桌面版',
+  '创建智能整理钥匙',
+  '桌面版里会继续带你完成',
   '查看依据',
 ];
 
@@ -56,6 +58,7 @@ const requiredCssSnippets = [
   '.mijia-action-strip',
   '.design-variant-footer',
   '.setup-path-panel',
+  '.setup-preview-mini',
   '.concept-evidence',
   '.ios-card-stack',
   '.deck-hero',

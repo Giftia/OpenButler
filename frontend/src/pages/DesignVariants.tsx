@@ -68,6 +68,10 @@ function navigateClient(path: string) {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
+function scrollToDesignSection(selector: string) {
+  document.querySelector(selector)?.scrollIntoView({behavior: "smooth", block: "start"});
+}
+
 function activationModeForDesign(status: ActivationStatus): ActivationMode {
   if (status === "demo_selected") return "demo";
   if (status === "real_setup_started" || status === "completed") return "real_local";
@@ -101,7 +105,7 @@ function useDesignConceptView(activationStatus: ActivationStatus) {
   }, []);
 
   const view = buildTodayHomeViewModel(home, timelineItems, activationModeForDesign(activationStatus));
-  const moments = (timelineItems.length ? timelineItems : designSampleEvents).slice(0, 6).map(toTimelineMoment);
+  const moments = designSampleEvents.slice(0, 6).map(toTimelineMoment);
   return {view, moments, loading};
 }
 
@@ -136,26 +140,32 @@ function SetupPathPanel({compact = false}: {compact?: boolean}) {
       <div>
         <span>怎么开始真实使用</span>
         <strong>先看样例，再用桌面版整理你的本机记录。</strong>
-        <p>网页只展示样例。真实使用需要打开桌面版、填写模型服务的 API Key，再选择你愿意授权的本机记录。</p>
+        <p>网页只展示样例。真实使用需要打开桌面版、创建智能整理钥匙，再选择你愿意授权的本机记录。</p>
         <div className="setup-path-actions">
-          <button className="primary" onClick={() => navigateClient("/me")}>获取桌面版并开始配置</button>
-          <button className="secondary" onClick={() => navigateClient("/butler")}>先看样例</button>
+          <a className="primary setup-download-link" href="https://github.com/Giftia/OpenButler/releases" target="_blank" rel="noreferrer">获取桌面版</a>
+          <button className="secondary" onClick={() => scrollToDesignSection("[data-design-sample-records]")}>先看本页样例</button>
         </div>
       </div>
       <ol>
         <li><b>1</b><span>先看样例</span></li>
         <li><b>2</b><span>打开桌面版</span></li>
-        <li><b>3</b><span>粘贴 API Key</span></li>
+        <li><b>3</b><span>创建智能整理钥匙</span></li>
         <li><b>4</b><span>授权本机记录</span></li>
       </ol>
+      <div className="setup-preview-mini" aria-label="桌面版配置预览">
+        <strong>桌面版里会继续带你完成</strong>
+        <span>填写智能整理钥匙</span>
+        <span>扫描本机记录组件</span>
+        <span>预览会读取什么</span>
+        <span>确认后开始整理今天</span>
+      </div>
       <details>
-        <summary>本机记录和 API Key 是什么？</summary>
-        <p>本机记录包括你主动授权的电脑活动、时间线片段，以及以后单独开启的相册或工位线索；不会默认读取聊天、密码、文件内容或截图原图。API Key 从你选择的模型服务商控制台创建，例如火山引擎 Ark。它用来让桌面版把授权记录整理成摘要和提醒；是否产生费用取决于服务商账户。真实模式会先预览会读取什么，确认前不会开始整理。</p>
+        <summary>本机记录和智能整理钥匙是什么？</summary>
+        <p>本机记录包括你主动授权的电脑活动、时间线片段，以及以后单独开启的相册或工位线索；不会默认读取聊天、密码、文件内容或截图原图。智能整理钥匙也叫 API Key，通常在你选择的模型服务商控制台创建。它让桌面版能把授权记录整理成摘要和提醒；是否产生费用取决于服务商账户。真实模式会先预览会读取什么，确认前不会开始整理。</p>
       </details>
     </section>
   );
 }
-
 export function DesignLabPage() {
   return (
     <section className="design-lab-page">
@@ -230,7 +240,7 @@ function MijiaConcept({view, moments, loading}: {view: ReturnType<typeof buildTo
       <div className="mijia-tile-grid">
         {view.sceneCards.map((card) => <article key={card.title} className={`mijia-tile tone-${card.tone}`}><span>{card.title}</span><strong>{card.value}</strong><small>{card.description}</small></article>)}
       </div>
-      <div className="mijia-list-panel">
+      <div className="mijia-list-panel" data-design-sample-records>
         <div className="section-title"><h2>最近记录</h2><button className="ghost" onClick={() => navigateClient("/timeline")}>全部</button></div>
         {moments.slice(0, 4).map((moment) => <ConceptEventRow key={moment.id} moment={moment} />)}
       </div>
@@ -265,7 +275,7 @@ function IosConcept({view, moments, loading}: {view: ReturnType<typeof buildToda
       <div className="ios-number-row">
         {command.keyNumbers.map((item) => <article key={item.label}><strong>{item.value}</strong><span>{item.label}</span><small>{item.description}</small></article>)}
       </div>
-      <section className="ios-event-sheet">
+      <section className="ios-event-sheet" data-design-sample-records>
         <div className="section-title"><h2>今天留下的记录</h2><button className="ghost" onClick={() => navigateClient("/timeline")}>查看时间线</button></div>
         {moments.slice(0, 5).map((moment) => <ConceptEventRow key={moment.id} moment={moment} compact />)}
       </section>
@@ -295,7 +305,7 @@ function DeckConcept({view, moments, loading}: {view: ReturnType<typeof buildTod
         </article>
         {command.keyNumbers.map((item) => <article className="deck-metric" key={item.label}><span>{item.label}</span><strong>{item.value}</strong><small>{item.description}</small></article>)}
       </div>
-      <div className="deck-evidence-wall">
+      <div className="deck-evidence-wall" data-design-sample-records>
         <div>
           <span>事件流</span>
           <h2>这些片段构成今天的依据</h2>

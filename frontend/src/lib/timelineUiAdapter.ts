@@ -1,4 +1,4 @@
-import {eventTypeLabel, isDemoLike, sourceLabel, userFacingDemoText} from "./userFacingLabels";
+import {eventTypeLabel, isDemoLike, userFacingDemoText} from "./userFacingLabels";
 
 export type TimelineThumbnail = {
   kind: "image" | "placeholder" | "source-icon";
@@ -296,7 +296,7 @@ export function toTimelineMoment(event: Record<string, any>): TimelineMoment {
       ? userFacingDemoText(event.title ?? event.summary)
       : userFacingDemoText(event.summary ?? "这条记录来自 OpenButler 已授权的本地时间线。"),
     valueTag,
-    sourceLabel: sourceLabel(event.source),
+    sourceLabel: timelineSourceLabel(sourceKey),
     sourceKey,
     categoryKey,
     importanceKey,
