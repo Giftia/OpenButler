@@ -22,7 +22,7 @@ const checks = [
   ["first run uses local-mode language", app.includes("让 OpenButler 整理我的本机记录")],
   ["ordinary copy states no import before confirmation", app.includes("授权前只会检测和预览，不会导入真实活动")],
   ["first run exposes model provider setup", app.includes("模型供应商") && app.includes("Embedding API Key")],
-  ["first run exposes minecontext scan/install path", app.includes("扫描本机 MineContext") && app.includes("自动安装") && app.includes("手动安装")],
+  ["first run exposes minecontext scan/install path", app.includes("扫描本机记录组件") && app.includes("自动安装") && app.includes("手动安装")],
 ];
 
 const failed = checks.filter(([, ok]) => !ok);

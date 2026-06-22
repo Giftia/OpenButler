@@ -3421,3 +3421,155 @@ h2 {
     padding-bottom: calc(98px + env(safe-area-inset-bottom));
   }
 }
+
+
+/* Product shell V2: Mi Home-inspired ordinary-user surfaces */
+.sidebar-secondary-entry {
+  margin-top: 8px;
+  color: #b7c8d6;
+  background: rgb(255 255 255 / 5%);
+  border: 1px solid rgb(255 255 255 / 8%);
+}
+
+.sidebar-secondary-entry:hover {
+  color: #ffffff;
+  background: rgb(255 255 255 / 10%);
+}
+
+.scene-card-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.scene-card {
+  position: relative;
+  grid-template-columns: minmax(0, 1fr) minmax(72px, auto);
+  min-height: 76px;
+  border-radius: 20px;
+  background:
+    linear-gradient(135deg, rgb(255 255 255 / 96%), rgb(248 250 252 / 90%)),
+    radial-gradient(circle at 94% 18%, rgb(20 184 166 / 14%), transparent 34%);
+}
+
+.scene-card::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #10b981;
+  box-shadow: 0 0 0 5px rgb(16 185 129 / 12%);
+}
+
+.scene-card-copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.scene-card-copy span {
+  color: #475569;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.scene-card-copy small {
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.scene-card strong {
+  grid-row: auto;
+  grid-column: auto;
+  align-self: center;
+  justify-self: end;
+  max-width: 7em;
+  color: #0f172a;
+  font-size: clamp(22px, 2.2vw, 30px);
+  line-height: 1.05;
+}
+
+.api-key-help-card {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgb(37 99 235 / 16%);
+  border-radius: 18px;
+  color: #1e3a8a;
+  background:
+    linear-gradient(135deg, rgb(239 246 255 / 96%), rgb(240 253 250 / 84%));
+}
+
+.api-key-help-card svg {
+  margin-top: 2px;
+  color: #2563eb;
+}
+
+.api-key-help-card strong,
+.api-key-help-card p,
+.api-key-help-card small {
+  margin: 0;
+}
+
+.api-key-help-card p {
+  margin-top: 5px;
+  color: #334155;
+  line-height: 1.58;
+}
+
+.api-key-help-card small {
+  display: block;
+  margin-top: 7px;
+  color: #0f766e;
+  font-weight: 700;
+}
+
+.technical-note {
+  padding: 10px 12px;
+  border: 1px dashed rgb(15 23 42 / 14%);
+  border-radius: 14px;
+  background: rgb(255 255 255 / 66%);
+}
+
+.technical-note summary {
+  cursor: pointer;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.technical-note small {
+  display: block;
+  margin-top: 7px;
+  color: #64748b;
+}
+
+.advanced-lab-panel .advanced-lab-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.advanced-lab-panel .advanced-lab-grid button {
+  justify-content: flex-start;
+}
+
+@media (max-width: 760px) {
+  .scene-card {
+    min-height: 72px;
+    padding: 13px 14px;
+  }
+
+  .scene-card strong {
+    font-size: 22px;
+  }
+
+  .api-key-help-card {
+    grid-template-columns: 1fr;
+  }
+
+  .advanced-lab-panel .advanced-lab-grid {
+    grid-template-columns: 1fr;
+  }
+}

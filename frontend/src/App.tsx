@@ -429,7 +429,7 @@ function App() {
               <span>你的私人管家</span>
             </div>
           </div>
-          <nav>
+          <nav aria-label="OpenButler 主导航">
             {primaryNavItems.map((item) => {
               const Icon = item.icon;
               return (
@@ -448,29 +448,6 @@ function App() {
                 </button>
               );
             })}
-            <details className="advanced-nav">
-              <summary>高级与实验室</summary>
-              <div>
-                {advancedNavItems.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <button
-                      key={item.key}
-                      data-nav-key={item.key}
-                      className={page === item.key ? "active" : ""}
-                      onClick={() => {
-                        setPage(item.key);
-                        window.history.replaceState(null, "", routeForPage(item.key));
-                      }}
-                      title={item.label}
-                    >
-                      <Icon size={18} />
-                      <span>{item.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </details>
           </nav>
           <div className="mode-chip">
             {privacyMode === "strict" ? <CloudOff size={16} /> : <ShieldCheck size={16} />}
@@ -1165,7 +1142,7 @@ function ButlerHome({
                 <p>这些只是入口，点开依据前不会展示复杂细节。</p>
               </div>
             </div>
-            <div className="scene-card-grid">
+            <div className="scene-card-grid scene-card-list">
               {view.sceneCards.map((card) => <SceneSignalCard card={card} key={card.title} />)}
             </div>
           </section>
@@ -1192,44 +1169,7 @@ function ButlerHome({
         </aside>
       </section>
 
-      <details className="advanced-lab-panel developer-only-panel">
-        <summary>高级与实验室</summary>
-        <div className="advanced-lab-grid">
-          <button className="secondary" onClick={runDemoPath} disabled={demoBusy}>
-            {demoBusy ? <Loader2 className="spin" size={17} /> : <CheckCircle2 size={17} />}
-            <span>运行演示闭环</span>
-          </button>
-          <button className="secondary" onClick={resetDemoPath} disabled={resetBusy}>
-            {resetBusy ? <Loader2 className="spin" size={17} /> : <RefreshCw size={17} />}
-            <span>重置演示数据</span>
-          </button>
-          <button className="secondary" onClick={runDataInsufficientDrill} disabled={drillBusy}>
-            {drillBusy ? <Loader2 className="spin" size={17} /> : <CloudOff size={17} />}
-            <span>演练空数据路径</span>
-          </button>
-          <button className="secondary" onClick={() => navigateTo("/metrics")}>查看今日量化</button>
-          <button className="secondary" onClick={() => navigateTo("/goals")}>目标设置</button>
-          <button className="secondary" onClick={() => navigateTo("/plugins")}>技能插件</button>
-        </div>
-        {(demoMessage || drillMessage || mvpActionMessage) && (
-          <div className="suggestion-box">
-            <strong>实验室运行结果</strong>
-            {demoMessage && <span>{demoMessage}</span>}
-            {drillMessage && <span>{drillMessage}</span>}
-            {mvpActionMessage && <span>{mvpActionMessage}</span>}
-          </div>
-        )}
-        <div className="evidence">
-          <small>readiness {String(readiness?.status ?? "not_loaded")}</small>
-          <small>mvp {String(mvpReport?.status ?? "not_loaded")}</small>
-          <small>briefings {String(briefings.length)}</small>
-          <small>harness_runs {String(latestHarnessRuns.length)}</small>
-          <small>objectives {String((objectiveStatus?.objectives ?? []).length)}</small>
-          <small>demo_pack {String(demoPack?.status ?? "not_loaded")}</small>
-        </div>
-        <p className="policy-note">{home?.overview?.evidence_boundary ?? "今日概览只基于你授权的本地线索，远程系统状态需要回源确认。"}</p>
-      </details>
-    </div>
+   </div>
   );
   /*
   return (
@@ -1566,9 +1506,11 @@ function TodayStatusTile({card}: {card: {title: string; value: string; descripti
 function SceneSignalCard({card}: {card: {title: string; value: string; description: string; tone: string}}) {
   return (
     <article className={`scene-card tone-${card.tone}`}>
-      <span>{card.title}</span>
+      <div className="scene-card-copy">
+        <span>{card.title}</span>
+        <small>{card.description}</small>
+      </div>
       <strong>{card.value}</strong>
-      <small>{card.description}</small>
     </article>
   );
 }
@@ -2907,6 +2849,17 @@ function Chat({activationStatus}: {activationStatus: ActivationStatus}) {
       .replace(/fixture/g, "演示");
   }
 
+  function fallbackAnswer(message: string) {
+    const sampleLine = activationModeFor(activationStatus) === "demo" || activationStatus === "demo_selected"
+      ? "关键数字：当前可以先查看 4 条样例信号、3 条样例提醒和 42 分钟样例专注片段。"
+      : "关键数字：本机服务这次没有返回最新结果，暂时不能给出真实统计。";
+    return `结论：我现在没有拿到本机服务的回答，但不会编造结果。
+${sampleLine}
+依据：页面里已有的样例内容和你当前选择的问题“${message}”。
+边界说明：这不是实时整理结果；如果要使用真实记录，需要先完成本地设置并确认授权。
+下一步：你可以先点“今日”看样例，或到“我的”重新打开产品引导。`;
+  }
+
   async function send(message = text) {
     if (!message.trim()) return;
     setPending(true);
@@ -2915,6 +2868,8 @@ function Chat({activationStatus}: {activationStatus: ActivationStatus}) {
     try {
       const result = await askButler(message);
       setMessages((items) => [...items, {role: "butler", text: sanitizeAnswer(result.answer)}]);
+    } catch {
+      setMessages((items) => [...items, {role: "butler", text: fallbackAnswer(message)}]);
     } finally {
       setPending(false);
     }
@@ -2997,7 +2952,7 @@ function FirstRunGuide({
     {step: "2", title: "选择样例或本地完全体", text: "样例只展示效果；本地完全体会在你的电脑上整理授权线索。"},
     {step: "3", title: "确认隐私承诺", text: "默认完全本地、只读、不开外部模型、不复制截图。"},
     {step: "4", title: "配置模型供应商", text: "先补齐模型配置，Key 只在本机写入。"},
-    {step: "5", title: "扫描本机 MineContext", text: "找到后启动并连接；找不到再由你确认安装。"},
+    {step: "5", title: "扫描本机记录组件", text: "找到后启动并连接；找不到再由你确认安装。"},
     {step: "6", title: "预览后再开始", text: "真实整理前先看会读取什么，确认后才继续。"},
   ];
   const resultCards = [
@@ -3033,7 +2988,7 @@ function FirstRunGuide({
     try {
       const payload = await window.openbutlerDesktop.getMineContextStatus();
       setMineContextStatus(payload);
-      setSetupMessage(payload.reachable ? "已检测到本机记录工具正在运行。" : "还没有检测到本机记录工具。你可以先启动或选择安装程序。");
+      setSetupMessage(payload.reachable ? "已检测到本机记录组件正在运行。" : "还没有检测到本机记录组件。你可以先启动或选择安装程序。");
     } catch {
       setSetupMessage("检测失败。请确认 OpenButler 本机服务仍在运行。");
     } finally {
@@ -3084,14 +3039,14 @@ function FirstRunGuide({
       return false;
     }
     setModelReady(true);
-    setSetupMessage("模型配置已补齐。下一步可以扫描本机 MineContext；这一步不会读取活动明细。");
+    setSetupMessage("模型配置已补齐。下一步可以扫描本机记录组件；这一步不会读取活动明细。");
     return true;
   }
 
   async function scanMineContext() {
     if (!modelReady && !saveModelConfigForScan()) return;
     if (!window.openbutlerDesktop) {
-      setSetupMessage("当前是网页样例。请在 OpenButler 桌面版中扫描本机 MineContext。");
+      setSetupMessage("当前是网页样例。请在 OpenButler 桌面版中扫描本机记录组件。");
       return;
     }
     setCheckingMineContext(true);
@@ -3100,8 +3055,8 @@ function FirstRunGuide({
       setMineContextScan(scan);
       await refreshMineContextStatus();
       setSetupMessage(scan?.found
-        ? `已找到 ${scan.candidates?.length ?? 0} 个 MineContext 线索。可以启动并连接。`
-        : "没有找到 MineContext。你可以选择自动安装，或打开下载页手动安装。");
+        ? `已找到 ${scan.candidates?.length ?? 0} 个本机记录组件线索。可以启动并连接。`
+        : "没有找到本机记录组件。你可以选择自动安装，或打开下载页手动安装。");
     } catch {
       setSetupMessage("扫描失败。请确认桌面应用仍在运行，或稍后重试。");
     } finally {
@@ -3144,7 +3099,7 @@ function FirstRunGuide({
 
   async function openMineContextDownloadPage() {
     await window.openbutlerDesktop?.openMineContextDownloadPage();
-    setSetupMessage("已打开 MineContext 下载页面。安装完成后，请回到这里重新扫描。");
+    setSetupMessage("已打开本机记录组件下载页面。安装完成后，请回到这里重新扫描。");
   }
 
   async function testModelConfig() {
@@ -3243,19 +3198,27 @@ function FirstRunGuide({
             <div className="local-setup-head">
               <span className="privacy-chip">{isDesktopRuntime ? "本地完全体" : "网页样例"}</span>
               <strong>启用完整功能前，需要完成这些设置</strong>
-              <p>先补齐模型供应商配置，再扫描本机 MineContext。找到或安装后，OpenButler 才会把配置写入它的本机后台。</p>
+              <p>先补齐模型供应商配置，再扫描本机记录组件。找到或安装后，OpenButler 才会把配置写入它的本机后台。</p>
             </div>
             <div className="local-setup-status">
               <StatusItem label="桌面环境" value={isDesktopRuntime ? "已连接" : "仅样例"} />
               <StatusItem label="模型配置" value={modelReady ? "已补齐" : "待补齐"} />
-              <StatusItem label="MineContext 后台" value={mineContextStatus?.reachable ? "运行中" : checkingMineContext ? "检测中" : "未检测到"} />
+              <StatusItem label="记录组件后台" value={mineContextStatus?.reachable ? "运行中" : checkingMineContext ? "检测中" : "未检测到"} />
             </div>
 
             <div className="model-config-panel">
               <div className="section-title compact-title">
                 <div>
                   <p className="eyebrow">模型供应商</p>
-                  <h3>配置模型后，MineContext 才能整理本机线索</h3>
+                  <h3>配置模型后，OpenButler 才能整理本机线索</h3>
+                </div>
+              </div>
+              <div className="api-key-help-card">
+                <KeyRound size={19} />
+                <div>
+                  <strong>我该从哪里获得 API Key？</strong>
+                  <p>API Key 通常在模型服务商控制台生成。你可以先保留默认模型 ID，只填服务商提供的 Key 和 Base URL；不确定时，先查看服务商的“API 密钥 / 访问令牌 / Ark 控制台”。</p>
+                  <small>Key 只用于写入你的本机记录组件，不会显示在状态页、日志或摘要里。</small>
                 </div>
               </div>
               <label>
@@ -3272,7 +3235,7 @@ function FirstRunGuide({
               </label>
               <label>
                 <span>API Key</span>
-                <input type="password" value={modelConfig.apiKey} onChange={(event) => updateModelConfig("apiKey", event.target.value)} placeholder="只在本机写入 MineContext" />
+                <input type="password" value={modelConfig.apiKey} onChange={(event) => updateModelConfig("apiKey", event.target.value)} placeholder="只在本机写入记录组件" />
               </label>
               <label className="checkbox-line">
                 <input type="checkbox" checked={modelConfig.useSeparateEmbedding} onChange={(event) => updateModelConfig("useSeparateEmbedding", event.target.checked)} />
@@ -3294,7 +3257,7 @@ function FirstRunGuide({
                   </label>
                   <label>
                     <span>Embedding API Key</span>
-                    <input type="password" value={modelConfig.embeddingApiKey} onChange={(event) => updateModelConfig("embeddingApiKey", event.target.value)} placeholder="只在本机写入 MineContext" />
+                    <input type="password" value={modelConfig.embeddingApiKey} onChange={(event) => updateModelConfig("embeddingApiKey", event.target.value)} placeholder="只在本机写入记录组件" />
                   </label>
                 </div>
               )}
@@ -3306,14 +3269,18 @@ function FirstRunGuide({
                   保存配置，继续扫描
                 </button>
               </div>
-              <small>Key 不会显示在状态接口、日志或页面摘要中。这里不调用外部模型，只准备写入本机 MineContext。</small>
+              <small>这里不调用外部模型，只准备把配置写入本机记录组件。</small>
+              <details className="technical-note">
+                <summary>高级说明</summary>
+                <small>本机记录组件的底层项目名是 MineContext。普通使用时不需要理解这个名字。</small>
+              </details>
             </div>
 
             <div className="model-config-panel">
               <div className="section-title compact-title">
                 <div>
                   <p className="eyebrow">本机记录工具</p>
-                  <h3>扫描本机 MineContext</h3>
+                  <h3>扫描本机记录组件</h3>
                 </div>
               </div>
               <p className="policy-note">扫描只查找安装位置和后台状态，不读取活动标题、URL、截图或原始记录。</p>
@@ -3324,7 +3291,7 @@ function FirstRunGuide({
               </div>
               <div className="desktop-action-row">
                 <button className="secondary" onClick={scanMineContext} disabled={!isDesktopRuntime || checkingMineContext || !modelReady}>
-                  {checkingMineContext ? "扫描中" : "扫描本机 MineContext"}
+                  {checkingMineContext ? "扫描中" : "扫描本机记录组件"}
                 </button>
                 <button className="secondary" onClick={startMineContext} disabled={!isDesktopRuntime || checkingMineContext || !modelReady}>
                   启动并连接
@@ -3339,10 +3306,10 @@ function FirstRunGuide({
                   选择安装包
                 </button>
                 <button className="primary" onClick={applyModelConfig} disabled={!isDesktopRuntime || savingModel || !modelReady || !mineContextStatus?.reachable}>
-                  {savingModel ? "写入中" : "写入 MineContext 配置并完成"}
+                  {savingModel ? "写入中" : "写入记录组件配置并完成"}
                 </button>
               </div>
-              <small>如果没有找到 MineContext，自动安装会先请求确认，再从官方 Releases 下载最新安装包。无法识别安装包时会转为手动安装。</small>
+              <small>如果没有找到本机记录组件，自动安装会先请求确认，再从官方 Releases 下载最新安装包。无法识别安装包时会转为手动安装。</small>
             </div>
             {setupMessage && <p className="policy-note">{setupMessage}</p>}
           </div>
@@ -3436,6 +3403,12 @@ function Privacy({
     await window.openbutlerDesktop?.openDataFolder();
   }
 
+
+  function openPageFromSettings(key: PageKey) {
+    window.history.replaceState(null, "", routeForPage(key));
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }
+
   const localModeChecks = [
     {
       label: "本机服务",
@@ -3462,7 +3435,7 @@ function Privacy({
       value: desktopStatus?.data_sources?.minecontext?.configured ? "已选择" : "未选择",
     },
     {
-      label: "MineContext 后台",
+      label: "记录组件后台",
       value: mineContextStatus?.reachable ? "运行中" : isDesktopRuntime ? "未检测到" : "网页样例",
     },
     {
@@ -3577,8 +3550,23 @@ function Privacy({
         </div>
       </section>
 
-      <details className="advanced-lab-panel">
+      <details className="advanced-lab-panel" id="advanced-lab-entry">
         <summary>高级与实验室</summary>
+        <div className="advanced-lab-grid">
+          {advancedNavItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                className="secondary"
+                key={item.key}
+                onClick={() => openPageFromSettings(item.key)}
+              >
+                <Icon size={17} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
         <div className="topology">
           <div className="topology-row"><ShieldCheck size={18} /><span>隐私策略详情：完全本地模式会拦截 Provider、Webhook 和外部模型。</span></div>
           <div className="topology-row"><Camera size={18} /><span>Capture Gateway（高级采集入口）</span></div>
