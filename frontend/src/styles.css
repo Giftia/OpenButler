@@ -269,6 +269,57 @@
   gap: 10px;
   justify-content: end;
 }
+.action-feedback {
+  display: inline-flex;
+  align-items: center;
+  max-width: 620px;
+  margin: 10px 0 0;
+  padding: 10px 13px;
+  border: 1px solid rgb(37 99 235 / 22%);
+  border-radius: 14px;
+  background: rgb(239 246 255 / 92%);
+  color: #1e3a8a;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.inline-action-feedback {
+  margin: 0 0 8px;
+  padding: 9px 11px;
+  border: 1px solid rgb(37 99 235 / 22%);
+  border-radius: 12px;
+  background: rgb(239 246 255 / 95%);
+  color: #1e3a8a;
+  font-size: 13px;
+  font-weight: 700;
+}
+.setup-resume-checklist {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.setup-resume-checklist article {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgb(15 118 110 / 14%);
+  border-radius: 14px;
+  background: rgb(255 255 255 / 72%);
+}
+
+.setup-resume-checklist strong {
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.setup-resume-checklist span {
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.45;
+}
 
 .today-status-card small,
 .scene-card small,
@@ -1400,6 +1451,11 @@
     width: 100%;
   }
 
+  .setup-resume-checklist,
+  .setup-link-grid {
+    grid-template-columns: 1fr;
+  }
+
   .decision-inbox-head {
     align-items: flex-start;
   }
@@ -1487,7 +1543,6 @@
     border-radius: 14px;
   }
 }
-
 * {
   box-sizing: border-box;
 }
@@ -3419,7 +3474,7 @@ h2 {
   }
 
   main {
-    padding-bottom: calc(98px + env(safe-area-inset-bottom));
+    padding-bottom: calc(138px + env(safe-area-inset-bottom));
   }
 }
 
@@ -3529,6 +3584,31 @@ h2 {
   font-weight: 700;
 }
 
+.setup-link-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.setup-link-grid article {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgb(15 23 42 / 8%);
+  border-radius: 18px;
+  background: rgb(255 255 255 / 80%);
+}
+
+.setup-link-grid strong,
+.setup-link-grid span {
+  margin: 0;
+}
+
+.setup-link-grid span {
+  color: #475569;
+  line-height: 1.55;
+}
 .web-only-setup-note {
   display: grid;
   gap: 10px;
@@ -4058,4 +4138,58 @@ h2 {
   background: linear-gradient(135deg, rgb(240 249 255 / 92%), rgb(240 253 250 / 82%));
   font-size: 13px;
   font-weight: 800;
+}
+
+/* Product shell ordinary UX recovery: keep the signal panel readable in narrow desktop columns. */
+.scene-dashboard-panel .scene-card {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  min-height: auto;
+  padding: 14px 16px 14px 18px;
+}
+
+.scene-dashboard-panel .scene-card::before {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+}
+
+.scene-dashboard-panel .scene-card strong {
+  justify-self: start;
+  min-width: 0;
+  max-width: 100%;
+  font-size: clamp(18px, 1.35vw, 22px);
+  line-height: 1.1;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.scene-dashboard-panel .scene-card-copy {
+  padding-right: 22px;
+}
+
+.scene-dashboard-panel .scene-card-copy small {
+  max-width: 28ch;
+}
+
+.friendly-insight-card.attention {
+  border-color: rgb(37 99 235 / 36%);
+  box-shadow: 0 0 0 4px rgb(37 99 235 / 12%), 0 18px 42px rgb(37 99 235 / 12%);
+  animation: suggestion-attention-pulse 1.2s ease-out 1;
+}
+
+@keyframes suggestion-attention-pulse {
+  0% {
+    transform: translateY(0);
+    box-shadow: 0 0 0 0 rgb(37 99 235 / 22%), 0 12px 28px rgb(15 23 42 / 8%);
+  }
+  45% {
+    transform: translateY(-2px);
+    box-shadow: 0 0 0 7px rgb(37 99 235 / 13%), 0 20px 46px rgb(37 99 235 / 16%);
+  }
+  100% {
+    transform: translateY(0);
+    box-shadow: 0 0 0 4px rgb(37 99 235 / 12%), 0 18px 42px rgb(37 99 235 / 12%);
+  }
 }

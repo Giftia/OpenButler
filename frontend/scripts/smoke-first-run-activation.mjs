@@ -276,8 +276,8 @@ try {
     hasDialog: !!document.querySelector('.first-run-guide'),
     hasPrimaryNav: !!document.querySelector('[data-nav-key="butler"]'),
     hasSample: document.body.innerText.includes('钥匙可能在玄关托盘附近') || document.body.innerText.includes('样例体验') || document.body.innerText.includes('3 件事'),
-    hasSetupResume: document.body.innerText.includes('想用自己的记录，需要先完成本地设置'),
-    hasFullSetupButton: Array.from(document.querySelectorAll('button')).some((button) => button.innerText.includes('继续设置完整功能')),
+    hasSetupResume: document.body.innerText.includes('要使用自己的记录，先完成本地设置'),
+    hasFullSetupButton: Array.from(document.querySelectorAll('button')).some((button) => button.innerText.includes('打开完整设置')),
     sceneCardsUseList: Array.from(document.querySelectorAll('.scene-card')).every((card) => {
       const rect = card.getBoundingClientRect();
       return rect.width > 180 && rect.height < 130;
@@ -294,13 +294,13 @@ try {
   assertCondition(afterDemo.sceneCardsUseList, "Scene signal cards appear compressed instead of using a readable list layout.");
   assertNoHorizontalOverflow(afterDemo, "Demo");
 
-  await evaluate(cdp, `Array.from(document.querySelectorAll('button')).find((button) => button.innerText.includes('继续设置完整功能')).click(); true`);
+  await evaluate(cdp, `Array.from(document.querySelectorAll('button')).find((button) => button.innerText.includes('打开完整设置')).click(); true`);
   await new Promise((resolveWait) => setTimeout(resolveWait, 500));
   const afterResumeSetup = await evaluate(cdp, `(() => ({
     status: localStorage.getItem('openbutler:first_run_activation:v1'),
     hasDialog: !!document.querySelector('.first-run-guide'),
     hasModelConfig: document.body.innerText.includes('智能整理能力'),
-    hasLocalRecordScan: document.body.innerText.includes('查找本机记录服务'),
+    hasLocalRecordScan: document.body.innerText.includes('查找本机记录组件'),
     hasPrimaryNav: !!document.querySelector('[data-nav-key="butler"]'),
     width: innerWidth,
     scrollWidth: document.documentElement.scrollWidth
@@ -318,9 +318,9 @@ try {
   const afterReal = await evaluate(cdp, `(() => ({
     path: location.pathname,
     status: localStorage.getItem('openbutler:first_run_activation:v1'),
-    hasLocalSetup: document.body.innerText.includes('启用完整功能前，先完成两步'),
+    hasLocalSetup: document.body.innerText.includes('打开完整设置前，先完成两步'),
     hasModelConfig: document.body.innerText.includes('智能整理能力'),
-    hasLocalRecordScan: document.body.innerText.includes('查找本机记录服务'),
+    hasLocalRecordScan: document.body.innerText.includes('查找本机记录组件'),
     hasAutoInstall: document.body.innerText.includes('自动安装'),
     hasManualInstall: document.body.innerText.includes('手动安装'),
     hasPrimaryNav: !!document.querySelector('[data-nav-key="butler"]'),

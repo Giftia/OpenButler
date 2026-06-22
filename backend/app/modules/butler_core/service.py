@@ -2378,7 +2378,7 @@ class ButlerCoreService:
                         and "installMineContextWithApproval" in desktop_main_text
                         and "openMineContextDownloadPage" in desktop_preload_text
                         and "https://api.github.com/repos/volcengine/MineContext/releases/latest" in desktop_main_text
-                        and ("扫描本机 MineContext" in app_text or "扫描本机记录组件" in app_text or "查找本机记录服务" in app_text)
+                        and ("扫描本机 MineContext" in app_text or "扫描本机记录组件" in app_text or "查找本机记录组件" in app_text or "查找本机记录服务" in app_text)
                         and "自动安装" in app_text
                         and "手动安装" in app_text,
                         [
@@ -2395,6 +2395,7 @@ class ButlerCoreService:
                             "写入 MineContext 配置" in app_text
                             or "写入记录组件配置" in app_text
                             or "保存到本机记录服务" in app_text
+                            or "保存到本机记录组件" in app_text
                         )
                         and ("Embedding 模型 ID" in app_text or "高级向量模型 / ID" in app_text)
                         and ("不调用外部模型" in app_text or "不会发起模型调用" in app_text),

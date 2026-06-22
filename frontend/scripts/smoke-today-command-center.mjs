@@ -286,6 +286,17 @@ try {
   assertCondition(result.hasTopSuggestion, "Top suggestion is not visible in the first viewport.");
   assertCondition(result.forbiddenVisible.length === 0, `Forbidden internal terms visible: ${result.forbiddenVisible.join(', ')}`);
 
+  await evaluate(cdp, `Array.from(document.querySelectorAll('button')).find((button) => button.innerText.includes('看这条建议')).click(); true`);
+  await new Promise((resolveWait) => setTimeout(resolveWait, 550));
+  const attentionFeedback = await evaluate(cdp, `(() => ({
+    highlighted: !!document.querySelector('.friendly-insight-card.attention'),
+    expandedEvidence: document.body.innerText.includes('边界说明') || document.body.innerText.includes('隐私说明'),
+    hasMessage: document.body.innerText.includes('已把这条建议展开在下面'),
+    suggestionTop: Math.round((document.querySelector('.friendly-insight-card') || document.body).getBoundingClientRect().top)
+  }))()`);
+  assertCondition(attentionFeedback.highlighted || attentionFeedback.hasMessage, 'Clicking the top suggestion should visibly focus the matching suggestion card.');
+  assertCondition(attentionFeedback.expandedEvidence, 'Clicking the top suggestion should expand or reveal the suggestion evidence area.');
+
   console.log(JSON.stringify({
     checked: "today-command-center",
     ok: true,
