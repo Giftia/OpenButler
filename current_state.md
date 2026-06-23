@@ -26,6 +26,16 @@ Next implementation should be issue-driven instead of continuing broad UI polish
 - `OB-GOV-001`: keep state/goals/task queue aligned.
 
 Do not add a fourth design style. Do not run real MineContext import or 7-day review as part of this phase.
+GitHub issues created for OB-GOAL-025:
+
+- OB-UI-001: https://github.com/Giftia/OpenButler/issues/1
+- OB-UI-002: https://github.com/Giftia/OpenButler/issues/2
+- OB-ACT-001: https://github.com/Giftia/OpenButler/issues/3
+- OB-ACT-002: https://github.com/Giftia/OpenButler/issues/4
+- OB-LOCAL-001: https://github.com/Giftia/OpenButler/issues/5
+- OB-DESK-001: https://github.com/Giftia/OpenButler/issues/6
+- OB-TRUST-001: https://github.com/Giftia/OpenButler/issues/7
+- OB-GOV-001: https://github.com/Giftia/OpenButler/issues/8
 
 Updated: 2026-06-05
 

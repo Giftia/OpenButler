@@ -1319,6 +1319,7 @@ tasks:
     priority: P0
     status: ready
     github_issue_hint: "OB-UI-001"
+    github_issue_url: "https://github.com/Giftia/OpenButler/issues/1"
     done_when:
       - "/butler 采用 iOS / Apple Home 式私人管家信息架构"
       - "首屏只有今日结论、关键状态和一个主行动"
@@ -1331,6 +1332,7 @@ tasks:
     priority: P0
     status: ready
     github_issue_hint: "OB-UI-002"
+    github_issue_url: "https://github.com/Giftia/OpenButler/issues/2"
     done_when:
       - "今日页保留 2-4 个关键数字"
       - "场景信号只显示用户能理解的状态"
@@ -1342,6 +1344,7 @@ tasks:
     priority: P0
     status: ready
     github_issue_hint: "OB-ACT-001"
+    github_issue_url: "https://github.com/Giftia/OpenButler/issues/3"
     done_when:
       - "首次启动先选择样例体验或本地模式"
       - "未完成激活前不进入完整主应用"
@@ -1354,6 +1357,7 @@ tasks:
     priority: P0
     status: ready
     github_issue_hint: "OB-ACT-002"
+    github_issue_url: "https://github.com/Giftia/OpenButler/issues/4"
     done_when:
       - "用户知道 API Key 从模型服务商获取"
       - "示例使用火山引擎 Ark，但不硬编码真实 Key"
@@ -1366,6 +1370,7 @@ tasks:
     priority: P0
     status: ready
     github_issue_hint: "OB-LOCAL-001"
+    github_issue_url: "https://github.com/Giftia/OpenButler/issues/5"
     done_when:
       - "普通路径使用 本机记录组件"
       - "MineContext 只出现在高级说明、诊断或开发文档"
@@ -1377,6 +1382,7 @@ tasks:
     priority: P0
     status: ready
     github_issue_hint: "OB-DESK-001"
+    github_issue_url: "https://github.com/Giftia/OpenButler/issues/6"
     done_when:
       - "安装包生成位置清楚"
       - "版本号自动 bump 策略明确"
@@ -1389,6 +1395,7 @@ tasks:
     priority: P0
     status: ready
     github_issue_hint: "OB-TRUST-001"
+    github_issue_url: "https://github.com/Giftia/OpenButler/issues/7"
     done_when:
       - "今日、时间线、Inbox、问管家、成就使用同一套依据文案"
       - "普通层只显示来源、可信度、边界说明、隐私说明"
@@ -1400,6 +1407,7 @@ tasks:
     priority: P0
     status: done
     github_issue_hint: "OB-GOV-001"
+    github_issue_url: "https://github.com/Giftia/OpenButler/issues/8"
     done_when:
       - "current_state.md 记录产品壳方向收敛"
       - "goals.yaml 当前 active objective 是 OB-GOAL-025"
