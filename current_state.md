@@ -1,5 +1,32 @@
 # OpenButler Current State
 
+Updated: 2026-06-23
+
+## Product Shell Direction Convergence
+
+Current active objective is `OB-GOAL-025: Product Shell Direction Convergence`.
+
+The formal ordinary-user product shell should converge on the iOS / Apple Home style private butler direction. The Mi Home style contributes large status numbers and scene signal grouping; the deck/PPT direction remains for commercial storytelling and onboarding explanation.
+
+New fact sources for this phase:
+
+- `CONTEXT.md` records product-domain terms such as 私人整理管家, 样例体验, 本地模式, 本机记录组件, 智能整理钥匙, 依据层, and 今日中控.
+- `docs/product/PRODUCT_SHELL_DIRECTION_CONVERGENCE.md` records the PRD-level direction.
+- `docs/architecture/decisions/0010-product-shell-direction-convergence.md` records the ADR.
+
+Next implementation should be issue-driven instead of continuing broad UI polishing in the same thread:
+
+- `OB-UI-001`: converge `/design/ios` into `/butler`.
+- `OB-UI-002`: integrate Mi Home-style key numbers and scene signals.
+- `OB-ACT-001`: rebuild first-run activation as a non-skippable path choice.
+- `OB-ACT-002`: add API Key help to model provider setup.
+- `OB-LOCAL-001`: use 本机记录组件 in ordinary UI; keep MineContext in advanced details.
+- `OB-DESK-001`: verify desktop install, tray, backend lifecycle, and uninstall cleanup.
+- `OB-TRUST-001`: unify evidence wording.
+- `OB-GOV-001`: keep state/goals/task queue aligned.
+
+Do not add a fourth design style. Do not run real MineContext import or 7-day review as part of this phase.
+
 Updated: 2026-06-05
 
 ## Achievement Layer Recovery Update

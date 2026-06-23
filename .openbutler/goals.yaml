@@ -1,18 +1,34 @@
 product_goal:
   name: "OpenButler 主动全场景感知 AI 管家"
   mission: "让用户的生活更加清晰高效可量化"
-  current_stage: "Desktop Reliability & Full-Mode Activation Recovery"
+  current_stage: "Product Shell Direction Convergence"
   north_star: "用户每天 60 秒内理解今天发生了什么、什么值得注意、下一步应该做什么"
 
 active_objectives:
-  - id: OB-GOAL-023
-    title: "Desktop Reliability & Full-Mode Activation Recovery"
+  - id: OB-GOAL-025
+    title: "Product Shell Direction Convergence"
     priority: P0
     status: active
     description: >
-      修复 OpenButler 桌面版空白窗口、缺少托盘常驻和首次激活不完整的问题。
-      本阶段聚焦 Electron 本地资源加载、系统托盘、二次唤起、MineContext 检测、
-      模型供应商配置、本地完全体检查和商业概念 PPT 高信息密度改版。
+      收敛 OpenButler 的正式普通用户产品壳。正式主线采用 iOS / Apple Home 式私人管家，
+      吸收米家式清晰状态数据，并保留大屏 PPT 方向用于商业演示。
+      本阶段不新增底层能力，优先明确 /butler、首次激活、本地模式和依据层的产品路径。
+    success_criteria:
+      - "正式产品壳方向记录在 PRODUCT_SHELL_DIRECTION_CONVERGENCE.md"
+      - "CONTEXT.md 记录 私人整理管家、样例体验、本地模式、本机记录组件、智能整理钥匙、依据层 等术语"
+      - "ADR 0010 记录为什么采用 iOS / Apple Home 方向作为正式主线"
+      - "后续工作拆成可独立执行的 GitHub issues"
+      - "current_state.md、goals.yaml、task_queue.yaml 不再把旧设计实验误写成当前主线"
+      - "不读取真实 MineContext 数据，不复制截图，不调用外部模型"
+
+paused_objectives:
+  - id: OB-GOAL-023
+    title: "Desktop Reliability & Full-Mode Activation Recovery"
+    priority: P0
+    status: paused
+    description: >
+      桌面可靠性和本地完全体激活仍然重要，但当前先暂停细节修复，
+      等产品壳方向收敛后再按独立 issue 回归桌面安装、托盘、后台生命周期和 MineContext 接入。
     success_criteria:
       - "桌面构建不再使用导致 Electron loadFile 空白的绝对 /assets 路径"
       - "Electron 主进程提供可读错误页和 packaged app 非空 smoke"
@@ -24,7 +40,6 @@ active_objectives:
       - "商业概念 PPT 改为高信息密度电子杂志/产品说明书风格"
       - "不读取真实 MineContext 活动，不复制截图，不调用外部模型"
       - "前端 build、后端核心测试、桌面合同检查和桌面资源检查通过"
-
 archived_objectives:
   - id: OB-GOAL-016
     title: "Demo / Local Mode Boundary"
