@@ -82,6 +82,20 @@ Use `npm run verify:productization` only when it is acceptable to run the local 
 
 Follow `.openbutler/definition_of_done.md`. Each change should preserve evidence boundaries, update docs when contracts change, run focused tests, and state residual risks. Never treat docs or task queue status as proof without code or command evidence.
 
+## Agent skills
+
+### Issue tracker
+
+Issues and external pull requests are tracked in GitHub for `Giftia/OpenButler`; external PRs are a triage request surface. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the default five-label vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context repo. Engineering skills should read `AGENTS.md`, the architecture docs, and ADRs under `docs/architecture/decisions/`. See `docs/agents/domain.md`.
+
 ## Fact Sources
 
 - Current architecture: `docs/architecture/CURRENT_ARCHITECTURE.md`
