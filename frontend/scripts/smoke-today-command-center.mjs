@@ -253,8 +253,10 @@ try {
 
   const result = await evaluate(cdp, `(() => {
     const text = document.body.innerText;
-    const hero = document.querySelector('.today-hero');
-    const suggestion = document.querySelector('.command-suggestion-card');
+    const shell = document.querySelector('.formal-butler-home');
+    const hero = document.querySelector('.formal-butler-home .ios-header');
+    const suggestion = document.querySelector('.formal-butler-home .ios-suggestion-card');
+    const eventSheet = document.querySelector('.formal-butler-home .ios-event-sheet');
     const forbiddenTerms = ['MineContext', 'PCActivity', 'UnifiedTimelineEvent', 'mock', 'seed', 'Provider', 'Webhook'];
     const visibleText = Array.from(document.querySelectorAll('body *'))
       .filter((node) => {
@@ -268,10 +270,12 @@ try {
       width: innerWidth,
       height: innerHeight,
       scrollWidth: document.documentElement.scrollWidth,
+      hasShell: Boolean(shell),
       hasHeadline: text.includes('今天先看这几件事'),
-      hasStatus: text.includes('有 3 条样例记录值得回看'),
-      hasPrimaryAction: Array.from(document.querySelectorAll('button')).some((button) => button.innerText.includes('看今天建议')),
+      hasStatus: text.includes('值得回看') || text.includes('适合先处理'),
+      hasPrimaryAction: Array.from(document.querySelectorAll('button')).some((button) => button.innerText.includes('看今天记录')),
       hasTopSuggestion: Boolean(suggestion) && (suggestion.getBoundingClientRect().top < innerHeight),
+      hasEventSheet: Boolean(eventSheet),
       heroBottom: hero ? Math.round(hero.getBoundingClientRect().bottom) : -1,
       suggestionTop: suggestion ? Math.round(suggestion.getBoundingClientRect().top) : -1,
       forbiddenVisible: forbiddenTerms.filter((term) => visibleText.includes(term)),
@@ -280,22 +284,25 @@ try {
   })()`);
 
   assertCondition(result.scrollWidth <= result.width, `Today command center overflows horizontally: ${result.scrollWidth} > ${result.width}`);
+  assertCondition(result.hasShell, "Formal iOS-style butler shell not rendered on /butler.");
   assertCondition(result.hasHeadline, "Today command center headline not visible.");
   assertCondition(result.hasStatus, "Today command center one-line status not visible.");
   assertCondition(result.hasPrimaryAction, "Today command center primary action not visible.");
   assertCondition(result.hasTopSuggestion, "Top suggestion is not visible in the first viewport.");
   assertCondition(result.forbiddenVisible.length === 0, `Forbidden internal terms visible: ${result.forbiddenVisible.join(', ')}`);
 
-  await evaluate(cdp, `Array.from(document.querySelectorAll('button')).find((button) => button.innerText.includes('看这条建议')).click(); true`);
+  await evaluate(cdp, `Array.from(document.querySelectorAll('button')).find((button) => button.innerText.includes('看今天记录')).click(); true`);
   await new Promise((resolveWait) => setTimeout(resolveWait, 550));
-  const attentionFeedback = await evaluate(cdp, `(() => ({
-    highlighted: !!document.querySelector('.friendly-insight-card.attention'),
-    expandedEvidence: document.body.innerText.includes('边界说明') || document.body.innerText.includes('隐私说明'),
-    hasMessage: document.body.innerText.includes('已把这条建议展开在下面'),
-    suggestionTop: Math.round((document.querySelector('.friendly-insight-card') || document.body).getBoundingClientRect().top)
-  }))()`);
-  assertCondition(attentionFeedback.highlighted || attentionFeedback.hasMessage, 'Clicking the top suggestion should visibly focus the matching suggestion card.');
-  assertCondition(attentionFeedback.expandedEvidence, 'Clicking the top suggestion should expand or reveal the suggestion evidence area.');
+  const attentionFeedback = await evaluate(cdp, `(() => {
+    const eventSheet = document.querySelector('.formal-butler-home .ios-event-sheet');
+    return {
+      hasEventSheet: Boolean(eventSheet),
+      eventSheetTop: eventSheet ? Math.round(eventSheet.getBoundingClientRect().top) : -1,
+      hasEvidence: document.body.innerText.includes('查看依据')
+    };
+  })()`);
+  assertCondition(attentionFeedback.hasEventSheet, 'Clicking the primary action should keep the today record section available.');
+  assertCondition(attentionFeedback.hasEvidence, 'Today records should expose a user-facing evidence action.');
 
   console.log(JSON.stringify({
     checked: "today-command-center",

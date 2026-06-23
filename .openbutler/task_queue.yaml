@@ -1317,7 +1317,7 @@ tasks:
     title: "把 /design/ios 收敛为正式 /butler 首页"
     goal_id: OB-GOAL-025
     priority: P0
-    status: ready
+    status: done
     github_issue_hint: "OB-UI-001"
     github_issue_url: "https://github.com/Giftia/OpenButler/issues/1"
     done_when:
@@ -1325,6 +1325,10 @@ tasks:
       - "首屏只有今日结论、关键状态和一个主行动"
       - "普通 UI 不出现 MineContext、mock、seed、PCActivity 等内部词"
       - "移动端和桌面端 smoke 通过"
+    evidence:
+      - "frontend/src/App.tsx routes /butler to FormalButlerHome."
+      - "frontend/src/pages/DesignVariants.tsx exposes FormalButlerHome based on the iOS concept without the design switcher."
+      - "frontend/scripts/smoke-today-command-center.mjs validates .formal-butler-home, primary action, event sheet, evidence entry, and forbidden ordinary UI terms."
 
   - id: OB-TASK-252
     title: "融合米家式大数字和场景信号"

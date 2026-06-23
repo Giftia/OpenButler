@@ -16,7 +16,7 @@ New fact sources for this phase:
 
 Next implementation should be issue-driven instead of continuing broad UI polishing in the same thread:
 
-- `OB-UI-001`: converge `/design/ios` into `/butler`.
+- `OB-UI-001`: converge `/design/ios` into `/butler`. Completed in the current implementation pass: `/butler` now renders `FormalButlerHome` from the iOS private-butler concept.
 - `OB-UI-002`: integrate Mi Home-style key numbers and scene signals.
 - `OB-ACT-001`: rebuild first-run activation as a non-skippable path choice.
 - `OB-ACT-002`: add API Key help to model provider setup.

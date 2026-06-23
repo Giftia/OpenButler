@@ -2462,6 +2462,78 @@ class ButlerCoreService:
                         ],
                     ),
             ],
+            "OB-GOAL-025": [
+                    criterion(
+                        "product_shell_direction_doc",
+                        "正式产品壳方向记录在 PRODUCT_SHELL_DIRECTION_CONVERGENCE.md",
+                        (root / "docs" / "product" / "PRODUCT_SHELL_DIRECTION_CONVERGENCE.md").exists()
+                        and "iOS / Apple Home style private butler" in (root / "docs" / "product" / "PRODUCT_SHELL_DIRECTION_CONVERGENCE.md").read_text(encoding="utf-8")
+                        and "私人整理管家" in (root / "docs" / "product" / "PRODUCT_SHELL_DIRECTION_CONVERGENCE.md").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "docs/product/PRODUCT_SHELL_DIRECTION_CONVERGENCE.md"}],
+                    ),
+                    criterion(
+                        "domain_context_terms",
+                        "CONTEXT.md 记录 私人整理管家、样例体验、本地模式、本机记录组件、智能整理钥匙、依据层 等术语",
+                        (root / "CONTEXT.md").exists()
+                        and all(
+                            term in (root / "CONTEXT.md").read_text(encoding="utf-8")
+                            for term in ["私人整理管家", "样例体验", "本地模式", "本机记录组件", "智能整理钥匙", "依据层"]
+                        ),
+                        [{"kind": "file", "path": "CONTEXT.md"}],
+                    ),
+                    criterion(
+                        "adr_0010_records_direction",
+                        "ADR 0010 记录为什么采用 iOS / Apple Home 方向作为正式主线",
+                        (root / "docs" / "architecture" / "decisions" / "0010-product-shell-direction-convergence.md").exists()
+                        and "iOS / Apple Home" in (root / "docs" / "architecture" / "decisions" / "0010-product-shell-direction-convergence.md").read_text(encoding="utf-8")
+                        and "formal homepage candidate" in (root / "docs" / "architecture" / "decisions" / "0010-product-shell-direction-convergence.md").read_text(encoding="utf-8"),
+                        [{"kind": "file", "path": "docs/architecture/decisions/0010-product-shell-direction-convergence.md"}],
+                    ),
+                    criterion(
+                        "github_issues_split",
+                        "后续工作拆成可独立执行的 GitHub issues",
+                        all(
+                            issue_url in (root / ".openbutler" / "task_queue.yaml").read_text(encoding="utf-8")
+                            for issue_url in [
+                                "https://github.com/Giftia/OpenButler/issues/1",
+                                "https://github.com/Giftia/OpenButler/issues/2",
+                                "https://github.com/Giftia/OpenButler/issues/3",
+                                "https://github.com/Giftia/OpenButler/issues/4",
+                                "https://github.com/Giftia/OpenButler/issues/5",
+                                "https://github.com/Giftia/OpenButler/issues/6",
+                                "https://github.com/Giftia/OpenButler/issues/7",
+                                "https://github.com/Giftia/OpenButler/issues/8",
+                            ]
+                        ),
+                        [{"kind": "file", "path": ".openbutler/task_queue.yaml"}],
+                    ),
+                    criterion(
+                        "product_shell_facts_updated",
+                        "current_state.md、goals.yaml、task_queue.yaml 不再把旧设计实验误写成当前主线",
+                        "OB-GOAL-025" in (root / "current_state.md").read_text(encoding="utf-8")
+                        and "iOS / Apple Home" in (root / "current_state.md").read_text(encoding="utf-8")
+                        and "Product Shell Direction Convergence" in (root / ".openbutler" / "goals.yaml").read_text(encoding="utf-8")
+                        and "把 /design/ios 收敛为正式 /butler 首页" in (root / ".openbutler" / "task_queue.yaml").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "current_state.md"},
+                            {"kind": "file", "path": ".openbutler/goals.yaml"},
+                            {"kind": "file", "path": ".openbutler/task_queue.yaml"},
+                        ],
+                    ),
+                    criterion(
+                        "no_real_data_side_effects_product_shell",
+                        "不读取真实 MineContext 数据，不复制截图，不调用外部模型",
+                        "Do not run real MineContext import" in (root / "docs" / "product" / "PRODUCT_SHELL_DIRECTION_CONVERGENCE.md").read_text(encoding="utf-8")
+                        and report.get("privacy", {}).get("external_model_used") is False
+                        and report.get("privacy", {}).get("copied_screenshots") == 0
+                        and report.get("privacy", {}).get("minecontext_source_deleted") == 0,
+                        [
+                            {"kind": "file", "path": "docs/product/PRODUCT_SHELL_DIRECTION_CONVERGENCE.md"},
+                            {"kind": "api", "path": "GET /api/butler/mvp-report"},
+                        ],
+                        report.get("privacy", {}),
+                    ),
+            ],
         }
         objectives = []
         for declared in active_objectives:

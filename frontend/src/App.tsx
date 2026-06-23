@@ -104,7 +104,7 @@ import {
 } from "./lib/timelineUiAdapter";
 import {insightTypeLabel, privacyModeLabel, sourceLabel, statusLabel, userFacingDemoText} from "./lib/userFacingLabels";
 import type {EventItem, PluginManifest, PrivacyMode} from "./types";
-import {DesignConceptPage, DesignLabPage} from "./pages/DesignVariants";
+import {DesignConceptPage, DesignLabPage, FormalButlerHome} from "./pages/DesignVariants";
 
 type PageKey =
   | "butler"
@@ -386,7 +386,7 @@ function App() {
   const isDesignPage = page === "designLab" || page === "designMijia" || page === "designIos" || page === "designDeck";
 
   const CurrentPage = {
-    butler: <ButlerHome activationStatus={activationStatus} onActivation={updateActivation} onOpenGuide={() => setShowFirstRunGuide(true)} />,
+    butler: <FormalButlerHome activationStatus={activationStatus} />,
     dashboard: (
       <Dashboard
         events={events}

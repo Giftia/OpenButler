@@ -254,21 +254,20 @@ function MijiaConcept({view, moments, loading}: {view: ReturnType<typeof buildTo
   );
 }
 
-function IosConcept({view, moments, loading}: {view: ReturnType<typeof buildTodayHomeViewModel>; moments: TimelineMoment[]; loading: boolean}) {
+function IosConcept({view, moments, loading, formal = false}: {view: ReturnType<typeof buildTodayHomeViewModel>; moments: TimelineMoment[]; loading: boolean; formal?: boolean}) {
   const command = view.commandCenter;
   return (
-    <section className="concept-page concept-ios">
+    <section className={formal ? "concept-page concept-ios formal-butler-home" : "concept-page concept-ios"}>
       <div className="ios-header">
         <span>{command.privacyHint}</span>
         <h1>今天先看这几件事</h1>
         <p>{command.oneLineStatus}</p>
       </div>
-      <SetupPathPanel compact />
       <div className="ios-card-stack">
         <article className="ios-main-card">
           <small>今日摘要</small>
           <strong>{command.headline}</strong>
-          <button className="primary" onClick={() => navigateClient("/butler")}>{command.primaryAction}</button>
+          <button className="primary" onClick={() => scrollToDesignSection("[data-design-sample-records]")}>{formal ? "看今天记录" : command.primaryAction}</button>
         </article>
         <article className="ios-suggestion-card">
           <small>下一步</small>
@@ -279,16 +278,22 @@ function IosConcept({view, moments, loading}: {view: ReturnType<typeof buildToda
       <div className="ios-number-row">
         {command.keyNumbers.map((item) => <article key={item.label}><strong>{item.value}</strong><span>{item.label}</span><small>{item.description}</small></article>)}
       </div>
+      {formal && <SetupPathPanel compact />}
       <section className="ios-event-sheet" data-design-sample-records>
         <div className="section-title"><h2>今天留下的记录</h2><button className="ghost" onClick={() => navigateClient("/timeline")}>查看时间线</button></div>
         {moments.slice(0, 5).map((moment) => <ConceptEventRow key={moment.id} moment={moment} compact />)}
       </section>
-      <DesignVariantFooter active="ios" />
+      {!formal && <DesignVariantFooter active="ios" />}
       {loading && <p className="concept-loading">正在整理...</p>}
     </section>
   );
 }
 
+
+export function FormalButlerHome({activationStatus}: {activationStatus: ActivationStatus}) {
+  const {view, moments, loading} = useDesignConceptView(activationStatus);
+  return <IosConcept view={view} moments={moments} loading={loading} formal />;
+}
 function DeckConcept({view, moments, loading}: {view: ReturnType<typeof buildTodayHomeViewModel>; moments: TimelineMoment[]; loading: boolean}) {
   const command = view.commandCenter;
   return (
