@@ -408,6 +408,16 @@ def desktop_status() -> dict[str, Any]:
     minecontext_home = os.getenv("MINECONTEXT_HOME") or os.getenv("OPENBUTLER_MINECONTEXT_HOME")
     minecontext_reachable = os.getenv("OPENBUTLER_MINECONTEXT_REACHABLE", "0") == "1"
     minecontext_model_configured = os.getenv("OPENBUTLER_MINECONTEXT_MODEL_CONFIGURED", "0") == "1"
+    ready_for_preview = bool(
+        desktop_enabled
+        and mode == "strict"
+        and minecontext_home
+        and minecontext_reachable
+        and minecontext_model_configured
+        and not copy_screenshots
+        and not external_model_allowed
+        and not webhook_allowed
+    )
     return {
         "desktop": {
             "available": desktop_enabled,
@@ -439,6 +449,25 @@ def desktop_status() -> dict[str, Any]:
                 if minecontext_home
                 else "not_configured",
             }
+        },
+        "first_use": {
+            "activation_required": True,
+            "local_mode_stage": "ready_for_preview"
+            if ready_for_preview
+            else "needs_model_or_record_component",
+            "today_preview": {
+                "available": ready_for_preview,
+                "kind": "dry_run_only",
+                "database_written": False,
+                "screenshots_copied": False,
+                "external_model_called": False,
+                "external_webhook_called": False,
+                "minecontext_modified": False,
+                "real_activity_titles_returned": False,
+                "screenshot_paths_returned": False,
+                "raw_output_returned": False,
+                "summary": "授权前只返回聚合预览；不会返回真实标题、URL、截图路径或原始输出。",
+            },
         },
         "safety": {
             "raw_activity_titles_returned": False,

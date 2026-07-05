@@ -418,10 +418,10 @@ class ButlerApiContractTests(unittest.TestCase):
         self.assertIn("evidence_boundary", template["criterion_contract"])
         self.assertIn("minecontext_source_deleted must remain 0", template["privacy_invariants"])
         objectives = {item["id"]: item for item in response["objectives"]}
-        self.assertEqual(set(objectives), {"OB-GOAL-025"})
-        objective = objectives["OB-GOAL-025"]
+        self.assertEqual(set(objectives), {"OB-GOAL-026"})
+        objective = objectives["OB-GOAL-026"]
         self.assertEqual(objective["status"], "proven")
-        self.assertEqual(objective["title"], "Product Shell Direction Convergence")
+        self.assertEqual(objective["title"], "Local Mode Activation to First Useful Result")
         self.assertEqual(objective["proven_count"], objective["criteria_count"])
         self.assertEqual(objective["priority"], "P0")
         self.assertTrue(objective["success_criteria"])
@@ -431,11 +431,11 @@ class ButlerApiContractTests(unittest.TestCase):
             self.assertTrue(criterion["evidence_refs"])
             self.assertTrue(criterion["evidence_boundary"])
         criteria = {item["id"]: item for item in objective["criteria"]}
-        self.assertEqual(criteria["product_shell_direction_doc"]["status"], "proven")
-        self.assertEqual(criteria["domain_context_terms"]["status"], "proven")
-        self.assertEqual(criteria["adr_0010_records_direction"]["status"], "proven")
-        self.assertEqual(criteria["github_issues_split"]["status"], "proven")
-        self.assertEqual(criteria["no_real_data_side_effects_product_shell"]["status"], "proven")
+        self.assertEqual(criteria["activation_gate_blocks_main_app"]["status"], "proven")
+        self.assertEqual(criteria["smart_key_required"]["status"], "proven")
+        self.assertEqual(criteria["local_record_component_bootstrap"]["status"], "proven")
+        self.assertEqual(criteria["dry_run_preview_redacted"]["status"], "proven")
+        self.assertEqual(criteria["desktop_status_redacted"]["status"], "proven")
 
     def test_productization_objective_status_surfaces_unknown_goals(self) -> None:
         butler_router.run_demo(DemoRunRequest(import_pc_activity=False))
@@ -511,16 +511,15 @@ class ButlerApiContractTests(unittest.TestCase):
         self.assertTrue(response["privacy"]["strict_mode_respected"])
         self.assertTrue(response["evidence_boundary"])
         objectives = {item["id"]: item for item in response["objectives"]}
-        goal = objectives["OB-GOAL-025"]
+        goal = objectives["OB-GOAL-026"]
         self.assertEqual(goal["objective_status"], "proven")
         checks = {item["success_criterion"]: item for item in goal["success_criteria"]}
-        self.assertEqual(checks["正式产品壳方向记录在 PRODUCT_SHELL_DIRECTION_CONVERGENCE.md"]["verification_result"], "proven")
-        self.assertEqual(checks["CONTEXT.md 记录 私人整理管家、样例体验、本地模式、本机记录组件、智能整理钥匙、依据层 等术语"]["verification_result"], "proven")
-        self.assertEqual(checks["ADR 0010 记录为什么采用 iOS / Apple Home 方向作为正式主线"]["verification_result"], "proven")
-        self.assertEqual(checks["后续工作拆成可独立执行的 GitHub issues"]["verification_result"], "proven")
-        self.assertEqual(checks["不读取真实 MineContext 数据，不复制截图，不调用外部模型"]["verification_result"], "proven")
-        self.assertTrue(checks["正式产品壳方向记录在 PRODUCT_SHELL_DIRECTION_CONVERGENCE.md"]["evidence_refs"])
-        self.assertTrue(checks["不读取真实 MineContext 数据，不复制截图，不调用外部模型"]["evidence_boundary"])
+        self.assertEqual(checks["桌面版首次启动未激活前不显示主导航或空主界面"]["verification_result"], "proven")
+        self.assertEqual(checks["启用本地模式必须经过智能整理钥匙配置"]["verification_result"], "proven")
+        self.assertEqual(checks["授权前 dry-run 预览只显示聚合信息，不写数据库"]["verification_result"], "proven")
+        self.assertEqual(checks["不读取真实 MineContext 活动，不复制截图，不调用外部模型"]["verification_result"], "proven")
+        self.assertTrue(checks["桌面版首次启动未激活前不显示主导航或空主界面"]["evidence_refs"])
+        self.assertTrue(checks["不读取真实 MineContext 活动，不复制截图，不调用外部模型"]["evidence_boundary"])
 
     def test_productization_l1_audit_report_distinguishes_missing_and_out_of_scope(self) -> None:
         butler_router.run_demo(DemoRunRequest(import_pc_activity=False))

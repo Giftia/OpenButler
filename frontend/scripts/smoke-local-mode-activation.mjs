@@ -1,6 +1,6 @@
 import {spawn} from "node:child_process";
 import {existsSync, mkdirSync} from "node:fs";
-import {createServer as createNetServer, createConnection} from "node:net";
+import {createConnection, createServer as createNetServer} from "node:net";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {randomBytes} from "node:crypto";
@@ -12,8 +12,8 @@ function assertCondition(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-function assertNoHorizontalOverflow(result, label) {
-  assertCondition(result.scrollWidth <= result.width, `${label} mobile overflow: ${result.scrollWidth} > ${result.width}`);
+function assertNoOverflow(result, label) {
+  assertCondition(result.scrollWidth <= result.width, `${label} horizontal overflow: ${result.scrollWidth} > ${result.width}`);
 }
 
 function findBrowserPath() {
@@ -204,11 +204,6 @@ async function evaluate(cdp, expression) {
   return result.result?.value;
 }
 
-async function navigate(cdp, path) {
-  await cdp.send("Page.navigate", {url: `${webUrl}${path}`});
-  await new Promise((resolveWait) => setTimeout(resolveWait, 500));
-}
-
 async function waitForCondition(cdp, expression, timeoutMs = 5000, label = "condition") {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -225,7 +220,7 @@ let cdp;
 try {
   assertCondition(Boolean(browserPath), "No Chromium-compatible browser found. Set OPENBUTLER_BROWSER_PATH.");
   const cdpPort = await getFreePort();
-  const profileDir = join(tmpdir(), `openbutler-first-run-${Date.now()}`);
+  const profileDir = join(tmpdir(), `openbutler-local-mode-activation-${Date.now()}`);
   mkdirSync(profileDir, {recursive: true});
   browser = spawn(browserPath, [
     "--headless=new",
@@ -245,125 +240,122 @@ try {
   await cdp.open();
   await cdp.send("Page.enable");
   await cdp.send("Runtime.enable");
+  await cdp.send("Page.addScriptToEvaluateOnNewDocument", {
+    source: `
+      window.openbutlerDesktop = {
+        apiBase: "",
+        getRuntime: async () => ({desktop: true, apiBase: ""}),
+        getMineContextStatus: async () => ({reachable: false, running: false, configured: false, status: "not_found"}),
+        scanMineContextInstallations: async () => ({found: false, candidates: []}),
+        chooseMineContextInstaller: async () => ({selected: false}),
+        openMineContextDownloadPage: async () => ({ok: true}),
+        downloadMineContextInstaller: async () => ({ok: false, message: "测试环境不会下载安装包。"}),
+        installMineContextWithApproval: async () => ({ok: false, message: "测试环境不会安装。"}),
+        startMineContext: async () => ({ok: false, message: "未找到本机记录组件。"}),
+        testMineContextModelConfig: async () => ({ok: true, message: "只检查字段，不调用外部模型。"}),
+        applyMineContextModelConfig: async () => ({ok: false, message: "测试环境未连接本机记录组件。"}),
+        restartBackend: async () => ({ok: true}),
+        openDataFolder: async () => ({ok: true}),
+        showMainWindow: async () => ({ok: true}),
+        quitApp: async () => ({ok: true})
+      };
+    `,
+  });
 
-  await navigate(cdp, "/butler");
+  await cdp.send("Page.navigate", {url: `${webUrl}/butler`});
+  await new Promise((resolveWait) => setTimeout(resolveWait, 500));
   await evaluate(cdp, "localStorage.removeItem('openbutler:first_run_activation:v1'); location.reload(); true");
-  await waitForCondition(
-    cdp,
-    "!!document.querySelector('.first-run-guide') && document.body.innerText.includes('像安装一个私人管家一样开始')",
-    6000,
-    "first-run activation dialog",
-  );
+  await waitForCondition(cdp, "!!document.querySelector('.first-run-guide')", 6000, "activation gate");
+
   const initial = await evaluate(cdp, `(() => ({
     width: innerWidth,
     scrollWidth: document.documentElement.scrollWidth,
-    hasDialog: !!document.querySelector('.first-run-guide'),
+    hasGuide: !!document.querySelector('.first-run-guide'),
     hasMainShell: !!document.querySelector('.app-shell'),
-    hasPrimaryNav: !!document.querySelector('[data-nav-key="butler"]'),
-    hasIntro: document.body.innerText.includes('像安装一个私人管家一样开始'),
+    hasNav: !!document.querySelector('[data-nav-key="butler"]'),
     hasDemo: document.body.innerText.includes('先看样例'),
-    hasReal: document.body.innerText.includes('让 OpenButler 整理我的本机记录'),
-    hasLater: document.body.innerText.includes('稍后配置')
+    hasLocalMode: document.body.innerText.includes('整理我的本机记录'),
+    hasLater: document.body.innerText.includes('稍后配置'),
+    text: document.body.innerText
   }))()`);
-  assertCondition(initial.hasDialog && initial.hasIntro && initial.hasDemo && initial.hasReal && initial.hasLater, "First-run activation dialog missing expected choices.");
-  assertCondition(!initial.hasMainShell && !initial.hasPrimaryNav, "Main application shell is visible before activation completes.");
-  assertNoHorizontalOverflow(initial, "Initial");
+  assertCondition(initial.hasGuide && initial.hasDemo && initial.hasLocalMode && initial.hasLater, "Activation gate is missing required choices.");
+  assertCondition(!initial.hasMainShell && !initial.hasNav, "Main app should not be visible before activation.");
+  assertNoOverflow(initial, "initial gate");
 
   await evaluate(cdp, `Array.from(document.querySelectorAll('.first-run-guide button')).find((button) => button.innerText.includes('先看样例')).click(); true`);
-  await new Promise((resolveWait) => setTimeout(resolveWait, 700));
-  const afterDemo = await evaluate(cdp, `(() => ({
-    status: localStorage.getItem('openbutler:first_run_activation:v1'),
-    hasDialog: !!document.querySelector('.first-run-guide'),
-    hasPrimaryNav: !!document.querySelector('[data-nav-key="butler"]'),
-    hasSample: document.body.innerText.includes('钥匙可能在玄关托盘附近') || document.body.innerText.includes('样例体验') || document.body.innerText.includes('3 件事'),
-    hasSetupResume: document.body.innerText.includes('怎么开始真实使用') || document.body.innerText.includes('要使用自己的记录，先完成本地设置'),
-    hasFullSetupButton: Array.from(document.querySelectorAll('button, a')).some((button) => button.innerText.includes('获取桌面版') || button.innerText.includes('打开完整设置')),
-    sceneCardsUseList: Array.from(document.querySelectorAll('.scene-card')).every((card) => {
-      const rect = card.getBoundingClientRect();
-      return rect.width > 180 && rect.height < 130;
-    }),
-    textStart: document.body.innerText.slice(0, 240),
-    width: innerWidth,
-    scrollWidth: document.documentElement.scrollWidth
-  }))()`);
-  assertCondition(afterDemo.status === "demo_selected", "Demo choice did not persist demo_selected.");
-  assertCondition(!afterDemo.hasDialog, "Demo choice did not close the activation dialog.");
-  assertCondition(afterDemo.hasPrimaryNav, "Demo mode should enter the sample application shell.");
-  assertCondition(afterDemo.hasSample || afterDemo.textStart.includes("样例体验"), `Demo choice did not reveal sample value. Text: ${afterDemo.textStart}`);
-  assertCondition(afterDemo.hasSetupResume && afterDemo.hasFullSetupButton, "Demo home is missing the visible local-mode setup entry.");
-  assertCondition(afterDemo.sceneCardsUseList, "Scene signal cards appear compressed instead of using a readable list layout.");
-  assertNoHorizontalOverflow(afterDemo, "Demo");
-
-  await navigate(cdp, "/butler");
-  await evaluate(cdp, "localStorage.setItem('openbutler:first_run_activation:v1', 'unseen'); location.reload(); true");
-  await waitForCondition(cdp, "!!document.querySelector('.first-run-guide')", 6000, "first-run dialog before real setup");
-  await evaluate(cdp, `Array.from(document.querySelectorAll('.first-run-guide button')).find((button) => button.innerText.includes('整理我的本机记录')).click(); true`);
   await new Promise((resolveWait) => setTimeout(resolveWait, 500));
-  const afterReal = await evaluate(cdp, `(() => ({
-    path: location.pathname,
+  const sampleMode = await evaluate(cdp, `(() => ({
+    width: innerWidth,
+    scrollWidth: document.documentElement.scrollWidth,
     status: localStorage.getItem('openbutler:first_run_activation:v1'),
-    hasLocalSetup: document.body.innerText.includes('先完成本地模式激活'),
-    hasModelConfig: document.body.innerText.includes('智能整理钥匙') || document.body.innerText.includes('智能整理能力'),
-    hasLocalRecordScan: document.body.innerText.includes('查找本机记录组件'),
+    hasMainShell: !!document.querySelector('.app-shell'),
+    hasSampleBoundary: document.body.innerText.includes('未读取你的真实数据') || document.body.innerText.includes('样例体验')
+  }))()`);
+  assertCondition(sampleMode.status === "demo_selected", "Sample choice should persist demo_selected.");
+  assertCondition(sampleMode.hasMainShell && sampleMode.hasSampleBoundary, "Sample mode should enter the app with a clear sample-data boundary.");
+  assertNoOverflow(sampleMode, "sample mode");
+
+  await evaluate(cdp, "localStorage.removeItem('openbutler:first_run_activation:v1'); location.reload(); true");
+  await waitForCondition(cdp, "!!document.querySelector('.first-run-guide')", 6000, "activation gate after sample reset");
+
+  await evaluate(cdp, `Array.from(document.querySelectorAll('.first-run-guide button')).find((button) => button.innerText.includes('整理我的本机记录')).click(); true`);
+  await waitForCondition(cdp, "document.body.innerText.includes('智能整理钥匙') || document.body.innerText.includes('智能整理能力')", 5000, "local mode smart key");
+
+  const localMode = await evaluate(cdp, `(() => ({
+    width: innerWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+    status: localStorage.getItem('openbutler:first_run_activation:v1'),
+    hasNav: !!document.querySelector('[data-nav-key="butler"]'),
+    hasSmartKey: document.body.innerText.includes('智能整理钥匙') || document.body.innerText.includes('智能整理能力'),
+    hasApiKeyHelp: document.body.innerText.includes('我该从哪里获得'),
+    hasLocalRecord: document.body.innerText.includes('本机记录组件'),
+    hasScan: document.body.innerText.includes('查找本机记录组件'),
+    hasPreview: document.body.innerText.includes('授权前预览') && document.body.innerText.includes('第一份今日整理预览'),
+    hasDryRunBoundary: document.body.innerText.includes('确认前不会导入真实活动') || document.body.innerText.includes('不会导入真实活动'),
     hasAutoInstall: document.body.innerText.includes('自动安装'),
     hasManualInstall: document.body.innerText.includes('手动安装'),
-    hasPrimaryNav: !!document.querySelector('[data-nav-key="butler"]'),
-    hasNoRealImport: document.body.innerText.includes('不会导入真实活动'),
-    width: innerWidth,
-    scrollWidth: document.documentElement.scrollWidth
+    forbidden: ['mock', 'seed', 'PCActivity', 'Provider', 'Webhook'].filter((term) => document.body.innerText.includes(term)),
+    text: document.body.innerText
   }))()`);
-  assertCondition(afterReal.path === "/butler", `Real setup should stay in activation dialog, got ${afterReal.path}`);
-  assertCondition(afterReal.status === "real_setup_started", "Real setup did not persist real_setup_started.");
-  assertCondition(afterReal.hasLocalSetup && afterReal.hasModelConfig && afterReal.hasLocalRecordScan && afterReal.hasAutoInstall && afterReal.hasManualInstall && afterReal.hasNoRealImport, "Real setup did not show smart setup and local record bootstrap panel.");
-  assertCondition(!afterReal.hasPrimaryNav, "Real setup should not reveal the main navigation before completion.");
-  assertNoHorizontalOverflow(afterReal, "Real setup");
+  assertCondition(localMode.status === "real_setup_started", "Local mode choice should persist real_setup_started.");
+  assertCondition(!localMode.hasNav, "Local mode activation should not reveal main navigation before completion.");
+  assertCondition(localMode.hasSmartKey && localMode.hasApiKeyHelp, "Local mode should show smart key configuration and API Key help.");
+  assertCondition(localMode.hasLocalRecord && localMode.hasScan && localMode.hasAutoInstall && localMode.hasManualInstall, "Local mode should show local record component bootstrap choices.");
+  assertCondition(localMode.hasPreview && localMode.hasDryRunBoundary, "Local mode should show authorization dry-run preview and first useful result preview.");
+  assertCondition(localMode.forbidden.length === 0, `Ordinary activation UI leaked internal terms: ${localMode.forbidden.join(", ")}`);
+  assertNoOverflow(localMode, "local mode");
 
-  await navigate(cdp, "/butler");
-  await evaluate(cdp, "localStorage.setItem('openbutler:first_run_activation:v1', 'unseen'); location.reload(); true");
-  await waitForCondition(cdp, "!!document.querySelector('.first-run-guide')", 6000, "first-run dialog before later choice");
-  await evaluate(cdp, `Array.from(document.querySelectorAll('.first-run-guide button')).find((button) => button.innerText.includes('稍后配置')).click(); true`);
+  await evaluate(cdp, `Array.from(document.querySelectorAll('button')).find((button) => button.innerText.includes('稍后配置')).click(); true`);
   await new Promise((resolveWait) => setTimeout(resolveWait, 350));
-  const afterLater = await evaluate(cdp, `(() => ({
+  const later = await evaluate(cdp, `(() => ({
+    width: innerWidth,
+    scrollWidth: document.documentElement.scrollWidth,
     status: localStorage.getItem('openbutler:first_run_activation:v1'),
-    hasDialog: !!document.querySelector('.first-run-guide'),
+    hasGuide: !!document.querySelector('.first-run-guide'),
     hasMainShell: !!document.querySelector('.app-shell'),
-    hasNextStep: document.body.innerText.includes('你可以稍后回来继续设置') || document.body.innerText.includes('先看样例'),
-    width: innerWidth,
-    scrollWidth: document.documentElement.scrollWidth
+    hasNextStep: document.body.innerText.includes('稍后回来继续设置') || document.body.innerText.includes('先看样例')
   }))()`);
-  assertCondition(afterLater.status === "dismissed", "Later choice did not persist dismissed.");
-  assertCondition(afterLater.hasDialog && !afterLater.hasMainShell && afterLater.hasNextStep, "Later choice should keep the activation gate instead of entering the full app.");
-  assertNoHorizontalOverflow(afterLater, "Later");
-
-  await evaluate(cdp, "localStorage.setItem('openbutler:first_run_activation:v1', 'demo_selected'); true");
-  await navigate(cdp, "/me");
-  const reopenBefore = await evaluate(cdp, "document.body.innerText.includes('重新选择开始方式')");
-  assertCondition(reopenBefore, "/me missing reopen activation guide entry.");
-  await evaluate(cdp, `Array.from(document.querySelectorAll('button')).find((button) => button.innerText.includes('重新选择开始方式')).click(); true`);
-  await new Promise((resolveWait) => setTimeout(resolveWait, 350));
-  const afterReopen = await evaluate(cdp, `(() => ({
-    hasDialog: !!document.querySelector('.first-run-guide'),
-    hasIntro: document.body.innerText.includes('像安装一个私人管家一样开始'),
-    width: innerWidth,
-    scrollWidth: document.documentElement.scrollWidth
-  }))()`);
-  assertCondition(afterReopen.hasDialog && afterReopen.hasIntro, "/me did not reopen first-run activation flow.");
-  assertNoHorizontalOverflow(afterReopen, "Reopen");
+  assertCondition(later.status === "dismissed", "Later choice should persist dismissed.");
+  assertCondition(later.hasGuide && !later.hasMainShell && later.hasNextStep, "Later choice should keep the user in activation instead of the main app.");
+  assertNoOverflow(later, "later");
 
   console.log(JSON.stringify({
-    checked: "first-run-activation",
+    checked: "local-mode-activation",
     ok: true,
     webUrl,
-    viewport: "390x844",
-    initial,
-    afterDemo,
-    afterReal,
-    afterLater,
-    afterReopen,
+    initial: {hasGuide: initial.hasGuide, hasMainShell: initial.hasMainShell},
+    sampleMode: {status: sampleMode.status, hasMainShell: sampleMode.hasMainShell},
+    localMode: {
+      status: localMode.status,
+      hasSmartKey: localMode.hasSmartKey,
+      hasLocalRecord: localMode.hasLocalRecord,
+      hasPreview: localMode.hasPreview,
+    },
+    later: {status: later.status, hasGuide: later.hasGuide},
   }, null, 2));
 } catch (error) {
   console.error(JSON.stringify({
-    checked: "first-run-activation",
+    checked: "local-mode-activation",
     ok: false,
     webUrl,
     error: error instanceof Error ? error.message : String(error),

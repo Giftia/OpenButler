@@ -2978,8 +2978,8 @@ function FirstRunGuide({
           <div className="first-run-local-setup" aria-label="本地完全体设置">
             <div className="local-setup-head">
               <span className="privacy-chip">{isDesktopRuntime ? "本地完全体" : "网页样例"}</span>
-              <strong>打开完整设置前，先完成两步</strong>
-              <p>先填写智能整理信息，再查找本机记录组件。找到或安装后，OpenButler 才能开始整理你的本机记录。</p>
+              <strong>先完成本地模式激活</strong>
+              <p>先填写智能整理钥匙，再查找本机记录组件。连接成功后先看授权前预览，确认后才会开始整理你的本机记录。</p>
             </div>
             <div className="local-setup-status">
               <StatusItem label="桌面环境" value={isDesktopRuntime ? "已连接" : "仅样例"} />
@@ -2991,8 +2991,8 @@ function FirstRunGuide({
               <div className="local-mode-preview-panel">
                 <div className="section-title compact-title">
                   <div>
-                    <p className="eyebrow">完整使用需要桌面版</p>
-                    <h3>桌面版会带你完成本机设置</h3>
+                      <p className="eyebrow">完整使用需要桌面版</p>
+                      <h3>桌面版会带你完成本机设置</h3>
                   </div>
                 </div>
                 <p>公开网页只提供样例体验，不会扫描你的电脑。桌面版会在本机一步步带你完成下面三件事。</p>
@@ -3037,7 +3037,7 @@ function FirstRunGuide({
                   <div className="section-title compact-title">
                     <div>
                       <p className="eyebrow">智能整理能力</p>
-                      <h3>先连接智能整理能力</h3>
+                      <h3>先连接智能整理钥匙</h3>
                     </div>
                   </div>
                   <div className="api-key-help-card">
@@ -3142,6 +3142,27 @@ function FirstRunGuide({
                     </button>
                   </div>
                   <small>如果没有找到本机记录组件，自动安装会先请求确认，再从官方 Releases 下载最新安装包。无法识别安装包时会转为手动安装。</small>
+                </div>
+
+                <div className="model-config-panel local-preview-panel">
+                  <div className="section-title compact-title">
+                    <div>
+                      <p className="eyebrow">授权前预览</p>
+                      <h3>先看将读取什么，再决定是否开始</h3>
+                    </div>
+                  </div>
+                  <p className="policy-note">这一步只显示聚合信息。确认前不会导入真实活动，不显示窗口标题、URL、截图路径或原始内容。</p>
+                  <div className="local-setup-status preview-status-grid">
+                    <StatusItem label="时间范围" value="今天 / 最近 24 小时" />
+                    <StatusItem label="记录数量" value={mineContextStatus?.reachable ? "连接后计算" : "连接后显示"} />
+                    <StatusItem label="数据类型" value="时间片段 / 应用使用 / 摘要线索" />
+                    <StatusItem label="写入状态" value="确认前不写入" />
+                  </div>
+                  <div className="first-use-result-card">
+                    <span className="privacy-chip">第一份今日整理预览</span>
+                    <strong>完成连接后，OpenButler 会先给你一张今日整理主卡。</strong>
+                    <p>它会说明今天整理了什么、哪条最值得先看、依据来自哪里，以及哪些结论还不能确认。记录不足时，会告诉你下一步怎么补齐，而不是显示空控制台。</p>
+                  </div>
                 </div>
               </>
             )}

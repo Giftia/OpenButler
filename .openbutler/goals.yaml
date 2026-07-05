@@ -1,25 +1,28 @@
 product_goal:
   name: "OpenButler 主动全场景感知 AI 管家"
   mission: "让用户的生活更加清晰高效可量化"
-  current_stage: "Product Shell Direction Convergence"
+  current_stage: "Local Mode Activation to First Useful Result"
   north_star: "用户每天 60 秒内理解今天发生了什么、什么值得注意、下一步应该做什么"
 
 active_objectives:
-  - id: OB-GOAL-025
-    title: "Product Shell Direction Convergence"
+  - id: OB-GOAL-026
+    title: "Local Mode Activation to First Useful Result"
     priority: P0
     status: active
     description: >
-      收敛 OpenButler 的正式普通用户产品壳。正式主线采用 iOS / Apple Home 式私人管家，
-      吸收米家式清晰状态数据，并保留大屏 PPT 方向用于商业演示。
-      本阶段不新增底层能力，优先明确 /butler、首次激活、本地模式和依据层的产品路径。
+      将 Windows 桌面版首次使用路径收敛到“安装后能开始用”。
+      普通用户必须先理解样例体验和本地模式的区别，完成智能整理钥匙、
+      本机记录组件、授权前预览，再看到第一份今日整理预览。
     success_criteria:
-      - "正式产品壳方向记录在 PRODUCT_SHELL_DIRECTION_CONVERGENCE.md"
-      - "CONTEXT.md 记录 私人整理管家、样例体验、本地模式、本机记录组件、智能整理钥匙、依据层 等术语"
-      - "ADR 0010 记录为什么采用 iOS / Apple Home 方向作为正式主线"
-      - "后续工作拆成可独立执行的 GitHub issues"
-      - "current_state.md、goals.yaml、task_queue.yaml 不再把旧设计实验误写成当前主线"
-      - "不读取真实 MineContext 数据，不复制截图，不调用外部模型"
+      - "桌面版首次启动未激活前不显示主导航或空主界面"
+      - "用户可以选择先看样例，且样例明确未读取真实数据"
+      - "启用本地模式必须经过智能整理钥匙配置"
+      - "启用本地模式必须经过本机记录组件扫描、安装说明或连接检测"
+      - "授权前 dry-run 预览只显示聚合信息，不写数据库"
+      - "第一份今日整理预览说明整理了什么、依据来自哪里、哪些不能确认"
+      - "普通 UI 不出现 MineContext、PCActivity、mock、seed、Provider、Webhook"
+      - "桌面状态接口不返回真实活动标题、URL、截图路径、API Key 或 raw output"
+      - "不读取真实 MineContext 活动，不复制截图，不调用外部模型"
 
 paused_objectives:
   - id: OB-GOAL-023
@@ -41,6 +44,22 @@ paused_objectives:
       - "不读取真实 MineContext 活动，不复制截图，不调用外部模型"
       - "前端 build、后端核心测试、桌面合同检查和桌面资源检查通过"
 archived_objectives:
+  - id: OB-GOAL-025
+    title: "Product Shell Direction Convergence"
+    priority: P0
+    status: implemented
+    description: >
+      收敛 OpenButler 的正式普通用户产品壳。正式主线采用 iOS / Apple Home 式私人管家，
+      吸收米家式清晰状态数据，并保留大屏 PPT 方向用于商业演示。
+      本阶段不新增底层能力，优先明确 /butler、首次激活、本地模式和依据层的产品路径。
+    success_criteria:
+      - "正式产品壳方向记录在 PRODUCT_SHELL_DIRECTION_CONVERGENCE.md"
+      - "CONTEXT.md 记录 私人整理管家、样例体验、本地模式、本机记录组件、智能整理钥匙、依据层 等术语"
+      - "ADR 0010 记录为什么采用 iOS / Apple Home 方向作为正式主线"
+      - "后续工作拆成可独立执行的 GitHub issues"
+      - "current_state.md、goals.yaml、task_queue.yaml 不再把旧设计实验误写成当前主线"
+      - "不读取真实 MineContext 数据，不复制截图，不调用外部模型"
+
   - id: OB-GOAL-016
     title: "Demo / Local Mode Boundary"
     priority: P0

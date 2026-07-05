@@ -1178,12 +1178,15 @@ class ButlerCoreService:
         desktop_types_path = root / "frontend" / "src" / "desktop.d.ts"
         frontend_api_path = root / "frontend" / "src" / "lib" / "api.ts"
         desktop_doc_path = root / "docs" / "product" / "ELECTRON_FIRST_RUN_PRODUCTIZATION_SHELL.md"
+        local_activation_doc_path = root / "docs" / "product" / "LOCAL_MODE_FIRST_USE_ACTIVATION.md"
         commercial_ppt_path = root / "docs" / "productization" / "openbutler-commercial-concept-pitch" / "ppt" / "index.html"
         desktop_main_text = desktop_main_path.read_text(encoding="utf-8") if desktop_main_path.exists() else ""
         desktop_preload_text = desktop_preload_path.read_text(encoding="utf-8") if desktop_preload_path.exists() else ""
         desktop_package_text = desktop_package_path.read_text(encoding="utf-8") if desktop_package_path.exists() else ""
         desktop_status_test_text = desktop_status_test_path.read_text(encoding="utf-8") if desktop_status_test_path.exists() else ""
         desktop_smoke_text = desktop_smoke_path.read_text(encoding="utf-8") if desktop_smoke_path.exists() else ""
+        local_activation_smoke_path = root / "frontend" / "scripts" / "smoke-local-mode-activation.mjs"
+        local_activation_smoke_text = local_activation_smoke_path.read_text(encoding="utf-8") if local_activation_smoke_path.exists() else ""
         desktop_packaged_smoke_text = desktop_packaged_smoke_path.read_text(encoding="utf-8") if desktop_packaged_smoke_path.exists() else ""
         frontend_api_text = frontend_api_path.read_text(encoding="utf-8") if frontend_api_path.exists() else ""
         commercial_ppt_text = commercial_ppt_path.read_text(encoding="utf-8") if commercial_ppt_path.exists() else ""
@@ -2532,6 +2535,112 @@ class ButlerCoreService:
                             {"kind": "api", "path": "GET /api/butler/mvp-report"},
                         ],
                         report.get("privacy", {}),
+                    ),
+            ],
+            "OB-GOAL-026": [
+                    criterion(
+                        "activation_gate_blocks_main_app",
+                        "桌面版首次启动未激活前不显示主导航或空主界面",
+                        "activationGateOpen" in app_text
+                        and "mandatory" in app_text
+                        and "updateActivation(\"dismissed\")" in app_text
+                        and "hasMainShell" in local_activation_smoke_text
+                        and "Main app should not be visible before activation" in local_activation_smoke_text,
+                        [
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                            {"kind": "file", "path": "frontend/scripts/smoke-local-mode-activation.mjs"},
+                        ],
+                    ),
+                    criterion(
+                        "sample_mode_choice",
+                        "用户可以选择先看样例，且样例明确未读取真实数据",
+                        "先看样例" in app_text
+                        and "真实数据" in app_text
+                        and "demo_selected" in local_activation_smoke_text,
+                        [
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                            {"kind": "file", "path": "frontend/scripts/smoke-local-mode-activation.mjs"},
+                        ],
+                    ),
+                    criterion(
+                        "smart_key_required",
+                        "启用本地模式必须经过智能整理钥匙配置",
+                        "智能整理钥匙" in app_text
+                        and "我该从哪里获得 API Key" in app_text
+                        and "missingModelFields" in app_text,
+                        [{"kind": "file", "path": "frontend/src/App.tsx"}],
+                    ),
+                    criterion(
+                        "local_record_component_bootstrap",
+                        "启用本地模式必须经过本机记录组件扫描、安装说明或连接检测",
+                        "本机记录组件" in app_text
+                        and "查找本机记录组件" in app_text
+                        and "自动安装" in app_text
+                        and "手动安装" in app_text
+                        and "scanMineContextInstallations" in desktop_preload_text
+                        and "installMineContextWithApproval" in desktop_preload_text,
+                        [
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                            {"kind": "file", "path": "desktop/src/preload.cjs"},
+                        ],
+                    ),
+                    criterion(
+                        "dry_run_preview_redacted",
+                        "授权前 dry-run 预览只显示聚合信息，不写数据库",
+                        "授权前预览" in app_text
+                        and "确认前不会导入真实活动" in app_text
+                        and '"kind": "dry_run_only"' in (root / "backend" / "app" / "main.py").read_text(encoding="utf-8")
+                        and '"database_written": False' in (root / "backend" / "app" / "main.py").read_text(encoding="utf-8")
+                        and "database_written" in desktop_status_test_text,
+                        [
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                            {"kind": "file", "path": "backend/app/main.py"},
+                            {"kind": "file", "path": "backend/app/modules/butler_core/tests/test_desktop_status.py"},
+                        ],
+                    ),
+                    criterion(
+                        "first_useful_result_preview",
+                        "第一份今日整理预览说明整理了什么、依据来自哪里、哪些不能确认",
+                        "第一份今日整理预览" in app_text
+                        and local_activation_doc_path.exists()
+                        and "哪些结论还不能确认" in local_activation_doc_path.read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "frontend/src/App.tsx"},
+                            {"kind": "file", "path": "docs/product/LOCAL_MODE_FIRST_USE_ACTIVATION.md"},
+                        ],
+                    ),
+                    criterion(
+                        "ordinary_ui_hides_internal_terms",
+                        "普通 UI 不出现 MineContext、PCActivity、mock、seed、Provider、Webhook",
+                        "forbidden" in local_activation_smoke_text
+                        and "PCActivity" in local_activation_smoke_text
+                        and "Provider" in local_activation_smoke_text
+                        and "Webhook" in local_activation_smoke_text,
+                        [{"kind": "file", "path": "frontend/scripts/smoke-local-mode-activation.mjs"}],
+                    ),
+                    criterion(
+                        "desktop_status_redacted",
+                        "桌面状态接口不返回真实活动标题、URL、截图路径、API Key 或 raw output",
+                        "raw_activity_titles_returned" in desktop_status_test_text
+                        and "screenshot_paths_returned" in desktop_status_test_text
+                        and "raw_output_returned" in desktop_status_test_text
+                        and "apiKey" not in desktop_status_test_text,
+                        [
+                            {"kind": "file", "path": "backend/app/main.py"},
+                            {"kind": "file", "path": "backend/app/modules/butler_core/tests/test_desktop_status.py"},
+                        ],
+                    ),
+                    criterion(
+                        "privacy_no_real_read",
+                        "不读取真实 MineContext 活动，不复制截图，不调用外部模型",
+                        "不读取真实 MineContext 活动" in (root / ".openbutler" / "goals.yaml").read_text(encoding="utf-8")
+                        and "copy_screenshots" in desktop_status_test_text
+                        and "external_model_allowed" in desktop_status_test_text
+                        and "screenshots_copied" in (root / "backend" / "app" / "main.py").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": ".openbutler/goals.yaml"},
+                            {"kind": "file", "path": "backend/app/main.py"},
+                        ],
                     ),
             ],
         }

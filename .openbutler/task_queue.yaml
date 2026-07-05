@@ -1414,7 +1414,90 @@ tasks:
     github_issue_url: "https://github.com/Giftia/OpenButler/issues/8"
     done_when:
       - "current_state.md 记录产品壳方向收敛"
-      - "goals.yaml 当前 active objective 是 OB-GOAL-025"
+      - "goals.yaml 曾将 OB-GOAL-025 设为 active objective"
       - "task_queue.yaml 包含下一批可执行任务"
+
+  - id: OB-ACT-003
+    title: "桌面首次启动强制激活门禁"
+    goal_id: OB-GOAL-026
+    priority: P0
+    status: done
+    done_when:
+      - "fresh profile 打开 /butler 时不能看到主导航"
+      - "未完成激活时不能进入空主界面"
+      - "稍后配置停留在引导页"
+    evidence:
+      - "frontend/src/App.tsx activationGateOpen"
+      - "frontend/scripts/smoke-local-mode-activation.mjs"
+
+  - id: OB-ACT-004
+    title: "智能整理钥匙配置页与 API Key 帮助卡"
+    goal_id: OB-GOAL-026
+    priority: P0
+    status: done
+    done_when:
+      - "本地模式先展示智能整理钥匙配置"
+      - "提供 API Key 获取帮助卡"
+      - "未填必填字段不能继续扫描本机记录组件"
+      - "普通 UI 不暴露 Provider 或 Webhook"
+    evidence:
+      - "frontend/src/App.tsx model-config-panel"
+      - "frontend/scripts/smoke-local-mode-activation.mjs"
+
+  - id: OB-LOCAL-002
+    title: "本机记录组件扫描、安装说明、连接检测"
+    goal_id: OB-GOAL-026
+    priority: P0
+    status: done
+    done_when:
+      - "普通 UI 使用本机记录组件"
+      - "提供查找、启动、自动安装、手动安装、选择安装包入口"
+      - "自动安装仍需要用户确认"
+      - "不读取真实活动明细"
+    evidence:
+      - "frontend/src/App.tsx FirstRunGuide"
+      - "desktop/src/main.cjs MineContext bridge"
+      - "frontend/src/desktop.d.ts"
+
+  - id: OB-LOCAL-003
+    title: "授权前 dry-run 预览将读取什么"
+    goal_id: OB-GOAL-026
+    priority: P0
+    status: done
+    done_when:
+      - "预览只显示聚合信息"
+      - "确认前不写数据库"
+      - "确认前不显示真实标题、URL、截图路径或 raw output"
+      - "/api/desktop/status 返回脱敏预览状态"
+    evidence:
+      - "backend/app/main.py desktop_status first_use"
+      - "backend/app/modules/butler_core/tests/test_desktop_status.py"
+      - "frontend/src/App.tsx local-preview-panel"
+
+  - id: OB-FIRST-001
+    title: "生成第一份今日整理预览"
+    goal_id: OB-GOAL-026
+    priority: P0
+    status: done
+    done_when:
+      - "激活流说明完成连接后会出现今日整理预览"
+      - "预览说明整理了什么、依据来自哪里、哪些不能确认"
+      - "数据不足时说明下一步而不是空控制台"
+    evidence:
+      - "frontend/src/App.tsx first-use-result-card"
+      - "docs/product/LOCAL_MODE_FIRST_USE_ACTIVATION.md"
+
+  - id: OB-DESK-002
+    title: "桌面激活链路 smoke 和安装包回归"
+    goal_id: OB-GOAL-026
+    priority: P0
+    status: in_progress
+    done_when:
+      - "npm run smoke:local-mode-activation 通过"
+      - "fresh userData 桌面启动停在激活门禁"
+      - "关闭窗口和托盘唤起后激活状态保持"
+      - "卸载/退出不遗留 openbutler-backend.exe"
+    evidence:
+      - "本轮补充前端本地模式激活 smoke；完整 packaged installer/卸载回归仍需单独执行。"
 
 blocked: []

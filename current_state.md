@@ -1,5 +1,36 @@
 # OpenButler Current State
 
+Updated: 2026-07-05
+
+## Local Mode Activation to First Useful Result
+
+Current active objective is `OB-GOAL-026: Local Mode Activation to First Useful Result`.
+
+The current productization priority is no longer another homepage redesign. It is the first-use desktop path: a non-technical user should install the Windows desktop app, understand sample mode versus local mode, configure the smart organization key, connect the local record component, preview what will be read, and then see the first useful today preview.
+
+This phase uses ordinary-user language:
+
+- `智能整理钥匙` for the model/API-key setup.
+- `本机记录组件` for the local observation component.
+- `样例体验，未读取你的真实数据` for public/demo mode.
+- `授权前预览` for the dry-run-only local preview.
+
+Current implementation facts:
+
+- `/butler` is gated by the first-run activation state until the user chooses sample mode or completes local setup.
+- Local mode setup shows smart key configuration, API Key help, local record component scan/install/connect options, authorization preview, and first useful result preview.
+- `/api/desktop/status` now includes a redacted `first_use.today_preview` status. It does not return real activity titles, URLs, screenshot paths, API keys, local paths, or raw output.
+- `npm run smoke:local-mode-activation` exists for the mobile activation path.
+
+Still not completed in this phase:
+
+- Full packaged installer regression.
+- Fresh Electron userData packaged smoke.
+- Tray wake-up persistence regression.
+- Installer/uninstaller process cleanup regression for `openbutler-backend.exe`.
+
+Do not run real MineContext import or 7-day review as part of OB-GOAL-026 without a separate explicit authorization.
+
 Updated: 2026-06-23
 
 ## Product Shell Direction Convergence
