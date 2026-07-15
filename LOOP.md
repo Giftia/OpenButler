@@ -8,7 +8,8 @@ The development loop keeps repository facts, GitHub work, tests, and privacy con
 
 | Pattern | Cadence | Level | Authority |
 |---|---|---|---|
-| Repository governance drift audit | Manual until proven, then weekdays 08:30 Asia/Shanghai | L1 | Report only |
+| Repository governance drift audit | Daily 19:00 Asia/Shanghai | L1 | Report only |
+| Operator morning report | Daily 08:00 Asia/Shanghai | L1 | Evidence summary only |
 
 Command:
 
@@ -31,6 +32,10 @@ Pop-Location
 GitHub Issues are the executable work queue. `.openbutler/task_queue.yaml` stores goal-level synchronization and evidence, not a second independent backlog.
 
 The L1 loop must not inspect MineContext source data, OpenButler runtime databases, screenshots, raw activity output, microphone data, or camera data.
+
+The Codex heartbeat `OpenButler Night Loop & Morning Report` is configured to own both scheduled wakes; the first evening and morning executions require runtime readback before the schedule task is complete. The evening wake follows the current promotion level and processes GitHub work strictly one issue at a time. At L1 it runs only the report-only governance audit. The morning wake summarizes completed work, tests, deployment evidence, privacy checks, attention points, manual experience paths, and decisions requiring the user. User authorization for local real-data testing, production deployment, and desktop installation is necessary but not sufficient: the current level, tests, verifier, privacy rules, and rollback gates still apply.
+
+Production delivery remains in a supervised trial until two consecutive nightly cycles complete without a privacy violation, unresolved serious regression, failed production or desktop smoke, or rollback. A failed cycle resets the count.
 
 ## Outputs
 

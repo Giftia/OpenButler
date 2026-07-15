@@ -29,4 +29,17 @@ This tracked file contains accepted, aggregate run evidence only. Raw reports st
 
 ## Accepted Runs
 
-No run accepted yet.
+```json
+{
+  "run_id": "2026-07-15T12:06:11.179Z",
+  "pattern": "repo-governance-drift-audit",
+  "level": "L1",
+  "duration_s": 12,
+  "items_found": 0,
+  "actions_taken": 0,
+  "github_mutations": 0,
+  "tokens_estimate": 5000,
+  "outcome": "clean",
+  "report_ref": "data/loop-runs/2026-07-15T12-06-11-179Z"
+}
+```

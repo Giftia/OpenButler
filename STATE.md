@@ -1,21 +1,21 @@
 # OpenButler Loop State
 
-Last accepted run: never
-Current level: L0 preparation
+Last accepted run: 2026-07-15T20:06:11+08:00
+Current level: L1 active
 Canonical branch: `main`
 Active objective: `OB-GOAL-027`
 loop-pause-all: false
 
 ## High Priority
 
-- Review and merge PR #16 after confirming the green governance baseline.
-- Complete the first GitHub-connected, report-only governance audit from canonical `main`.
-- Keep `OB-GOAL-028` blocked until OB-GOAL-027 promotion evidence is accepted.
+- Collect the remaining useful L1 runs required by `LOOP.md`; do not game the promotion gate with duplicate no-op runs.
+- Keep `OB-GOAL-028` blocked until the L1-to-L2 promotion evidence is accepted.
+- Use the 08:00 report to surface attention points, verification paths, and decisions for the user.
 
 ## Human Inbox
 
-- Review the first L1 report before enabling the weekday schedule.
-- Keep repository variable `OPENBUTLER_L1_SCHEDULE_ENABLED` unset until that report is accepted.
+- The first canonical L1 report was accepted after a clean GitHub-connected run with zero mutations.
+- The Codex heartbeat `OpenButler Night Loop & Morning Report` is registered at 19:00 and 08:00 Asia/Shanghai; its first scheduled wake still needs runtime readback.
 - Review any future proposal that touches privacy, identity, sensors, MineContext, Electron lifecycle, dependencies, API schemas, or external actions.
 
 ## Watch List
@@ -37,4 +37,4 @@ loop-pause-all: false
 | Repository visibility | passed | public |
 | CI | passed | all six required checks passed on PR #16 |
 | Branch protection | passed | PR required; strict checks; force-push and deletion disabled |
-| Manual L1 run | pending | run from canonical main after PR #16 is merged |
+| Manual L1 run | passed | canonical main; clean; zero product/GitHub mutations; ignored report `2026-07-15T12-06-11-179Z` |

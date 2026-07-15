@@ -75,24 +75,30 @@ tasks:
     title: "运行首次 L1 治理巡检"
     goal_id: OB-GOAL-027
     priority: P0
-    status: needs-human
-    why: "PR #16 must be reviewed and merged before the first GitHub-connected audit can treat workflows on canonical main as active evidence."
+    status: done
     done_when:
       - "手动巡检完成"
       - "报告不包含用户活动明细"
       - "无变化时提前退出"
       - "巡检未修改产品代码或 GitHub 状态"
+    evidence:
+      - "PR #16 merged as 5081011"
+      - "canonical GitHub-connected L1 outcome clean"
+      - "zero product mutations, GitHub mutations, MineContext reads, screenshot copies, external model calls, or webhook calls"
 
   - id: OB-TASK-276
-    title: "启用工作日 08:30 L1 巡检"
+    title: "启用夜间 L1 巡检与 08:00 晨报"
     goal_id: OB-GOAL-027
     priority: P1
-    status: blocked
-    blocked_by: [OB-TASK-275]
+    status: in_progress
     done_when:
       - "自动化仅执行 report-only 巡检"
       - "每日 token 硬上限 100k"
       - "无可执行事项时在 5k tokens 左右退出"
+      - "晨报包含注意点、人工体验路径和阻塞选择项"
+    evidence:
+      - "Codex heartbeat OpenButler Night Loop & Morning Report registered at 19:00 and 08:00 Asia/Shanghai"
+      - "first scheduled evening and morning wakes still require runtime readback"
 
   - id: OB-TASK-277
     title: "记录 Ambient 路线、类型和安全门槛"

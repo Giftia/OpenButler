@@ -6,7 +6,7 @@ Updated: 2026-07-15
 
 The only active product objective is `OB-GOAL-027: Loop-Driven Ambient OpenButler`.
 
-OpenButler is moving from prompt-driven development to a controlled loop-engineering workflow. This stage does not add sensors or smart-home actions. It establishes a read-only L1 governance loop, CI gates, durable state, explicit budgets, circuit breakers, and a safe promotion path toward L2 and L3.
+OpenButler is moving from prompt-driven development to a controlled loop-engineering workflow. The canonical main baseline is merged and the first GitHub-connected L1 audit passed cleanly. A Codex heartbeat is registered for the evening Loop wake and the 08:00 morning evidence report; the first scheduled executions still require runtime readback. This stage does not add sensors or smart-home actions.
 
 ## Repository Baseline
 
@@ -15,8 +15,7 @@ OpenButler is moving from prompt-driven development to a controlled loop-enginee
 - Previous unrelated remote main: `archive/original-main-2026-07-15` at `5e67d7e`.
 - Product history baseline: `79485f5` before the OB-GOAL-027 branch.
 - Repository visibility: public after a redacted full-history scan found no tracked secrets, databases, screenshots, logs, or MineContext user data.
-- Active implementation branch: `codex/loop-driven-ambient-openbutler`.
-- Governance PR: `#16`; all six required checks pass and human review/merge is pending.
+- Governance PR: `#16`, merged as `5081011` after all required checks passed.
 - `main` protection requires a pull request and strict Butler Core, PC Activity, Workstation Vision, Frontend Build, Desktop Contract, and Loop Governance checks.
 
 ## Product Reality
@@ -54,7 +53,7 @@ The L1 development loop is report-only. It must not read real MineContext activi
 
 ## Next Promotion Gate
 
-CI and branch protection are ready. OB-GOAL-027 completes only after PR #16 receives human review and merge, the first GitHub-connected manual L1 audit is clean or has explicitly accepted findings, and the weekday report-only automation is configured. Product work then proceeds to `OB-GOAL-028: Secure Local Control Plane & PrivacyGuard`.
+CI, branch protection, the first canonical L1 run, and the scheduled evening/morning heartbeat are ready. The repository remains at L1 until the useful-run, false-positive, budget, and active-goal-drift gates in `LOOP.md` are satisfied. `OB-GOAL-028: Secure Local Control Plane & PrivacyGuard` remains blocked until that evidence is accepted.
 
 ## Privacy Boundary
 
