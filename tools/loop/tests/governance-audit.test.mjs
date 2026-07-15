@@ -12,7 +12,7 @@ function write(root, relativePath, value) {
   writeFileSync(target, value, "utf8");
 }
 
-function fixture({ activeGoals = ["OB-GOAL-027"], taskGoal = "OB-GOAL-027" } = {}) {
+function fixture({ activeGoals = ["OB-GOAL-027"], taskGoal = "OB-GOAL-027", evidence = [] } = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), "openbutler-loop-test-"));
   for (const file of [
     "AGENTS.md", "LOOP.md", "STATE.md", "loop-budget.md", "loop-constraints.md", "loop-run-log.md",
@@ -30,7 +30,8 @@ function fixture({ activeGoals = ["OB-GOAL-027"], taskGoal = "OB-GOAL-027" } = {
     "tasks:",
     "  - id: OB-TASK-TEST",
     `    goal_id: ${taskGoal}`,
-    "    status: ready"
+    "    status: done",
+    ...(evidence.length ? ["    evidence:", ...evidence.map((item) => `      - ${JSON.stringify(item)}`)] : [])
   ].join("\n"));
   write(root, "current_state.md", `Current objective: ${activeGoals[0] ?? "none"}\n`);
 
@@ -64,4 +65,16 @@ test("task referencing an undeclared goal is drift", () => {
   const report = auditRepository({ root, github: false, requireGithub: false, writeReports: false });
   assert.equal(report.outcome, "drift");
   assert.ok(report.findings.some((item) => item.code === "task_goal_missing"));
+});
+
+test("evidence prose containing slashes is not treated as a file path", () => {
+  const root = fixture({
+    evidence: [
+      "@cobusgreyling/loop-init@1.4.0 Codex daily-triage scaffold",
+      "tools/loop/package-lock.json pins scoped loop CLIs",
+      "upstream loop-audit score 100/100"
+    ]
+  });
+  const report = auditRepository({ root, github: false, requireGithub: false, writeReports: false });
+  assert.equal(report.outcome, "clean");
 });

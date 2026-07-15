@@ -81,9 +81,9 @@ function allGoalIds(goals) {
 
 function looksLikeEvidencePath(value) {
   return typeof value === "string"
-    && /[\\/]/.test(value)
+    && /^[.@\w-]+(?:[\\/][\w.@-]+)+$/.test(value)
     && !/^https?:\/\//i.test(value)
-    && !/\b(commit|remote|branch|points to)\b/i.test(value);
+    && !value.startsWith("@cobusgreyling/");
 }
 
 function checkLocalRepository(root, findings, partial) {
