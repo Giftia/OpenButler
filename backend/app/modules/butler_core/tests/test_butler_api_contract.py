@@ -418,10 +418,10 @@ class ButlerApiContractTests(unittest.TestCase):
         self.assertIn("evidence_boundary", template["criterion_contract"])
         self.assertIn("minecontext_source_deleted must remain 0", template["privacy_invariants"])
         objectives = {item["id"]: item for item in response["objectives"]}
-        self.assertEqual(set(objectives), {"OB-GOAL-026"})
-        objective = objectives["OB-GOAL-026"]
+        self.assertEqual(set(objectives), {"OB-GOAL-027"})
+        objective = objectives["OB-GOAL-027"]
         self.assertEqual(objective["status"], "proven")
-        self.assertEqual(objective["title"], "Local Mode Activation to First Useful Result")
+        self.assertEqual(objective["title"], "Loop-Driven Ambient OpenButler")
         self.assertEqual(objective["proven_count"], objective["criteria_count"])
         self.assertEqual(objective["priority"], "P0")
         self.assertTrue(objective["success_criteria"])
@@ -431,11 +431,11 @@ class ButlerApiContractTests(unittest.TestCase):
             self.assertTrue(criterion["evidence_refs"])
             self.assertTrue(criterion["evidence_boundary"])
         criteria = {item["id"]: item for item in objective["criteria"]}
-        self.assertEqual(criteria["activation_gate_blocks_main_app"]["status"], "proven")
-        self.assertEqual(criteria["smart_key_required"]["status"], "proven")
-        self.assertEqual(criteria["local_record_component_bootstrap"]["status"], "proven")
-        self.assertEqual(criteria["dry_run_preview_redacted"]["status"], "proven")
-        self.assertEqual(criteria["desktop_status_redacted"]["status"], "proven")
+        self.assertEqual(criteria["canonical_repository_baseline"]["status"], "proven")
+        self.assertEqual(criteria["loop_control_plane_files"]["status"], "proven")
+        self.assertEqual(criteria["read_only_governance_audit"]["status"], "proven")
+        self.assertEqual(criteria["required_ci_gates"]["status"], "proven")
+        self.assertEqual(criteria["ambient_roadmap_ordered"]["status"], "proven")
 
     def test_productization_objective_status_surfaces_unknown_goals(self) -> None:
         butler_router.run_demo(DemoRunRequest(import_pc_activity=False))
@@ -511,15 +511,15 @@ class ButlerApiContractTests(unittest.TestCase):
         self.assertTrue(response["privacy"]["strict_mode_respected"])
         self.assertTrue(response["evidence_boundary"])
         objectives = {item["id"]: item for item in response["objectives"]}
-        goal = objectives["OB-GOAL-026"]
+        goal = objectives["OB-GOAL-027"]
         self.assertEqual(goal["objective_status"], "proven")
         checks = {item["success_criterion"]: item for item in goal["success_criteria"]}
-        self.assertEqual(checks["桌面版首次启动未激活前不显示主导航或空主界面"]["verification_result"], "proven")
-        self.assertEqual(checks["启用本地模式必须经过智能整理钥匙配置"]["verification_result"], "proven")
-        self.assertEqual(checks["授权前 dry-run 预览只显示聚合信息，不写数据库"]["verification_result"], "proven")
-        self.assertEqual(checks["不读取真实 MineContext 活动，不复制截图，不调用外部模型"]["verification_result"], "proven")
-        self.assertTrue(checks["桌面版首次启动未激活前不显示主导航或空主界面"]["evidence_refs"])
-        self.assertTrue(checks["不读取真实 MineContext 活动，不复制截图，不调用外部模型"]["evidence_boundary"])
+        self.assertEqual(checks["LOOP.md、STATE.md、loop-budget.md、loop-constraints.md、loop-run-log.md 存在且相互一致"]["verification_result"], "proven")
+        self.assertEqual(checks["L1 治理巡检仅写入忽略目录中的报告，不修改产品代码或 GitHub 状态"]["verification_result"], "proven")
+        self.assertEqual(checks["基础 CI 覆盖 Butler Core、PC Activity、Workstation Vision、Frontend 和 Desktop contract"]["verification_result"], "proven")
+        self.assertEqual(checks["未读取真实 MineContext 活动、未复制截图、未调用外部模型"]["verification_result"], "proven")
+        self.assertTrue(checks["LOOP.md、STATE.md、loop-budget.md、loop-constraints.md、loop-run-log.md 存在且相互一致"]["evidence_refs"])
+        self.assertTrue(checks["未读取真实 MineContext 活动、未复制截图、未调用外部模型"]["evidence_boundary"])
 
     def test_productization_l1_audit_report_distinguishes_missing_and_out_of_scope(self) -> None:
         butler_router.run_demo(DemoRunRequest(import_pc_activity=False))

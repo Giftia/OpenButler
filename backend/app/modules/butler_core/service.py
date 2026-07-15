@@ -2643,6 +2643,107 @@ class ButlerCoreService:
                         ],
                     ),
             ],
+            "OB-GOAL-027": [
+                    criterion(
+                        "canonical_repository_baseline",
+                        "远端旧 main 已归档，当前产品历史成为受保护的 canonical main",
+                        "archive/original-main-2026-07-15" in (root / "current_state.md").read_text(encoding="utf-8")
+                        and "Canonical branch: `main`" in (root / "STATE.md").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "current_state.md"},
+                            {"kind": "file", "path": "STATE.md"},
+                        ],
+                    ),
+                    criterion(
+                        "loop_control_plane_files",
+                        "LOOP.md、STATE.md、loop-budget.md、loop-constraints.md、loop-run-log.md 存在且相互一致",
+                        all((root / item).exists() for item in [
+                            "LOOP.md",
+                            "STATE.md",
+                            "loop-budget.md",
+                            "loop-constraints.md",
+                            "loop-run-log.md",
+                        ])
+                        and "OB-GOAL-027" in (root / "STATE.md").read_text(encoding="utf-8")
+                        and "OB-GOAL-027" in (root / ".openbutler" / "goals.yaml").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "LOOP.md"},
+                            {"kind": "file", "path": "STATE.md"},
+                            {"kind": "file", "path": "loop-budget.md"},
+                            {"kind": "file", "path": "loop-constraints.md"},
+                            {"kind": "file", "path": "loop-run-log.md"},
+                        ],
+                    ),
+                    criterion(
+                        "read_only_governance_audit",
+                        "L1 治理巡检仅写入忽略目录中的报告，不修改产品代码或 GitHub 状态",
+                        (root / "tools" / "loop" / "governance-audit.mjs").exists()
+                        and "product_mutations: 0" in (root / "tools" / "loop" / "governance-audit.mjs").read_text(encoding="utf-8")
+                        and "github_mutations: 0" in (root / "tools" / "loop" / "governance-audit.mjs").read_text(encoding="utf-8")
+                        and "data/loop-runs" in (root / "LOOP.md").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "tools/loop/governance-audit.mjs"},
+                            {"kind": "file", "path": "tools/loop/tests/governance-audit.test.mjs"},
+                            {"kind": "file", "path": "LOOP.md"},
+                        ],
+                    ),
+                    criterion(
+                        "required_ci_gates",
+                        "基础 CI 覆盖 Butler Core、PC Activity、Workstation Vision、Frontend 和 Desktop contract",
+                        (root / ".github" / "workflows" / "ci.yml").exists()
+                        and all(label in (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8") for label in [
+                            "Butler Core",
+                            "PC Activity",
+                            "Workstation Vision",
+                            "Frontend Build",
+                            "Desktop Contract",
+                            "Loop Governance",
+                        ]),
+                        [{"kind": "file", "path": ".github/workflows/ci.yml"}],
+                    ),
+                    criterion(
+                        "github_issue_queue_contract",
+                        "GitHub Issues 成为可执行工作队列，仓库内 task queue 只保存目标级状态",
+                        "GitHub Issues - executable work queue" in (root / "current_state.md").read_text(encoding="utf-8")
+                        and "GitHub Issues are the executable work queue" in (root / "LOOP.md").read_text(encoding="utf-8")
+                        and (root / ".openbutler" / "task_queue.yaml").exists(),
+                        [
+                            {"kind": "file", "path": "current_state.md"},
+                            {"kind": "file", "path": "LOOP.md"},
+                            {"kind": "file", "path": ".openbutler/task_queue.yaml"},
+                        ],
+                    ),
+                    criterion(
+                        "ambient_roadmap_ordered",
+                        "Ambient 产品路线固定为 OB-GOAL-028 到 OB-GOAL-033，并保持安全前置顺序",
+                        all(goal in (root / ".openbutler" / "goals.yaml").read_text(encoding="utf-8") for goal in [
+                            "OB-GOAL-028",
+                            "OB-GOAL-029",
+                            "OB-GOAL-030",
+                            "OB-GOAL-031",
+                            "OB-GOAL-032",
+                            "OB-GOAL-033",
+                        ])
+                        and (root / "docs" / "architecture" / "LOOP_DRIVEN_AMBIENT_ARCHITECTURE.md").exists(),
+                        [
+                            {"kind": "file", "path": ".openbutler/goals.yaml"},
+                            {"kind": "file", "path": "docs/architecture/LOOP_DRIVEN_AMBIENT_ARCHITECTURE.md"},
+                        ],
+                    ),
+                    criterion(
+                        "loop_stage_privacy_boundary",
+                        "未读取真实 MineContext 活动、未复制截图、未调用外部模型",
+                        "No real MineContext activity was read" in (root / "current_state.md").read_text(encoding="utf-8")
+                        and report.get("privacy", {}).get("external_model_used") is False
+                        and report.get("privacy", {}).get("copied_screenshots") == 0
+                        and report.get("privacy", {}).get("minecontext_source_deleted") == 0,
+                        [
+                            {"kind": "file", "path": "current_state.md"},
+                            {"kind": "api", "path": "GET /api/butler/mvp-report"},
+                        ],
+                        report.get("privacy", {}),
+                    ),
+            ],
         }
         objectives = []
         for declared in active_objectives:
