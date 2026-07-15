@@ -334,4 +334,3 @@ if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
   }, null, 2));
   process.exitCode = report.outcome === "clean" ? 0 : report.outcome === "drift" ? 2 : 3;
 }
-

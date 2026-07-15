@@ -65,4 +65,3 @@ test("task referencing an undeclared goal is drift", () => {
   assert.equal(report.outcome, "drift");
   assert.ok(report.findings.some((item) => item.code === "task_goal_missing"));
 });
-

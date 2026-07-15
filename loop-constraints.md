@@ -52,4 +52,3 @@ These rules are binding for every automated loop.
 ## Kill Switch
 
 If `STATE.md` contains `loop-pause-all: true`, exit immediately.
-

@@ -20,4 +20,3 @@ GitHub Issues are the executable queue. `.openbutler/goals.yaml` remains the pro
 - L1 cannot repair drift; it only reports it.
 - L2 and L3 require separate promotion evidence.
 - Privacy, identity, sensors, dependencies, APIs, desktop lifecycle, and external actions always retain human review.
-

@@ -37,4 +37,3 @@ loop-pause-all: false
 | CI | pending | workflow is being added in OB-TASK-273 |
 | Branch protection | pending | configure after required checks are defined |
 | Manual L1 run | pending | OB-TASK-275 |
-

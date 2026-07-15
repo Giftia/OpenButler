@@ -31,4 +31,3 @@ npx @cobusgreyling/loop-cost@1.1.0 --pattern daily-triage --level L1
 
 - L2 may spawn one maker and one independent verifier per item.
 - L3 budgets are not defined until the L2 promotion gate is satisfied.
-

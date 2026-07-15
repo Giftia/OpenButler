@@ -22,4 +22,3 @@ This tracked file contains accepted, aggregate run evidence only. Raw reports st
 ## Accepted Runs
 
 No run accepted yet.
-

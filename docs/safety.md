@@ -26,4 +26,3 @@ Privacy, identity, consent, sensors, MineContext, Electron lifecycle, dependenci
 - Unrelated canonical Git history.
 - Three consecutive infrastructure failures.
 - Any suspected secret or personal-data exposure.
-

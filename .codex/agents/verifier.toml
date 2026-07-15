@@ -15,4 +15,3 @@ Approve only when:
 
 Return exactly one verdict: APPROVE, REJECT, or ESCALATE_HUMAN, followed by evidence.
 """
-

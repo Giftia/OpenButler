@@ -18,4 +18,3 @@ Use the existing Windows desktop product and laptop camera, microphone, speaker,
 - Sensor indicators must remain visible in the tray and application.
 - Multi-user household consent and unknown-person fallback are designed before private voice output.
 - Dedicated hardware and smart-home execution remain blocked until the first laptop ambient loop is reliable.
-

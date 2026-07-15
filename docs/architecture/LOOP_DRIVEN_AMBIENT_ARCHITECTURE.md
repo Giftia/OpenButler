@@ -114,4 +114,3 @@ trust-adjusted useful intervention rate
 ```
 
 Hard guards are zero unauthorized transfers, zero high-risk identity misattributions, zero quiet-hour violations, zero restart duplicates, no default raw audio/video persistence, and consent revocation within one cycle.
-
