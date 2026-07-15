@@ -6,7 +6,7 @@ Updated: 2026-07-15
 
 The only active product objective is `OB-GOAL-027: Loop-Driven Ambient OpenButler`.
 
-OpenButler is moving from prompt-driven development to a controlled loop-engineering workflow. The canonical main baseline is merged and the first GitHub-connected L1 audit passed cleanly. A Codex heartbeat now runs the evening Loop wake and the 08:00 morning evidence report. This stage does not add sensors or smart-home actions.
+OpenButler is moving from prompt-driven development to a controlled loop-engineering workflow. The canonical main baseline is merged and the first GitHub-connected L1 audit passed cleanly. A Codex heartbeat is registered for the evening Loop wake and the 08:00 morning evidence report; the first scheduled executions still require runtime readback. This stage does not add sensors or smart-home actions.
 
 ## Repository Baseline
 

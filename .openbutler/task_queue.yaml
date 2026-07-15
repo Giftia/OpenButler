@@ -90,14 +90,15 @@ tasks:
     title: "启用夜间 L1 巡检与 08:00 晨报"
     goal_id: OB-GOAL-027
     priority: P1
-    status: done
+    status: in_progress
     done_when:
       - "自动化仅执行 report-only 巡检"
       - "每日 token 硬上限 100k"
       - "无可执行事项时在 5k tokens 左右退出"
       - "晨报包含注意点、人工体验路径和阻塞选择项"
     evidence:
-      - "Codex heartbeat OpenButler Night Loop & Morning Report active at 19:00 and 08:00 Asia/Shanghai"
+      - "Codex heartbeat OpenButler Night Loop & Morning Report registered at 19:00 and 08:00 Asia/Shanghai"
+      - "first scheduled evening and morning wakes still require runtime readback"
 
   - id: OB-TASK-277
     title: "记录 Ambient 路线、类型和安全门槛"

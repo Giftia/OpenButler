@@ -15,7 +15,7 @@ loop-pause-all: false
 ## Human Inbox
 
 - The first canonical L1 report was accepted after a clean GitHub-connected run with zero mutations.
-- The Codex heartbeat `OpenButler Night Loop & Morning Report` is active at 19:00 and 08:00 Asia/Shanghai.
+- The Codex heartbeat `OpenButler Night Loop & Morning Report` is registered at 19:00 and 08:00 Asia/Shanghai; its first scheduled wake still needs runtime readback.
 - Review any future proposal that touches privacy, identity, sensors, MineContext, Electron lifecycle, dependencies, API schemas, or external actions.
 
 ## Watch List
