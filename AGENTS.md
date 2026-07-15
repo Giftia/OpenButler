@@ -4,7 +4,7 @@ OpenButler is a local-first proactive AI butler prototype that turns authorized 
 
 ## Current Priority
 
-Stabilize productization development on the real repository layout. Do not expand hardware, rewrite MineContext/godview, or migrate directories until the Git baseline and architecture reality documents remain clean.
+`OB-GOAL-027` is the only active objective. Establish the report-only loop-engineering control plane before adding ambient sensors or actions. Read `LOOP.md`, `STATE.md`, `loop-budget.md`, and `loop-constraints.md` before any loop-driven work.
 
 ## Real Directory Layout
 
@@ -60,6 +60,24 @@ npm run build
 
 Use `npm run verify:productization` only when it is acceptable to run the local Productization Harness and write/update local artifacts under `data/`.
 
+## Loop Engineering
+
+The L1 governance loop is read-only and separate from the future ambient product runtime:
+
+```powershell
+Push-Location tools/loop
+npm ci --registry=https://registry.npmjs.org
+npm run audit:governance -- --github
+Pop-Location
+```
+
+- `.openbutler/goals.yaml` is the active product-objective source.
+- GitHub Issues are the executable work queue.
+- `STATE.md` is the current loop snapshot.
+- `LOOP.md` is the operating contract.
+- L1 may write only ignored reports under `data/loop-runs/`; it must not edit tracked files or GitHub state.
+- L2/L3 are disabled until the promotion gates in `LOOP.md` are satisfied.
+
 ## Current Capabilities
 
 - MineContext/godview adapter exists and supports PowerShell query/search wrappers plus read-only SQLite activity import. Real 7-day dry-run against user data requires explicit confirmation.
@@ -104,3 +122,5 @@ Single-context repo. Engineering skills should read `AGENTS.md`, the architectur
 - Plugin runtime: `docs/architecture/PLUGIN_RUNTIME.md`
 - Privacy boundaries: `docs/privacy/PRIVACY_BOUNDARIES.md`
 - Reality audit: `docs/dev/OPENBUTLER_REALITY_AUDIT_2026-05-30.md`
+- Loop operations: `docs/dev/LOOP_OPERATIONS.md`
+- Ambient architecture: `docs/architecture/LOOP_DRIVEN_AMBIENT_ARCHITECTURE.md`

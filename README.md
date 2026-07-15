@@ -1,6 +1,21 @@
 # OpenButler
 
-OpenButler is a local-first proactive AI butler prototype. It uses authorized local context, especially MineContext PC activity, to build evidence-backed timelines, metrics, insights, briefings, and feedback loops.
+OpenButler is a local-first proactive AI butler prototype. It turns authorized local context into evidence-backed timelines, reminders, briefings, and eventually quiet, context-aware assistance.
+
+Development is now governed by a separate loop-engineering control plane. The engineering loop maintains repository truth and quality gates; the product's future ambient loop observes context, applies consent, decides whether to stay silent, and learns from feedback.
+
+## Loop Engineering
+
+Install the pinned tools and run the report-only L1 audit:
+
+```powershell
+Push-Location tools/loop
+npm ci --registry=https://registry.npmjs.org
+npm run audit:governance -- --github
+Pop-Location
+```
+
+The audit writes redacted reports only below ignored `data/loop-runs/`. It does not read real MineContext activity, modify product code, mutate GitHub, deploy, or call external models. See `LOOP.md`, `STATE.md`, and `docs/dev/LOOP_OPERATIONS.md`.
 
 ## Current Reality
 
