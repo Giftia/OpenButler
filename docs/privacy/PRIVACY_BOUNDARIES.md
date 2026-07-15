@@ -29,6 +29,8 @@ OpenButler reads authorized local MineContext data through adapters. Defaults:
 - screenshot paths may be stored as evidence refs,
 - raw godview output is not stored unless explicitly configured.
 
+Repository defaults do not contain a personal workspace path. Runtime paths are derived from the current operating-system profile or explicit local configuration. MineContext health responses expose only whether workspace and data-directory settings are configured; they do not return local absolute paths.
+
 ## PC Activity Import Preview
 
 The L2 recent-history import preview is dry-run by default and must remain non-mutating:

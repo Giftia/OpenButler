@@ -1,0 +1,51 @@
+name: OpenButler L1 Governance Audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 0 * * 1-5"
+
+permissions:
+  contents: read
+  actions: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  governance-audit:
+    name: L1 Report Only
+    if: github.event_name == 'workflow_dispatch' || vars.OPENBUTLER_L1_SCHEDULE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: tools/loop/package-lock.json
+      - run: npm ci --registry=https://registry.npmjs.org
+        working-directory: tools/loop
+      - id: pause
+        name: Check loop pause gate
+        run: node tools/loop/pause-gate.mjs
+      - id: audit
+        if: steps.pause.outputs.paused != 'true'
+        continue-on-error: true
+        run: npm run audit:governance -- --github
+        working-directory: tools/loop
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Upload redacted report
+        if: always() && steps.pause.outputs.paused != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: openbutler-l1-governance-${{ github.run_id }}
+          path: data/loop-runs/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Preserve audit outcome
+        if: steps.pause.outputs.paused != 'true' && steps.audit.outcome != 'success'
+        run: exit 1

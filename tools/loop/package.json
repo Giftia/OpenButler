@@ -1,0 +1,23 @@
+{
+  "name": "openbutler-loop-control-plane",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "audit:governance": "node governance-audit.mjs",
+    "audit:upstream": "loop-audit ../.. --suggest",
+    "cost": "loop-cost --pattern daily-triage --cadence 1d --level L1",
+    "sync": "loop-sync ../..",
+    "context:check": "loop-context --check --ledger ../../data/loop-ledger.json",
+    "test": "node --test tests"
+  },
+  "dependencies": {
+    "@cobusgreyling/loop-audit": "1.6.0",
+    "@cobusgreyling/loop-context": "1.1.0",
+    "@cobusgreyling/loop-cost": "1.1.0",
+    "@cobusgreyling/loop-init": "1.4.0",
+    "@cobusgreyling/loop-sync": "1.0.0",
+    "@cobusgreyling/loop-worktree": "1.0.0",
+    "yaml": "2.9.0"
+  }
+}

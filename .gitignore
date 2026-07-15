@@ -42,12 +42,12 @@ logs/
 backend/data/*
 !backend/data/.gitkeep
 
-# MineContext / local user data
-MineContext/
-minecontext_data/
-minecontext_exports/
-minecontext_observation_pack.md
-*_observation_pack.md
+# MineContext / local user data (repository-root runtime exports only)
+/MineContext/
+/minecontext_data/
+/minecontext_exports/
+/minecontext_observation_pack.md
+/*_observation_pack.md
 
 # OS / editors
 .DS_Store
