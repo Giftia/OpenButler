@@ -46,17 +46,21 @@ tasks:
     title: "建立基础 CI 与只读 Loop Audit workflow"
     goal_id: OB-GOAL-027
     priority: P0
-    status: ready
+    status: done
     done_when:
       - "五项产品检查和 Loop Governance 检查存在"
       - "loop workflow 权限只读"
       - "报告仅作为 Actions artifact 保存"
+    evidence:
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/loop-audit.yml"
+      - "PR #16 six required checks passed"
 
   - id: OB-TASK-274
     title: "建立 GitHub Issue 队列与分支保护"
     goal_id: OB-GOAL-027
     priority: P0
-    status: ready
+    status: done
     done_when:
       - "五个治理标签存在"
       - "OB-GOAL-028 到 033 各有可执行 Issue"
@@ -65,13 +69,14 @@ tasks:
     evidence:
       - "GitHub issues #9 through #15"
       - "needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix labels"
+      - "main requires pull requests and six strict checks; force-push and deletion disabled"
 
   - id: OB-TASK-275
     title: "运行首次 L1 治理巡检"
     goal_id: OB-GOAL-027
     priority: P0
-    status: blocked
-    blocked_by: [OB-TASK-272, OB-TASK-273, OB-TASK-274]
+    status: needs-human
+    why: "PR #16 must be reviewed and merged before the first GitHub-connected audit can treat workflows on canonical main as active evidence."
     done_when:
       - "手动巡检完成"
       - "报告不包含用户活动明细"

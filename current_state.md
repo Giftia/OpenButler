@@ -16,6 +16,8 @@ OpenButler is moving from prompt-driven development to a controlled loop-enginee
 - Product history baseline: `79485f5` before the OB-GOAL-027 branch.
 - Repository visibility: public after a redacted full-history scan found no tracked secrets, databases, screenshots, logs, or MineContext user data.
 - Active implementation branch: `codex/loop-driven-ambient-openbutler`.
+- Governance PR: `#16`; all six required checks pass and human review/merge is pending.
+- `main` protection requires a pull request and strict Butler Core, PC Activity, Workstation Vision, Frontend Build, Desktop Contract, and Loop Governance checks.
 
 ## Product Reality
 
@@ -52,7 +54,7 @@ The L1 development loop is report-only. It must not read real MineContext activi
 
 ## Next Promotion Gate
 
-OB-GOAL-027 completes only when the first manual L1 audit is clean or has explicitly accepted findings, CI is green, branch protection is active, and the weekday report-only automation is configured. Product work then proceeds to `OB-GOAL-028: Secure Local Control Plane & PrivacyGuard`.
+CI and branch protection are ready. OB-GOAL-027 completes only after PR #16 receives human review and merge, the first GitHub-connected manual L1 audit is clean or has explicitly accepted findings, and the weekday report-only automation is configured. Product work then proceeds to `OB-GOAL-028: Secure Local Control Plane & PrivacyGuard`.
 
 ## Privacy Boundary
 

@@ -8,8 +8,8 @@ loop-pause-all: false
 
 ## High Priority
 
-- Complete the first manual report-only governance audit.
-- Require CI and pull requests on `main`.
+- Review and merge PR #16 after confirming the green governance baseline.
+- Complete the first GitHub-connected, report-only governance audit from canonical `main`.
 - Keep `OB-GOAL-028` blocked until OB-GOAL-027 promotion evidence is accepted.
 
 ## Human Inbox
@@ -34,6 +34,6 @@ loop-pause-all: false
 | Sensitive history scan | passed | no tracked secrets, databases, screenshots, logs, or MineContext data found |
 | Canonical main replacement | passed | old main archived; product history is canonical main |
 | Repository visibility | passed | public |
-| CI | pending | workflow is being added in OB-TASK-273 |
-| Branch protection | pending | configure after required checks are defined |
-| Manual L1 run | pending | OB-TASK-275 |
+| CI | passed | all six required checks passed on PR #16 |
+| Branch protection | passed | PR required; strict checks; force-push and deletion disabled |
+| Manual L1 run | pending | run from canonical main after PR #16 is merged |
