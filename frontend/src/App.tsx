@@ -2410,8 +2410,8 @@ function PCActivityContext({privacyMode}: {privacyMode: PrivacyMode}) {
           <StatusItem label="访问方式" value={String(minecontext.mode ?? "unavailable")} />
           <StatusItem label="启用状态" value={status?.enabled ? "已启用" : "默认关闭"} />
           <StatusItem label="只读模式" value={status?.read_only ? "开启" : "关闭"} />
-          <StatusItem label="工作区目录" value={String(minecontext.workspace_dir ?? "--")} />
-          <StatusItem label="数据目录" value={String(minecontext.data_dir ?? "--")} />
+          <StatusItem label="工作区配置" value={minecontext.workspace_dir === "configured" ? "已配置" : "未配置"} />
+          <StatusItem label="数据目录配置" value={minecontext.data_dir === "configured" ? "已配置" : "未配置"} />
           <StatusItem label="可用能力" value={(minecontext.capabilities ?? []).join("、") || "--"} />
         </div>
         <div className="actions-row">

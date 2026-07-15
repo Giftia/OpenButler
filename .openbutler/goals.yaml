@@ -21,6 +21,7 @@ active_objectives:
       - "GitHub Issues 成为可执行工作队列，仓库内 task queue 只保存目标级状态"
       - "Ambient 产品路线固定为 OB-GOAL-028 到 OB-GOAL-033，并保持安全前置顺序"
       - "未读取真实 MineContext 活动、未复制截图、未调用外部模型"
+      - "首次人工 L1 已在 canonical main 上完成并被人工接受"
 
 planned_objectives:
   - id: OB-GOAL-028

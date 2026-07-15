@@ -2743,6 +2743,17 @@ class ButlerCoreService:
                         ],
                         report.get("privacy", {}),
                     ),
+                    criterion(
+                        "first_manual_l1_accepted",
+                        "首次人工 L1 已在 canonical main 上完成并被人工接受",
+                        "Current level: L1" in (root / "STATE.md").read_text(encoding="utf-8")
+                        and "Last accepted run: never" not in (root / "STATE.md").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "STATE.md"},
+                            {"kind": "file", "path": "loop-run-log.md"},
+                        ],
+                        {"human_gate": True, "canonical_main_required": True},
+                    ),
             ],
         }
         objectives = []

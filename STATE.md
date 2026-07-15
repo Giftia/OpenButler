@@ -15,6 +15,7 @@ loop-pause-all: false
 ## Human Inbox
 
 - Review the first L1 report before enabling the weekday schedule.
+- Keep repository variable `OPENBUTLER_L1_SCHEDULE_ENABLED` unset until that report is accepted.
 - Review any future proposal that touches privacy, identity, sensors, MineContext, Electron lifecycle, dependencies, API schemas, or external actions.
 
 ## Watch List

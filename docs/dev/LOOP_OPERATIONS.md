@@ -39,6 +39,12 @@ Exit codes:
 - `2`: repository or governance drift.
 - `3`: partial evidence or a circuit breaker.
 
+## Scheduled L1 Gate
+
+The weekday workflow is installed but remains dormant until a human sets the repository variable `OPENBUTLER_L1_SCHEDULE_ENABLED=true`. Merging the workflow does not enable unattended runs by itself.
+
+Every dispatched run reads only the `loop-pause-all` flag before the audit. When the flag is `true`, the audit and artifact upload are skipped. The job has a five-minute hard timeout. The schedule must not be enabled until the first canonical-main manual L1 report is reviewed and accepted.
+
 ## What L1 Can Read
 
 - tracked governance documents;

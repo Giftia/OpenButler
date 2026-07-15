@@ -7,25 +7,27 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-DEFAULT_WORKSPACE = Path(
-    os.getenv(
-        "OPENBUTLER_MINECONTEXT_WORKSPACE",
-        r"C:\Users\admin\Documents\Codex\2026-05-21\pc-windows10-minecontext-volcengine-minecontext-https",
-    )
-)
-DEFAULT_HOME = Path(
-    os.getenv(
-        "OPENBUTLER_MINECONTEXT_HOME",
-        str(Path(os.getenv("LOCALAPPDATA", r"C:\Users\admin\AppData\Local")) / "MineContext"),
-    )
-)
+def default_workspace_dir() -> str:
+    return os.getenv("OPENBUTLER_MINECONTEXT_WORKSPACE", "").strip()
+
+
+def default_data_dir() -> str:
+    configured = os.getenv("OPENBUTLER_MINECONTEXT_HOME", "").strip()
+    if configured:
+        return configured
+    local_app_data = os.getenv("LOCALAPPDATA", "").strip()
+    if local_app_data:
+        return str(Path(local_app_data) / "MineContext")
+    if os.name == "nt":
+        return str(Path.home() / "AppData" / "Local" / "MineContext")
+    return str(Path.home() / ".local" / "share" / "MineContext")
 
 
 class MineContextSettings(BaseModel):
     enabled: bool = False
     access_mode: Literal["godview_script", "http_api", "db_readonly", "unavailable"] = "godview_script"
-    workspace_dir: str = Field(default_factory=lambda: str(DEFAULT_WORKSPACE))
-    data_dir: str = Field(default_factory=lambda: str(DEFAULT_HOME))
+    workspace_dir: str = Field(default_factory=default_workspace_dir)
+    data_dir: str = Field(default_factory=default_data_dir)
     query_script: str = r".\tools\run_minecontext_godview_query.ps1"
     search_script: str = r".\tools\run_minecontext_godview_search.ps1"
     default_window_minutes: int = 10
@@ -61,10 +63,13 @@ class MineContextSettings(BaseModel):
         return Path(self.data_dir) / "persist" / "sqlite" / "app.db"
 
     def observation_pack_path(self) -> Path:
-        return Path(self.workspace_dir) / "out" / "minecontext-codex" / "minecontext_observation_pack.md"
+        return self._workspace_path() / "out" / "minecontext-codex" / "minecontext_observation_pack.md"
 
     def _resolve_script(self, value: str) -> Path:
         path = Path(value)
         if path.is_absolute():
             return path
-        return Path(self.workspace_dir) / value
+        return self._workspace_path() / value
+
+    def _workspace_path(self) -> Path:
+        return Path(self.workspace_dir) if self.workspace_dir else Path("__openbutler_unconfigured_workspace__")

@@ -21,9 +21,11 @@ class MineContextAdapter:
         query_exists = self.settings.query_script_path().exists()
         search_exists = self.settings.search_script_path().exists()
         app_db_exists = self.settings.app_db_path().exists()
-        workspace_exists = Path(self.settings.workspace_dir).exists()
+        workspace_exists = bool(self.settings.workspace_dir) and Path(self.settings.workspace_dir).exists()
         data_exists = Path(self.settings.data_dir).exists()
-        available = workspace_exists and data_exists and ((query_exists and search_exists) or app_db_exists)
+        script_available = workspace_exists and query_exists and search_exists
+        database_available = data_exists and app_db_exists
+        available = script_available or database_available
         capabilities = []
         if query_exists:
             capabilities.append("query_at_time")
@@ -33,9 +35,9 @@ class MineContextAdapter:
             capabilities.append("db_readonly_import")
         return MineContextHealth(
             available=available,
-            mode="godview_script" if query_exists and search_exists else "db_readonly" if app_db_exists else "unavailable",
-            workspace_dir=self.settings.workspace_dir,
-            data_dir=self.settings.data_dir,
+            mode="godview_script" if script_available else "db_readonly" if database_available else "unavailable",
+            workspace_dir="configured" if self.settings.workspace_dir else "not_configured",
+            data_dir="configured" if self.settings.data_dir else "not_configured",
             query_script_exists=query_exists,
             search_script_exists=search_exists,
             app_db_exists=app_db_exists,

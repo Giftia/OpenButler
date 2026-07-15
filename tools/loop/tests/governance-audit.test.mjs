@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { auditRepository } from "../governance-audit.mjs";
+import { isLoopPaused } from "../pause-gate.mjs";
 
 function write(root, relativePath, value) {
   const target = path.join(root, relativePath);
@@ -77,4 +78,12 @@ test("evidence prose containing slashes is not treated as a file path", () => {
   });
   const report = auditRepository({ root, github: false, requireGithub: false, writeReports: false });
   assert.equal(report.outcome, "clean");
+});
+
+test("pause gate follows STATE.md", () => {
+  const root = fixture();
+  write(root, "STATE.md", "loop-pause-all: true\nCurrent objective: OB-GOAL-027\n");
+  assert.equal(isLoopPaused(root), true);
+  write(root, "STATE.md", "loop-pause-all: false\nCurrent objective: OB-GOAL-027\n");
+  assert.equal(isLoopPaused(root), false);
 });
