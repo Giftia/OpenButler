@@ -1,12 +1,12 @@
 # OpenButler Current State
 
-Updated: 2026-07-15
+Updated: 2026-07-16
 
 ## Current Stage
 
 The only active product objective is `OB-GOAL-027: Loop-Driven Ambient OpenButler`.
 
-OpenButler is moving from prompt-driven development to a controlled loop-engineering workflow. The canonical main baseline is merged and the first GitHub-connected L1 audit passed cleanly. A Codex heartbeat is registered for the evening Loop wake and the 08:00 morning evidence report; the first scheduled executions still require runtime readback. This stage does not add sensors or smart-home actions.
+OpenButler is moving from prompt-driven development to a controlled loop-engineering workflow. The canonical main baseline is merged and the first GitHub-connected L1 audit passed cleanly. The original local Codex heartbeat is paused after producing no accepted scheduled-run evidence. ChatGPT Web now has registered 19:00 GitHub orchestration and 08:00 morning-report tasks; their first executions still require runtime readback. ChatGPT Web manages public issue specifications and high-risk PR review, while local Codex remains the sole implementation and local-validation worker. This stage does not add sensors or smart-home actions.
 
 ## Repository Baseline
 

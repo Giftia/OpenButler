@@ -106,6 +106,10 @@ Follow `.openbutler/definition_of_done.md`. Each change should preserve evidence
 
 Issues and external pull requests are tracked in GitHub for `Giftia/OpenButler`; external PRs are a triage request surface. See `docs/agents/issue-tracker.md`.
 
+### Independent web reviewer
+
+ChatGPT Web may refine issues and review high-risk pull requests, but it does not implement code, merge or close work, or change the active goal. Local runtime evidence may be shared only through a redacted morning report. See `docs/agents/chatgpt-web-reviewer.md`.
+
 ### Triage labels
 
 Use the default five-label vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.

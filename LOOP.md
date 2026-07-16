@@ -8,8 +8,9 @@ The development loop keeps repository facts, GitHub work, tests, and privacy con
 
 | Pattern | Cadence | Level | Authority |
 |---|---|---|---|
-| Repository governance drift audit | Daily 19:00 Asia/Shanghai | L1 | Report only |
-| Operator morning report | Daily 08:00 Asia/Shanghai | L1 | Evidence summary only |
+| Local repository governance drift audit | On demand | L1 | Report only |
+| ChatGPT Web GitHub orchestration | Daily 19:00 Asia/Shanghai | Independent reviewer | Issue specification, triage labels, and PR review only |
+| ChatGPT Web morning product report | Daily 08:00 Asia/Shanghai | Independent reviewer | Public GitHub evidence summary only |
 
 Command:
 
@@ -33,7 +34,11 @@ GitHub Issues are the executable work queue. `.openbutler/task_queue.yaml` store
 
 The L1 loop must not inspect MineContext source data, OpenButler runtime databases, screenshots, raw activity output, microphone data, or camera data.
 
-The Codex heartbeat `OpenButler Night Loop & Morning Report` is configured to own both scheduled wakes; the first evening and morning executions require runtime readback before the schedule task is complete. The evening wake follows the current promotion level and processes GitHub work strictly one issue at a time. At L1 it runs only the report-only governance audit. The morning wake summarizes completed work, tests, deployment evidence, privacy checks, attention points, manual experience paths, and decisions requiring the user. User authorization for local real-data testing, production deployment, and desktop installation is necessary but not sufficient: the current level, tests, verifier, privacy rules, and rollback gates still apply.
+The local Codex heartbeat `OpenButler Night Loop & Morning Report` is paused because its first scheduled run produced no accepted runtime evidence. ChatGPT Web now owns two scheduled public-GitHub workflows: `OpenButler Nightly GitHub Orchestrator` at 19:00 and `OpenButler Morning Product Report` at 08:00 Asia/Shanghai. Their first executions still require readback before they count as useful runs.
+
+The independent web reviewer may improve issue specifications, apply the approved triage labels, and review pull requests. It must not write code, create implementation pull requests, merge or close work, change the active goal, or remove a promotion gate. This reviewer workflow is not an L2 maker and does not advance the repository's Loop level by itself. Only local Codex implements one `ready-for-agent` issue at a time and supplies approved redacted local evidence when needed.
+
+The morning report summarizes public GitHub facts. Local tests, Electron behavior, deployments, and real-data checks remain `本机未验证` unless the user provides a redacted report. User authorization for local real-data testing, production deployment, and desktop installation is necessary but not sufficient: the current level, tests, verifier, privacy rules, and rollback gates still apply.
 
 Production delivery remains in a supervised trial until two consecutive nightly cycles complete without a privacy violation, unresolved serious regression, failed production or desktop smoke, or rollback. A failed cycle resets the count.
 
@@ -99,7 +104,7 @@ Human review is always required for privacy, identity, consent, sensors, MineCon
 
 ## Connectors
 
-L1 uses the local `gh` CLI with read-only GitHub Actions permissions. No MCP connector is required. L2 or L3 connector scopes must be documented and approved before use.
+The local L1 audit uses `gh` read-only. ChatGPT Web uses the GitHub connector only for issue specification, the approved triage labels, and pull-request review under `docs/agents/chatgpt-web-reviewer.md`. L2 or L3 implementation connector scopes must be documented and approved separately.
 
 ## Kill Switch
 

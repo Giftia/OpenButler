@@ -34,3 +34,11 @@ Create a GitHub issue in `Giftia/OpenButler`.
 ## When a skill says "fetch the relevant ticket"
 
 Run `gh issue view <number> --comments`, or `gh pr view <number> --comments` when the ticket is a pull request.
+
+## ChatGPT Web reviewer
+
+ChatGPT Web is an independent product, privacy, and architecture reviewer. It
+may improve issue specifications and apply triage labels, but it must not write
+code, create implementation pull requests, merge or close work, or change the
+active goal. See `docs/agents/chatgpt-web-reviewer.md` for evidence and handoff
+rules.
