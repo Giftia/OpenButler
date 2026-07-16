@@ -9,7 +9,7 @@ loop-pause-all: false
 ## High Priority
 
 - Verify the first 19:00 and 08:00 ChatGPT Web scheduled runs; registration alone is not runtime evidence.
-- Use ChatGPT Web to refine one GitHub implementation issue at a time, while local Codex remains the sole implementation and local-validation worker.
+- Use ChatGPT Web to draft one GitHub implementation issue at a time, while local Codex remains the sole GitHub write, implementation, and local-validation worker.
 - Keep `OB-GOAL-028` blocked until the L1-to-L2 promotion evidence is accepted.
 - Use the 08:00 report to surface attention points, verification paths, and decisions for the user.
 
@@ -18,6 +18,7 @@ loop-pause-all: false
 - The first canonical L1 report was accepted after a clean GitHub-connected run with zero mutations.
 - The local Codex heartbeat `OpenButler Night Loop & Morning Report` is paused after producing no accepted scheduled-run evidence.
 - ChatGPT Web schedules `OpenButler Nightly GitHub Orchestrator` at 19:00 and `OpenButler Morning Product Report` at 08:00 Asia/Shanghai are registered; their first scheduled runs still need readback.
+- ChatGPT Web has no verified GitHub write connection; every issue patch, label change, and PR review remains a draft until local Codex applies it.
 - Issue #10 is waiting for the user's first trust-policy decision before it can be split into implementation-ready child issues.
 - Review any future proposal that touches privacy, identity, sensors, MineContext, Electron lifecycle, dependencies, API schemas, or external actions.
 

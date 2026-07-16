@@ -8,13 +8,15 @@ ChatGPT Web is an independent product, privacy, and architecture reviewer for
 | Participant | Responsibility |
 | --- | --- |
 | Local Codex | Code, branches, tests, Electron, local smoke, packaging, deployment, and any approved local-data verification. |
-| ChatGPT Web | Check public GitHub facts, improve issue specifications, review high-risk pull requests, and present product or privacy choices. |
+| ChatGPT Web | Check public GitHub facts, draft issue specifications and high-risk pull-request reviews, and present product or privacy choices. |
 | User | Choose product and privacy direction, approve goal promotion, and approve high-risk changes. |
 
-ChatGPT Web may create, edit, and comment on issues and may apply
-`needs-info`, `needs-triage`, and `ready-for-agent`. It must not submit code,
-create implementation branches or pull requests, merge or close work, change
-the active goal, or remove a promotion gate.
+The current ChatGPT Web GitHub connection is read-only. It produces issue body
+patches, suggested `needs-info`, `needs-triage`, or `ready-for-agent` changes,
+and pull-request review drafts. Local Codex verifies and applies these changes.
+ChatGPT Web must not submit code, create implementation branches or pull
+requests, merge or close work, change the active goal, or remove a promotion
+gate.
 
 ## Evidence Rules
 
@@ -46,8 +48,8 @@ filesystem paths, databases, API keys, tokens, or raw output.
 
 - Only local Codex implements an issue.
 - Only one implementation issue may be active at a time.
-- ChatGPT Web may refine other issues while implementation is in progress, but
-  it must not implement them.
+- ChatGPT Web may draft refinements for other issues while implementation is in
+  progress, but it must not implement or directly mutate them.
 - `ready-for-agent` means the issue has no unresolved product, privacy, API, or
   acceptance decision.
 - Product and privacy tradeoffs must be presented with a recommendation and two
@@ -60,15 +62,17 @@ The previous local Codex heartbeat is paused. ChatGPT Web has two registered
 tasks in the Asia/Shanghai timezone:
 
 - `OpenButler Nightly GitHub Orchestrator`: daily at 19:00, starting
-  2026-07-17. It inspects public repository facts, maintains one issue at a
-  time, and reviews high-risk pull requests.
+  2026-07-17. It inspects public repository facts and emits one issue
+  orchestration package containing a body patch, suggested labels, review
+  draft, evidence, and blockers.
 - `OpenButler Morning Product Report`: daily at 08:00, starting 2026-07-17. It
   reports issue, pull-request, and CI facts plus blockers and choices.
 
 Registration is not execution evidence. Each task remains `registered, run not
-verified` until its own scheduled result is visible. These schedules do not
-trigger local Codex automatically; local implementation starts only when a
-ready issue is explicitly handed to the local worker.
+verified` until its own scheduled result is visible. Suggested changes remain
+`not submitted` until local Codex applies them. These schedules do not trigger
+local Codex automatically; local implementation starts only when a ready issue
+is explicitly handed to the local worker.
 
 ## Mandatory Reviews
 

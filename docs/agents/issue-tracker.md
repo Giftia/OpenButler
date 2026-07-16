@@ -37,8 +37,9 @@ Run `gh issue view <number> --comments`, or `gh pr view <number> --comments` whe
 
 ## ChatGPT Web reviewer
 
-ChatGPT Web is an independent product, privacy, and architecture reviewer. It
-may improve issue specifications and apply triage labels, but it must not write
+ChatGPT Web is an independent product, privacy, and architecture reviewer. Its
+current GitHub connection is read-only: it drafts issue patches, label changes,
+and pull-request reviews for local Codex to verify and apply. It must not write
 code, create implementation pull requests, merge or close work, or change the
 active goal. See `docs/agents/chatgpt-web-reviewer.md` for evidence and handoff
 rules.

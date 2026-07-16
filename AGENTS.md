@@ -108,7 +108,7 @@ Issues and external pull requests are tracked in GitHub for `Giftia/OpenButler`;
 
 ### Independent web reviewer
 
-ChatGPT Web may refine issues and review high-risk pull requests, but it does not implement code, merge or close work, or change the active goal. Local runtime evidence may be shared only through a redacted morning report. See `docs/agents/chatgpt-web-reviewer.md`.
+ChatGPT Web drafts issue specifications and high-risk pull-request reviews from public facts. Its current GitHub connection cannot write, so local Codex verifies and applies any GitHub change. ChatGPT Web does not implement code, merge or close work, or change the active goal. Local runtime evidence may be shared only through a redacted morning report. See `docs/agents/chatgpt-web-reviewer.md`.
 
 ### Triage labels
 
