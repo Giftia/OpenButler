@@ -17,6 +17,23 @@ Pop-Location
 
 The audit writes redacted reports only below ignored `data/loop-runs/`. It does not read real MineContext activity, modify product code, mutate GitHub, deploy, or call external models. See `LOOP.md`, `STATE.md`, and `docs/dev/LOOP_OPERATIONS.md`.
 
+### Nightly delivery rehearsal
+
+The human-gated nightly controller starts in L1 dry-run mode:
+
+```powershell
+node tools\nightly\nightly-controller.mjs --mode=dry-run
+node tools\nightly\morning-report.mjs
+```
+
+Install the 19:00 and 08:00 Windows tasks only after reviewing the governance PR:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\nightly\install-scheduled-tasks.ps1 -Mode dry-run
+```
+
+The executor refuses `execute` unless `STATE.md` explicitly records `L2 active`. Nightly work never merges; successful future L2 work is presented through the side-by-side `OpenButler Preview` acceptance center. See `docs/dev/NIGHTLY_DELIVERY_LOOP.md`.
+
 ## Current Reality
 
 This repository currently uses:

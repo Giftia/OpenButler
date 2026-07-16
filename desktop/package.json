@@ -10,10 +10,14 @@
     "build:backend": "pyinstaller --noconfirm desktop_backend.spec",
     "pack": "npm run build:frontend && electron-builder --dir",
     "dist": "node scripts/build-installer.mjs",
+    "dist:preview": "node scripts/build-preview-installer.mjs",
+    "dist:release": "node scripts/build-stable-release.mjs",
     "check": "node scripts/check-desktop-contract.mjs",
     "smoke:packaged": "node scripts/smoke-packaged-app.mjs",
+    "smoke:preview-packaged": "node scripts/smoke-packaged-app.mjs --channel=preview",
     "check:frontend-assets": "node scripts/check-desktop-frontend-assets.mjs",
-    "smoke:installer-lifecycle": "node scripts/smoke-installer-lifecycle.mjs"
+    "smoke:installer-lifecycle": "node scripts/smoke-installer-lifecycle.mjs",
+    "smoke:preview-installer-lifecycle": "node scripts/smoke-installer-lifecycle.mjs --channel=preview"
   },
   "build": {
     "appId": "moe.giftia.openbutler",

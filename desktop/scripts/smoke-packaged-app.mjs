@@ -4,8 +4,12 @@ import {dirname, resolve} from "node:path";
 import {fileURLToPath} from "node:url";
 
 const desktopRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-const exePath = resolve(desktopRoot, "dist", "win-unpacked", "OpenButler.exe");
-const smokeDir = resolve(desktopRoot, ".tmp", "packaged-smoke");
+const channel = process.argv.includes("--channel=preview") ? "preview" : "stable";
+const executableName = channel === "preview" ? "OpenButler Preview.exe" : "OpenButler.exe";
+const backendName = channel === "preview" ? "openbutler-backend-preview.exe" : "openbutler-backend.exe";
+const distName = channel === "preview" ? "dist-preview" : "dist";
+const exePath = process.env.OPENBUTLER_DESKTOP_EXE_PATH || resolve(desktopRoot, distName, "win-unpacked", executableName);
+const smokeDir = resolve(desktopRoot, ".tmp", `packaged-smoke-${channel}`);
 const smokeFile = resolve(smokeDir, "state.json");
 const userDataDir = resolve(smokeDir, "user-data");
 
@@ -57,6 +61,13 @@ try {
   if (payload.bodyTextLength < 40 || payload.rootChildren < 1) {
     throw new Error(`Packaged app appears blank: ${JSON.stringify(payload)}`);
   }
+  if (payload.desktopChannel !== channel) {
+    throw new Error(`Packaged app channel mismatch: expected ${channel}, got ${payload.desktopChannel}`);
+  }
+  const expectedPreviewVersion = process.env.OPENBUTLER_EXPECTED_PREVIEW_VERSION;
+  if (channel === "preview" && expectedPreviewVersion && payload.previewVersion !== expectedPreviewVersion) {
+    throw new Error(`Preview version mismatch: expected ${expectedPreviewVersion}, got ${payload.previewVersion || "missing"}`);
+  }
 
   const health = await fetch(`${payload.apiBase}/health`).then((response) => response.json());
   if (!health.ok || health.privacy_mode !== "strict") {
@@ -82,15 +93,16 @@ try {
     throw new Error("Packaged app did not exit through desktop quit path");
   }
 
-  const processList = spawnSync("wmic", ["process", "where", "name='openbutler-backend.exe'", "get", "ProcessId,CommandLine", "/format:csv"], {encoding: "utf8"});
+  const processList = spawnSync("wmic", ["process", "where", `name='${backendName}'`, "get", "ProcessId,CommandLine", "/format:csv"], {encoding: "utf8"});
+  const expectedBackendPath = resolve(dirname(exePath), "resources", "backend", backendName).toLowerCase();
   const leakedBackend = (processList.stdout || "")
     .split(/\r?\n/)
-    .filter((line) => line.includes("\\desktop\\dist\\win-unpacked\\resources\\backend\\openbutler-backend.exe"));
+    .filter((line) => line.toLowerCase().includes(expectedBackendPath));
   if (leakedBackend.length) {
     throw new Error(`Packaged app left backend process running: ${leakedBackend.join(" | ")}`);
   }
 
-  console.log("packaged desktop smoke ok");
+  console.log(`packaged desktop smoke ok (${channel})`);
 } finally {
   if (child.pid) {
     spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], {stdio: "ignore"});

@@ -57,6 +57,15 @@ The L1 development loop is report-only. It must not read real MineContext activi
 
 `OB-GOAL-034` through `OB-GOAL-041` define the new sequence: secure internal context engine, three-route model gateway, MineContext feature parity, migration and product shell, OpenButler Cloud, NanoKVM screen recall, controlled KVM autonomy, then ambient expansion. Historical goals `OB-GOAL-028` through `OB-GOAL-033` are deferred or superseded and their existing Issues are not executable under the new route.
 
+## Nightly Delivery Bootstrap
+
+- GitHub Issues require both `ready-for-agent` and `nightly-approved` before the local runner may select them.
+- L1 runs are forcibly read-only and write only ignored artifacts under `data/nightly/`.
+- One supervised scheduled dry-run needs real runtime readback. Registration alone does not count.
+- The exact approval `批准进入 L2` is required before the executor may create worktrees, branches, PRs or Preview builds.
+- L2 never merges at night. It prepares independent PRs and a side-by-side `OpenButler Preview` acceptance center for the user.
+- The nightly budget is 750,000 tokens; no new Issue starts after 600,000 tokens or 06:15.
+
 ## Next Promotion Gate
 
 The repository remains at L1. PR #18 and PR #19 must be reviewed and merged first. Then one supervised dry-run must produce accepted runtime readback without product or GitHub mutation. Only the exact approval `批准进入 L2` may activate `OB-GOAL-034`; this governance repair does not itself enter L2.

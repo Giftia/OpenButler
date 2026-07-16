@@ -44,10 +44,21 @@ These rules are binding for every automated loop.
 ## Implementation Discipline
 
 - One issue per worktree.
+- Nightly execution requires both `ready-for-agent` and `nightly-approved`; high-risk approval must be attributable to `Giftia` after GitHub GraphQL `lastEditedAt`. If that specification timestamp cannot be audited, the Issue is rejected.
+- Nightly work is serial. Stop starting new issues at 06:15 Asia/Shanghai or 80 percent of the 750,000-token nightly cap.
+- A local Preview integration worktree is never a merge source. Only independently verified issue pull requests may be approved and merged.
 - Run relevant tests before proposing a fix.
 - Never disable tests or assertions to pass CI.
 - Stop after three failed attempts and escalate with evidence.
 - Re-read this file before any push, merge, privacy-sensitive operation, or external action.
+
+## Morning Acceptance
+
+- Nightly work never merges or publishes the stable channel.
+- `OpenButler Preview` must use a separate app id, install directory, and user-data directory.
+- Acceptance packs may contain issue numbers, PR numbers, commit SHAs, test names, and redacted summaries only.
+- A merge approval is stale when a PR head SHA changes, a required check is no longer green, or a requested-change review appears.
+- Stable packaging, release, and installation run only after fresh human approval of the exact acceptance pack.
 
 ## Kill Switch
 

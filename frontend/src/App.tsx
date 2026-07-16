@@ -6,6 +6,7 @@ import {
   CalendarDays,
   Camera,
   CheckCircle2,
+  ClipboardCheck,
   ClipboardList,
   CloudOff,
   Database,
@@ -107,6 +108,7 @@ import type {EventItem, PluginManifest, PrivacyMode} from "./types";
 import {DesignConceptPage, DesignLabPage, FormalButlerHome} from "./pages/DesignVariants";
 
 type PageKey =
+  | "acceptance"
   | "butler"
   | "dashboard"
   | "ingest"
@@ -205,6 +207,7 @@ function activationStatusLabel(status: ActivationStatus) {
 
 function routeForPage(key: PageKey) {
   return {
+    acceptance: "/acceptance",
     butler: "/butler",
     timeline: "/timeline",
     achievements: "/achievements",
@@ -231,7 +234,9 @@ function navigateClient(path: string) {
 }
 
 function pageForPath(path: string): PageKey {
-  return path.includes("design/mijia")
+  return path.includes("acceptance")
+    ? "acceptance"
+    : path.includes("design/mijia")
     ? "designMijia"
     : path.includes("design/ios")
       ? "designIos"
@@ -302,7 +307,7 @@ function groupByStage(plugins: PluginManifest[]) {
 
 function App() {
   const currentPath = window.location.pathname;
-  const [page, setPage] = useState<PageKey>(() => pageForPath(currentPath));
+  const [page, setPage] = useState<PageKey>(() => window.openbutlerDesktop?.channel === "preview" ? "acceptance" : pageForPath(currentPath));
   const [events, setEvents] = useState<EventItem[]>([]);
   const [plugins, setPlugins] = useState<PluginManifest[]>([]);
   const [privacyMode, setMode] = useState<PrivacyMode>("basic");
@@ -386,6 +391,7 @@ function App() {
   const isDesignPage = page === "designLab" || page === "designMijia" || page === "designIos" || page === "designDeck";
 
   const CurrentPage = {
+    acceptance: <AcceptanceCenter />,
     butler: <FormalButlerHome activationStatus={activationStatus} />,
     dashboard: (
       <Dashboard
@@ -422,7 +428,7 @@ function App() {
     )
   }[page];
 
-  const activationGateOpen = !isDesignPage && activationStatus !== "demo_selected" && activationStatus !== "completed";
+  const activationGateOpen = page !== "acceptance" && !isDesignPage && activationStatus !== "demo_selected" && activationStatus !== "completed";
 
   if (activationGateOpen) {
     return (
@@ -488,7 +494,7 @@ function App() {
           {!isDesignPage && !primaryNavItems.some((item) => item.key === page) && <header className="topbar">
             <div>
               <p className="eyebrow">个人/家庭多模态事件湖原型</p>
-              <h1>{navItems.find((item) => item.key === page)?.label}</h1>
+              <h1>{page === "acceptance" ? "今日验收" : navItems.find((item) => item.key === page)?.label}</h1>
             </div>
             <button className="primary" onClick={handleSimulate} disabled={loading}>
               {loading ? <Loader2 className="spin" size={17} /> : <RefreshCw size={17} />}
@@ -515,6 +521,135 @@ function App() {
         />
       )}
     </>
+  );
+}
+
+type AcceptanceFeedback = {
+  status: "passed" | "failed" | "conditional";
+  comment: string;
+};
+
+function AcceptanceCenter() {
+  const [pack, setPack] = useState<Record<string, any> | null>(null);
+  const [feedback, setFeedback] = useState<Record<string, AcceptanceFeedback>>({});
+  const [message, setMessage] = useState("正在读取昨夜验收包…");
+
+  useEffect(() => {
+    let mounted = true;
+    void (async () => {
+      const value = await window.openbutlerDesktop?.getAcceptancePack();
+      if (!mounted) return;
+      setPack(value ?? null);
+      setMessage(value ? "按场景体验后，留下你的判断。" : "还没有可用的夜间验收包。");
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  async function updateScenario(id: string, patch: Partial<AcceptanceFeedback>) {
+    const next = {
+      ...feedback,
+      [id]: {...(feedback[id] ?? {status: "conditional", comment: ""}), ...patch}
+    };
+    setFeedback(next);
+    const saved = await window.openbutlerDesktop?.saveAcceptanceFeedback({run_id: pack?.run_id, scenarios: next});
+    setMessage(saved?.ok ? "已保存在本机。" : saved?.message ?? "没有保存成功，请再试一次。");
+  }
+
+  const approvedPrs = (pack?.pull_requests ?? [])
+    .filter((pr: Record<string, any>) => feedback[`pr-${pr.number}`]?.status === "passed")
+    .map((pr: Record<string, any>) => `#${pr.number}`);
+  const approvalCommand = approvedPrs.length ? `批准合并 PR ${approvedPrs.join(" ")}` : "完成场景验收后生成批准命令";
+
+  if (!pack) {
+    return (
+      <section className="acceptance-center friendly-empty">
+        <ClipboardCheck size={30} />
+        <h2>今天没有待测版本</h2>
+        <p>{message}</p>
+        <p className="evidence-boundary">系统不会用旧报告冒充昨夜运行结果。</p>
+      </section>
+    );
+  }
+
+  return (
+    <div className="acceptance-center">
+      <section className="acceptance-hero">
+        <div>
+          <p className="eyebrow">OpenButler Preview · {pack.mode === "dry-run" ? "只读演练" : "候选版本"}</p>
+          <h2>早上好，昨夜结果已经整理好</h2>
+          <p>{pack.summary}</p>
+        </div>
+        <div className="acceptance-version">
+          <span>本次运行</span>
+          <strong>{pack.candidate_version ?? "无安装候选"}</strong>
+          <small>{pack.run_id}</small>
+        </div>
+      </section>
+
+      <section className="acceptance-command">
+        <div>
+          <span>完成验收后发给 Codex</span>
+          <strong>{approvalCommand}</strong>
+        </div>
+        <p>{message}</p>
+      </section>
+
+      <section className="acceptance-list" aria-label="待测场景">
+        {(pack.scenarios ?? []).length === 0 && (
+          <div className="friendly-empty">
+            <h3>本轮没有可执行场景</h3>
+            <p>这通常表示没有同时获得执行授权和完整规格的 Issue。</p>
+          </div>
+        )}
+        {(pack.scenarios ?? []).map((scenario: Record<string, any>) => {
+          const id = String(scenario.id);
+          const current = feedback[id];
+          return (
+            <article className="acceptance-card" key={id}>
+              <div className="acceptance-card-head">
+                <div>
+                  <span>{scenario.pr_number ? `PR #${scenario.pr_number}` : scenario.issue_number ? `Issue #${scenario.issue_number}` : "验收场景"}</span>
+                  <h3>{scenario.title}</h3>
+                </div>
+                <span className={`acceptance-state ${current?.status ?? "pending"}`}>
+                  {current?.status === "passed" ? "通过" : current?.status === "failed" ? "不通过" : current?.status === "conditional" ? "有条件通过" : "待验收"}
+                </span>
+              </div>
+              <p>{scenario.purpose}</p>
+              <ol>{(scenario.steps ?? []).map((step: string) => <li key={step}>{step}</li>)}</ol>
+              <div className="acceptance-expected"><strong>预期</strong><span>{scenario.expected}</span></div>
+              <div className="acceptance-actions">
+                <button onClick={() => updateScenario(id, {status: "passed"})}>通过</button>
+                <button onClick={() => updateScenario(id, {status: "conditional"})}>有条件通过</button>
+                <button onClick={() => updateScenario(id, {status: "failed"})}>不通过</button>
+              </div>
+              <label className="acceptance-comment">
+                <span>体验意见</span>
+                <textarea
+                  value={current?.comment ?? ""}
+                  onChange={(event) => setFeedback((previous) => ({
+                    ...previous,
+                    [id]: {...(previous[id] ?? {status: "conditional"}), comment: event.target.value}
+                  }))}
+                  onBlur={(event) => updateScenario(id, {comment: event.target.value})}
+                  placeholder="哪里不顺手、和预期有什么不同"
+                />
+              </label>
+            </article>
+          );
+        })}
+      </section>
+
+      <section className="acceptance-privacy">
+        <div><ShieldCheck size={20} /><strong>本轮隐私检查</strong></div>
+        <ul>
+          <li>真实活动读取：{pack.privacy?.real_activity_read ? "是" : "否"}</li>
+          <li>数据库写入：{pack.privacy?.database_written ? "是" : "否"}</li>
+          <li>截图复制：{pack.privacy?.screenshots_copied ? "是" : "否"}</li>
+          <li>外部模型调用：{pack.privacy?.external_model_called ? "是" : "否"}</li>
+        </ul>
+      </section>
+    </div>
   );
 }
 

@@ -3,6 +3,13 @@ const {spawn, execFile, spawnSync} = require("child_process");
 const fs = require("fs");
 const net = require("net");
 const path = require("path");
+const packageMetadata = require("../package.json");
+
+const desktopChannel = process.env.OPENBUTLER_DESKTOP_CHANNEL
+  || packageMetadata.openbutlerChannel
+  || (String(packageMetadata.productName || "").includes("Preview") ? "preview" : "stable");
+const isPreviewChannel = desktopChannel === "preview";
+const backendImageName = isPreviewChannel ? "openbutler-backend-preview.exe" : "openbutler-backend.exe";
 
 let mainWindow = null;
 let tray = null;
@@ -25,6 +32,8 @@ const mineContextLatestReleaseApi = "https://api.github.com/repos/volcengine/Min
 
 if (process.env.OPENBUTLER_DESKTOP_USER_DATA_DIR) {
   app.setPath("userData", process.env.OPENBUTLER_DESKTOP_USER_DATA_DIR);
+} else if (isPreviewChannel) {
+  app.setPath("userData", path.join(app.getPath("appData"), "OpenButler Preview"));
 }
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -183,7 +192,39 @@ function frontendIndexPath() {
 }
 
 function packagedBackendPath() {
-  return path.join(process.resourcesPath, "backend", "openbutler-backend.exe");
+  return path.join(process.resourcesPath, "backend", backendImageName);
+}
+
+function acceptancePackPath() {
+  return process.env.OPENBUTLER_ACCEPTANCE_PACK || path.join(userDataDir(), "acceptance-pack.json");
+}
+
+function sanitizeAcceptanceValue(value, key = "") {
+  const forbidden = new Set(["apiKey", "embeddingApiKey", "raw", "raw_output", "raw_ref", "screenshot_paths", "local_path", "database_path", "activity_title", "window_title", "url"]);
+  if (forbidden.has(key)) return undefined;
+  if (Array.isArray(value)) return value.map((item) => sanitizeAcceptanceValue(item)).filter((item) => item !== undefined);
+  if (value && typeof value === "object") {
+    const result = {};
+    for (const [childKey, childValue] of Object.entries(value)) {
+      const sanitized = sanitizeAcceptanceValue(childValue, childKey);
+      if (sanitized !== undefined) result[childKey] = sanitized;
+    }
+    return result;
+  }
+  if (typeof value === "string") {
+    return value
+      .replace(/[A-Za-z]:\\\\Users\\\\[^\\\\\s]+\\\\[^\s"']+/g, "<redacted-local-path>")
+      .replace(/(api[_ -]?key\s*[:=]\s*)[^\s,;]+/gi, "$1<redacted>");
+  }
+  return value;
+}
+
+function readAcceptancePack() {
+  try {
+    return sanitizeAcceptanceValue(JSON.parse(fs.readFileSync(acceptancePackPath(), "utf8")));
+  } catch {
+    return null;
+  }
 }
 
 function findFreePort() {
@@ -377,7 +418,7 @@ function cleanupStaleBackendProcessesOnce() {
   if (staleBackendCleanupDone) return;
   staleBackendCleanupDone = true;
   // Clear backend processes left behind by a previous crash, installer run, or older app version.
-  killProcessByImageName("openbutler-backend.exe");
+  killProcessByImageName(backendImageName);
 }
 
 function stopBackend() {
@@ -385,7 +426,7 @@ function stopBackend() {
   if (pid) {
     killProcessTree(pid);
   }
-  killProcessByImageName("openbutler-backend.exe");
+  killProcessByImageName(backendImageName);
   backendProcess = null;
   backendState = {...backendState, running: false, pid: null};
 }
@@ -412,6 +453,7 @@ async function createWindow() {
       additionalArguments: [
         `--openbutler-api-base=${state.apiBase}`,
         `--openbutler-app-version=${app.getVersion()}`,
+        `--openbutler-channel=${desktopChannel}`,
       ],
     },
   });
@@ -493,6 +535,8 @@ async function recordSmokeState(status) {
       apiBase: window.openbutlerDesktop?.apiBase || "",
       location: window.location.href
     }))()`);
+    payload.desktopChannel = desktopChannel;
+    payload.previewVersion = packageMetadata.openbutlerPreviewVersion || "";
     fs.mkdirSync(path.dirname(smokeFile), {recursive: true});
     fs.writeFileSync(smokeFile, JSON.stringify(payload, null, 2), "utf8");
     const smokeQuitAfterMs = Number(process.env.OPENBUTLER_DESKTOP_SMOKE_QUIT_AFTER_MS || 0);
@@ -684,12 +728,30 @@ ipcMain.handle("openbutler:get-runtime", async () => ({
   mode: "desktop",
   platform: process.platform,
   appVersion: app.getVersion(),
+  channel: desktopChannel,
+  acceptancePackAvailable: Boolean(readAcceptancePack()),
   backend: {
     pid: backendState.pid,
     running: backendState.running,
   },
   userDataReady: fs.existsSync(userDataDir()),
 }));
+
+ipcMain.handle("openbutler:get-acceptance-pack", async () => readAcceptancePack());
+
+ipcMain.handle("openbutler:save-acceptance-feedback", async (_event, feedback) => {
+  if (!isPreviewChannel) return {ok: false, message: "验收反馈只在 Preview 中可用。"};
+  const pack = readAcceptancePack();
+  if (!pack) return {ok: false, message: "没有可用的验收包。"};
+  const safeFeedback = sanitizeAcceptanceValue(feedback || {});
+  const result = {
+    run_id: pack.run_id,
+    saved_at: new Date().toISOString(),
+    feedback: safeFeedback,
+  };
+  fs.writeFileSync(path.join(userDataDir(), "acceptance-feedback.json"), JSON.stringify(result, null, 2), "utf8");
+  return {ok: true, savedAt: result.saved_at};
+});
 
 ipcMain.handle("openbutler:restart-backend", async () => {
   const state = await restartBackend();
