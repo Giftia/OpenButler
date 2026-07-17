@@ -55,11 +55,26 @@ export function latestSpecificationChange(issue, timeline = []) {
   return new Date(Math.max(...candidates.map((value) => Date.parse(value) || 0))).toISOString();
 }
 
-export function evaluateIssueEligibility(issue, {timeline = [], closedIssues = new Set()} = {}) {
+export function claimedIssueNumbers(pullRequests = []) {
+  const claimed = new Set();
+  for (const pullRequest of pullRequests) {
+    const text = `${pullRequest.title ?? ""}\n${pullRequest.body ?? ""}`;
+    for (const match of text.matchAll(/\b(?:closes|fixes|resolves)\s+#(\d+)\b/gi)) {
+      claimed.add(Number(match[1]));
+    }
+    for (const match of String(pullRequest.title ?? "").matchAll(/\(#(\d+)\)/g)) {
+      claimed.add(Number(match[1]));
+    }
+  }
+  return claimed;
+}
+
+export function evaluateIssueEligibility(issue, {timeline = [], closedIssues = new Set(), claimedIssues = new Set()} = {}) {
   const labels = new Set((issue.labels ?? []).map((label) => label.name ?? label));
   const reasons = [];
   if (!labels.has("ready-for-agent")) reasons.push("missing ready-for-agent");
   if (!labels.has("nightly-approved")) reasons.push("missing nightly-approved");
+  if (claimedIssues.has(Number(issue.number))) reasons.push("open implementation pull request already claims issue");
 
   const dependencies = parseDependencies(issue.body);
   const unresolved = dependencies.filter((number) => !closedIssues.has(number));

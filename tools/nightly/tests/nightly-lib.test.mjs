@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildApprovalCommand,
+  claimedIssueNumbers,
   evaluateCanonicalCheckout,
   evaluateIssueEligibility,
   isFreshAcceptancePack,
@@ -17,6 +18,26 @@ test("parses loop level", () => {
 test("requires both nightly labels", () => {
   const issue = {title: "copy change", body: "", labels: [{name: "ready-for-agent"}]};
   assert.equal(evaluateIssueEligibility(issue).eligible, false);
+});
+
+test("rejects an issue that already has an open implementation pull request", () => {
+  const issue = {
+    number: 42,
+    title: "copy change",
+    body: "",
+    labels: [{name: "ready-for-agent"}, {name: "nightly-approved"}],
+  };
+  const result = evaluateIssueEligibility(issue, {claimedIssues: new Set([42])});
+  assert.equal(result.eligible, false);
+  assert.match(result.reasons.join(" "), /open implementation pull request/);
+});
+
+test("extracts claimed issue numbers from open nightly pull requests", () => {
+  const claimed = claimedIssueNumbers([
+    {title: "Fix local setup (#42)", body: "Closes #42"},
+    {title: "Docs", body: "Resolves #51 and fixes #52"},
+  ]);
+  assert.deepEqual([...claimed].sort((a, b) => a - b), [42, 51, 52]);
 });
 
 test("requires fresh Giftia approval for high-risk work", () => {

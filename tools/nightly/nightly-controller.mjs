@@ -5,6 +5,7 @@ import {fileURLToPath} from "node:url";
 import {
   ISSUE_TOKEN_CAP,
   NIGHTLY_TOKEN_CAP,
+  claimedIssueNumbers,
   evaluateCanonicalCheckout,
   evaluateIssueEligibility,
   mayStartIssue,
@@ -50,6 +51,14 @@ function ghJson(commandArgs) {
   return JSON.parse(result.stdout || "null");
 }
 
+function installNpmDependencies(name, directory) {
+  const result = command("npm.cmd", ["ci", "--no-audit", "--no-fund"], {
+    cwd: directory,
+    timeout: 20 * 60 * 1000,
+  });
+  if (!result.ok) throw new Error(`${name} dependency installation failed: ${result.stderr || result.stdout}`);
+}
+
 function runFocusedTests(worktree) {
   const changed = command("git", ["diff", "--name-only", "origin/main...HEAD"], {cwd: worktree});
   if (!changed.ok) throw new Error("unable to determine changed files for focused tests");
@@ -71,15 +80,18 @@ function runFocusedTests(worktree) {
     run("Workstation Vision", "python", ["-m", "unittest", "discover", "-s", "backend/app/modules/workstation_vision/tests"], {env: pythonEnv});
   }
   if (files.some((file) => file.startsWith("frontend/"))) {
+    installNpmDependencies("Frontend", join(worktree, "frontend"));
     run("Frontend Build", "npm.cmd", ["run", "build"], {cwd: join(worktree, "frontend")});
   }
   if (files.some((file) => file.startsWith("desktop/"))) {
+    installNpmDependencies("Desktop", join(worktree, "desktop"));
     run("Desktop Contract", "npm.cmd", ["run", "check"], {cwd: join(worktree, "desktop")});
   }
   if (files.some((file) => file.startsWith("tools/nightly/"))) {
     run("Nightly Controller", "node", ["--test", "tests/nightly-lib.test.mjs"], {cwd: join(worktree, "tools", "nightly")});
   }
   if (!checks.length) {
+    installNpmDependencies("Loop Governance", join(worktree, "tools", "loop"));
     run("Loop Governance", "npm.cmd", ["test"], {cwd: join(worktree, "tools", "loop")});
   }
   return checks;
@@ -137,6 +149,10 @@ try {
   const closed = new Set((ghJson([
     "issue", "list", "--repo", "Giftia/OpenButler", "--state", "closed", "--limit", "200", "--json", "number"
   ]) ?? []).map((item) => item.number));
+  const claimed = claimedIssueNumbers(ghJson([
+    "pr", "list", "--repo", "Giftia/OpenButler", "--state", "open", "--limit", "200",
+    "--json", "number,title,body,headRefName,url"
+  ]) ?? []);
 
   const evaluated = [];
   for (const issue of issues) {
@@ -160,7 +176,11 @@ try {
       log("specification_timestamp_unavailable", {issue: issue.number, reason: error.message});
     }
     const auditedIssue = {...issue, lastEditedAt, specificationAuditAvailable};
-    evaluated.push({...auditedIssue, evaluation: evaluateIssueEligibility(auditedIssue, {timeline, closedIssues: closed})});
+    evaluated.push({...auditedIssue, evaluation: evaluateIssueEligibility(auditedIssue, {
+      timeline,
+      closedIssues: closed,
+      claimedIssues: claimed,
+    })});
   }
 
   const eligible = evaluated.filter((issue) => issue.evaluation.eligible);
@@ -195,7 +215,7 @@ try {
       external_model_called: false,
       github_mutated: false,
     },
-    blockers: mode === "execute" ? [] : ["L1 dry-run：等待两次真实调度回读和人工批准进入 L2。"],
+    blockers: mode === "execute" ? [] : ["L1 dry-run：等待一次真实调度回读和人工批准进入 L2。"],
   };
 
   if (mode === "execute") {
@@ -323,14 +343,25 @@ async function executeIssue(issue, {tokensUsed}) {
 
     const push = command("git", ["push", "-u", "origin", branchName], {cwd: worktree, timeout: 10 * 60 * 1000});
     if (!push.ok) throw new Error(push.stderr || "push failed");
-    const prUrl = command("gh", [
+    const createdPullRequest = command("gh", [
       "pr", "create", "--repo", "Giftia/OpenButler", "--draft", "--base", "main", "--head", branchName,
       "--title", `${issue.title} (#${issue.number})`, "--body", `Closes #${issue.number}\n\nNightly run: ${runId}\n\nHuman acceptance required.`
-    ], {cwd: worktree}).stdout.trim();
+    ], {cwd: worktree});
+    if (!createdPullRequest.ok) throw new Error(createdPullRequest.stderr || `pull request creation failed for #${issue.number}`);
+    const prUrl = createdPullRequest.stdout.trim();
+    const queueTransition = command("gh", [
+      "issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler",
+      "--remove-label", "ready-for-agent",
+      "--remove-label", "nightly-approved",
+      "--add-label", "ready-for-human",
+    ]);
+    if (!queueTransition.ok) throw new Error(queueTransition.stderr || `failed to move #${issue.number} to human review`);
+    log("issue_claimed_by_pull_request", {issue: issue.number, pull_request_url: prUrl});
     const pr = ghJson(["pr", "view", prUrl, "--repo", "Giftia/OpenButler", "--json", "number,url,headRefOid,title,commits"]);
     const checks = command("gh", ["pr", "checks", String(pr.number), "--repo", "Giftia/OpenButler", "--watch", "--fail-fast"], {cwd: worktree, timeout: 45 * 60 * 1000});
     if (!checks.ok) {
       command("gh", ["pr", "edit", String(pr.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
+      command("gh", ["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
       return {tokens: totalTokens, stop: false, pullRequest: {...pr, head_sha: pr.headRefOid, status: "ci_failed"}, scenarios: []};
     }
     command("gh", ["pr", "ready", String(pr.number), "--repo", "Giftia/OpenButler"]);

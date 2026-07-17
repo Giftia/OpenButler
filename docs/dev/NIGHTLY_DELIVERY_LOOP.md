@@ -13,7 +13,7 @@ ChatGPT Web is an independent reviewer. Its 17:30 preflight and 08:00 report use
 
 ## Current Authority
 
-The repository is at L1. `tools/nightly/nightly-controller.mjs` therefore accepts only `--mode=dry-run`. An execute request exits before creating a worktree or changing GitHub. Two scheduled dry-runs and the exact user approval `批准进入 L2` are required before a human-reviewed governance PR can record L2.
+The repository is at L1. `tools/nightly/nightly-controller.mjs` therefore accepts only `--mode=dry-run`. An execute request exits before creating a worktree or changing GitHub. One supervised scheduled dry-run with accepted runtime readback and the exact user approval `批准进入 L2` are required before a human-reviewed governance PR can record L2.
 
 ## Queue Contract
 
@@ -24,7 +24,13 @@ An Issue is eligible only when:
 - high-risk approval is from `Giftia` and strictly later than GitHub GraphQL `lastEditedAt`; unavailable edit evidence fails closed;
 - declared dependencies are closed;
 - the specification is decision complete;
-- high-risk work was approved by `Giftia` after the latest specification edit.
+- high-risk work was approved by `Giftia` after the latest specification edit;
+- no open implementation pull request already claims the Issue.
+
+As soon as the controller creates a pull request, it removes `ready-for-agent`
+and `nightly-approved` from the source Issue and adds `ready-for-human`. Open
+pull requests are also checked independently, so a failed label transition
+cannot cause the next night to create a duplicate implementation PR.
 
 High-risk work includes privacy, consent, authentication, sensors, MineContext, Electron lifecycle, installers, schemas, migrations, retention and external writes.
 

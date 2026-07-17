@@ -60,3 +60,20 @@ test("high-risk approval uses GitHub's auditable specification edit timestamp", 
   assert.match(controller, /specificationAuditAvailable/);
   assert.match(library, /high-risk specification edit timestamp unavailable/);
 });
+
+test("fresh issue worktrees install npm dependencies before focused checks", () => {
+  const controller = read("tools/nightly/nightly-controller.mjs");
+  assert.match(controller, /function installNpmDependencies/);
+  assert.match(controller, /"npm\.cmd", \["ci", "--no-audit", "--no-fund"\]/);
+  assert.match(controller, /installNpmDependencies\("Frontend", join\(worktree, "frontend"\)/);
+  assert.match(controller, /installNpmDependencies\("Desktop", join\(worktree, "desktop"\)/);
+  assert.match(controller, /installNpmDependencies\("Loop Governance", join\(worktree, "tools", "loop"\)/);
+});
+
+test("an issue moves out of the nightly queue as soon as its pull request exists", () => {
+  const controller = read("tools/nightly/nightly-controller.mjs");
+  assert.match(controller, /claimedIssueNumbers/);
+  assert.match(controller, /--remove-label", "ready-for-agent"/);
+  assert.match(controller, /--remove-label", "nightly-approved"/);
+  assert.match(controller, /--add-label", "ready-for-human"/);
+});
