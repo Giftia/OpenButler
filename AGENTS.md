@@ -4,7 +4,7 @@ OpenButler is a local-first proactive AI butler prototype that turns authorized 
 
 ## Current Priority
 
-`OB-GOAL-027` is the only active objective. Establish the report-only loop-engineering control plane before adding ambient sensors or actions. Read `LOOP.md`, `STATE.md`, `loop-budget.md`, and `loop-constraints.md` before any loop-driven work.
+`OB-GOAL-027` is the only active objective. Complete one supervised report-only dry-run and obtain the exact L2 approval before implementing `OB-GOAL-034: Secure Integrated Context Engine`. Goals `OB-GOAL-028` through `OB-GOAL-033` are historical and must not be selected as the current implementation route. Read `LOOP.md`, `STATE.md`, `loop-budget.md`, and `loop-constraints.md` before any loop-driven work.
 
 ## Real Directory Layout
 
@@ -81,6 +81,7 @@ Pop-Location
 ## Current Capabilities
 
 - MineContext/godview adapter exists and supports PowerShell query/search wrappers plus read-only SQLite activity import. Real 7-day dry-run against user data requires explicit confirmation.
+- The internal `context_engine` is planned under `OB-GOAL-034` through `OB-GOAL-037`; it is not implemented yet. Do not describe the external adapter as completed internalization.
 - PC Activity Context exists with event storage, summaries, app/domain usage, focus blocks, workflow candidates, idempotent event creation, and tests.
 - Proactive Butler Core exists with unified timeline, metrics, insights, Inbox feedback, briefings, goals, context recovery, dry-run PC import preview, and tests.
 - Butler insight evidence is currently inline: `GET /api/butler/insights` returns `evidence_refs` and `evidence_boundary`. There is no dedicated `GET /api/butler/insights/{id}/evidence` endpoint.

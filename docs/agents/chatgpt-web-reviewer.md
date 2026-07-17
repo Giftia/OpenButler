@@ -61,18 +61,19 @@ filesystem paths, databases, API keys, tokens, or raw output.
 The previous local Codex heartbeat is paused. ChatGPT Web has two registered
 tasks in the Asia/Shanghai timezone:
 
-- `OpenButler Nightly GitHub Orchestrator`: daily at 19:00, starting
-  2026-07-17. It inspects public repository facts and emits one issue
-  orchestration package containing a body patch, suggested labels, review
-  draft, evidence, and blockers.
+- `OpenButler GitHub Preflight Reviewer`: daily at 17:30. It inspects public
+  repository facts and emits a read-only issue specification or review draft,
+  evidence, and blockers before the local execution window.
 - `OpenButler Morning Product Report`: daily at 08:00, starting 2026-07-17. It
   reports issue, pull-request, and CI facts plus blockers and choices.
 
 Registration is not execution evidence. Each task remains `registered, run not
 verified` until its own scheduled result is visible. Suggested changes remain
 `not submitted` until local Codex applies them. These schedules do not trigger
-local Codex automatically; local implementation starts only when a ready issue
-is explicitly handed to the local worker.
+local Codex automatically. Windows Task Scheduler is the planned owner of the
+local 19:00 dry-run and 08:00 acceptance opening after PR #19 is merged and the
+scheduler is installed. Local implementation starts only after L2 approval and
+when a ready issue is explicitly handed to the local worker.
 
 ## Mandatory Reviews
 
@@ -89,27 +90,24 @@ The review checks code and test evidence, redaction, strict-mode behavior,
 revocation and failure paths, rollback, and compliance with the current Loop
 level. A documentation claim is not runtime proof.
 
-## Initial Assignment
+## Current Assignment
 
-The first assignment is to close the evidence gaps in `OB-GOAL-027` and turn
-`OB-GOAL-028` into implementation-ready work without bypassing its promotion
-gate:
+The current assignment is to close the evidence gaps in `OB-GOAL-027` and
+review the planned `OB-GOAL-034: Secure Integrated Context Engine` without
+bypassing its promotion gate:
 
 1. Compare Issue `#9` with `LOOP.md`, `STATE.md`, `current_state.md`, the goal
-   files, and PRs `#16` and `#17`.
-2. Keep `#9` open. Treat the evening and morning heartbeat as registered until
-   local runtime readback exists.
-3. Review Issue `#10` and the current FastAPI, Electron preload, strict-mode,
-   privacy, and audit implementation.
-4. Ask one high-impact decision at a time.
-5. Keep `#10` as the Epic. After all decisions are resolved, create four child
-   issues:
-   - Local Session Authentication & Origin Policy
-   - Central PrivacyGuard
-   - Consent Revocation Lifecycle
-   - Sensitive Operation Audit Ledger
-6. Use `needs-info` while a decision is unresolved. Use `ready-for-agent` only
-   when the issue is directly implementable by local Codex.
+   files, and PRs `#18` and `#19`.
+2. Keep `#9` open. Treat the local scheduler and acceptance path as unverified
+   until a redacted runtime readback exists.
+3. Treat Issues `#10` through `#15` as historical specifications for the
+   deferred or superseded `OB-GOAL-028` through `OB-GOAL-033` route.
+4. Review the planned `OB-GOAL-034` security boundary and draft, but do not
+   submit, an implementation Epic and child Issue structure.
+5. Ask one high-impact decision at a time and keep every unresolved draft in
+   `needs-info` state.
+6. Do not recommend `ready-for-agent` until the supervised L1 dry-run passes
+   and the user gives the exact approval `批准进入 L2`.
 
 ## Redacted Local Handoff
 

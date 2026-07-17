@@ -1,8 +1,8 @@
 product_goal:
   name: "OpenButler 主动全场景感知 AI 管家"
   mission: "让用户的生活更加清晰、高效、可量化"
-  current_stage: "Loop-Driven Ambient OpenButler"
-  north_star: "在不越过授权边界的前提下，让用户获得真正有用、可解释且不过度打扰的主动帮助"
+  current_stage: "Integrated Context Engine governance preparation"
+  north_star: "在不越过授权边界的前提下，把本机上下文整理成有依据、可行动且不过度打扰的帮助"
 
 active_objectives:
   - id: OB-GOAL-027
@@ -10,85 +10,137 @@ active_objectives:
     priority: P0
     status: active
     description: >
-      用 loop-engineering 建立 OpenButler 的开发控制面，并定义持续感知运行闭环。
-      本阶段只启用 L1 只读治理巡检，不自动修改产品代码、不自动合并，
-      后续按验证证据逐级开放 L2 和 L3。
+      用 loop-engineering 建立 OpenButler 的开发控制面，并为 Integrated Context Engine
+      路线建立安全晋级门禁。当前先完成一次 L1 监督 dry-run，再由用户明确批准 L2。
+      L2 使用 GitHub Issue、本机 Codex、独立 verifier、Preview 验收中心和人工合并
+      形成每日交付闭环，夜间不自动合并，后续仍按验证证据逐级开放 L3。
     success_criteria:
       - "远端旧 main 已归档，当前产品历史成为受保护的 canonical main"
       - "LOOP.md、STATE.md、loop-budget.md、loop-constraints.md、loop-run-log.md 存在且相互一致"
       - "L1 治理巡检仅写入忽略目录中的报告，不修改产品代码或 GitHub 状态"
       - "基础 CI 覆盖 Butler Core、PC Activity、Workstation Vision、Frontend 和 Desktop contract"
       - "GitHub Issues 成为可执行工作队列，仓库内 task queue 只保存目标级状态"
-      - "Ambient 产品路线固定为 OB-GOAL-028 到 OB-GOAL-033，并保持安全前置顺序"
+      - "Integrated Context Engine 路线固定为 OB-GOAL-034 到 OB-GOAL-041"
       - "未读取真实 MineContext 活动、未复制截图、未调用外部模型"
       - "首次人工 L1 已在 canonical main 上完成并被人工接受"
+      - "19:00 本机夜间控制器和 08:00 验收任务有真实运行回读"
+      - "一次监督 dry-run 通过后仍需用户明确批准进入 L2"
+      - "L2 每个 Issue 使用独立 PR，早晨通过 OpenButler Preview 验收，夜间永不合并"
 
 planned_objectives:
-  - id: OB-GOAL-028
-    title: "Secure Local Control Plane & PrivacyGuard"
+  - id: OB-GOAL-034
+    title: "Secure Integrated Context Engine"
     priority: P0
     status: blocked
     blocked_by: [OB-GOAL-027]
     success_criteria:
+      - "context_engine 内核骨架和 Apache-2.0 来源声明存在"
       - "本地 API 有会话鉴权和 Origin 限制"
-      - "统一 PrivacyGuard 覆盖外部模型、Webhook、截图和数据源写入"
-      - "授权可撤回，且一个处理周期内生效"
-      - "敏感操作进入审计日志"
+      - "统一 PrivacyGuard 覆盖采集、模型、截图、迁移和外部写入"
+      - "旧 MineContext 仅作为只读迁移兼容层"
 
-  - id: OB-GOAL-029
-    title: "Continuous Laptop Sensing Runtime"
+  - id: OB-GOAL-035
+    title: "Three-Route Model Gateway"
     priority: P0
     status: blocked
-    blocked_by: [OB-GOAL-028]
+    blocked_by: [OB-GOAL-034]
     success_criteria:
-      - "Electron 调度支持检查点、崩溃恢复和重复事件保护"
-      - "锁屏、睡眠、合盖和节能状态会调整或停止采样"
-      - "摄像头和麦克风使用状态持续可见"
-      - "默认不持久化原始音视频"
+      - "图像、文本和 Embedding 三路可独立配置与验证"
+      - "支持 managed、custom 和 local 三种模式"
+      - "API Key 只写并由 Windows SecretStore 保护"
+      - "全部启用路由验证成功后才原子保存并热重载"
 
-  - id: OB-GOAL-030
-    title: "Household Identity & Consent"
+  - id: OB-GOAL-036
+    title: "MineContext Feature Parity"
     priority: P0
     status: blocked
-    blocked_by: [OB-GOAL-029]
+    blocked_by: [OB-GOAL-035]
     success_criteria:
-      - "支持户主、成人、儿童、访客和 unknown"
-      - "自动识别只适用于明确注册的成员"
-      - "低置信度统一回退为 unknown"
-      - "多人在场时不会播报私人内容"
+      - "支持区域或显示器选择、敏感应用排除和采集暂停"
+      - "支持活动、日报、周报、待办、提示、语义搜索和历史问答"
+      - "支持处理状态、失败恢复、保留策略和重启幂等"
+      - "默认截图保留 7 天且可由用户调整"
 
-  - id: OB-GOAL-031
-    title: "Silence & Intervention Policy"
+  - id: OB-GOAL-037
+    title: "Migration & Product Shell"
     priority: P0
     status: blocked
-    blocked_by: [OB-GOAL-030]
+    blocked_by: [OB-GOAL-036]
     success_criteria:
-      - "安静时段真实生效"
-      - "支持同类提醒冷却、每日介入预算和重复抑制"
-      - "每次保持沉默或介入都有原因码"
-      - "隐私和数据质量提醒不会被永久静默"
+      - "旧数据迁移支持预览、只读复制、校验、幂等和回滚"
+      - "主导航为今日、时间线、任务、记忆和问管家"
+      - "普通产品层不暴露引擎协议和内部来源字段"
+      - "桌面主程序支持 zh-CN 和 en-US"
 
-  - id: OB-GOAL-032
-    title: "First Useful Ambient Loop"
+  - id: OB-GOAL-038
+    title: "OpenButler Cloud"
     priority: P0
     status: blocked
-    blocked_by: [OB-GOAL-031]
+    blocked_by: [OB-GOAL-037]
     success_criteria:
-      - "合成的 90 分钟在场与 PC 上下文只生成一条有依据建议"
-      - "建议默认进入 Inbox，屏幕优先，语音需显式开启"
-      - "重启不重复生成，反馈会影响后续频率"
-      - "strict 模式不调用外部模型"
+      - "托管订阅使用月度额度并支持加购"
+      - "本地模型和自定义端点不要求登录"
+      - "完全本地、脱敏图片和原图三档授权清晰可见"
+      - "托管服务默认零留存且原图需要单独授权"
 
-  - id: OB-GOAL-033
-    title: "Action Proposal & Smart Home"
+  - id: OB-GOAL-039
+    title: "NanoKVM-Go+ Screen Recall"
     priority: P1
     status: blocked
-    blocked_by: [OB-GOAL-032]
+    blocked_by: [OB-GOAL-037]
     success_criteria:
-      - "动作采用 Proposal、Approved、Running、Succeeded 或 Failed 状态机"
-      - "首批动作仅限可撤销白名单"
-      - "锁门、购买、发消息和外部写入始终逐次确认"
-      - "远程事实在执行前回源验证"
+      - "ScreenContextSource 与本机捕获实现解耦"
+      - "到货前使用接口契约、录制样例和 mock 验证"
+      - "到货后完成发现、配对、屏幕历史读取和真机 smoke"
+      - "普通状态接口不暴露原始截图或本地路径"
+
+  - id: OB-GOAL-040
+    title: "NanoKVM Controlled Autonomy"
+    priority: P1
+    status: blocked
+    blocked_by: [OB-GOAL-039]
+    success_criteria:
+      - "只读、逐次确认和限时白名单采用明确分级"
+      - "键鼠动作有提案、批准、执行、结果和审计状态"
+      - "电源、BIOS、凭据输入和不可逆操作始终逐次确认"
+      - "支持紧急停止和失败回滚"
+
+  - id: OB-GOAL-041
+    title: "Ambient Expansion"
+    priority: P2
+    status: blocked
+    blocked_by: [OB-GOAL-040]
+    success_criteria:
+      - "摄像头、麦克风和家庭身份在单独授权模型下接入"
+      - "全局沉默策略覆盖安静时段、冷却和介入预算"
+      - "低置信度身份回退为 unknown"
+      - "智能家居动作仍遵循提案与人工确认边界"
+
+paused_objectives:
+  - id: OB-GOAL-028
+    title: "Secure Local Control Plane & PrivacyGuard"
+    status: superseded
+    superseded_by: OB-GOAL-034
+  - id: OB-GOAL-029
+    title: "Continuous Laptop Sensing Runtime"
+    status: deferred
+    superseded_by: OB-GOAL-036
+  - id: OB-GOAL-030
+    title: "Household Identity & Consent"
+    status: deferred
+    superseded_by: OB-GOAL-041
+  - id: OB-GOAL-031
+    title: "Silence & Intervention Policy"
+    status: deferred
+    superseded_by: OB-GOAL-041
+  - id: OB-GOAL-032
+    title: "First Useful Ambient Loop"
+    status: deferred
+    superseded_by: OB-GOAL-036
+  - id: OB-GOAL-033
+    title: "Action Proposal & Smart Home"
+    status: deferred
+    superseded_by: OB-GOAL-040
 
 archived_objectives:
   - id: OB-GOAL-026
@@ -101,8 +153,8 @@ archived_objectives:
       - "backend desktop status privacy tests"
 
 constraints:
-  - "Windows 笔记本是第一参考设备，暂不开发专用无屏硬件"
-  - "不接入新硬件，不扩展新的真实数据源"
+  - "Windows 是首个可运行平台，macOS 只保持构建契约"
+  - "NanoKVM-Go+ 不阻塞核心 Beta，真机到货前仅做契约与 mock"
   - "不删除或修改 MineContext 原始数据"
   - "不读取真实 MineContext 活动，除非另有明确授权"
   - "默认不复制截图，不持久化原始音视频"
