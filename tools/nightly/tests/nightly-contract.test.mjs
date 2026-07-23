@@ -95,6 +95,12 @@ test("an issue moves from its execution lease to review as soon as its pull requ
   assert.match(controller, /--remove-label", "nightly-running"/);
 });
 
+test("nightly retries use unique branches and clean local branch state", () => {
+  const controller = read("tools/nightly/nightly-controller.mjs");
+  assert.match(controller, /runId\.replace\(\/\[\^0-9A-Za-z\]\/g, ""\)\.slice\(0, 22\)/);
+  assert.match(controller, /\["branch", "-D", branchName\]/);
+});
+
 test("real data smoke is isolated, bounded, and redacted", () => {
   const source = read("tools/nightly/real-data-smoke.py");
   assert.match(source, /lookback_days=2/);

@@ -300,7 +300,7 @@ try {
 }
 
 async function executeIssue(issue, {tokensUsed}) {
-  const branchName = `codex/nightly-${issue.number}-${runId.slice(0, 10)}`;
+  const branchName = `codex/nightly-${issue.number}-${runId.replace(/[^0-9A-Za-z]/g, "").slice(0, 22)}`;
   const worktree = join(repoRoot, "data", "nightly", "worktrees", `${issue.number}-${runId}`);
   mkdirSync(dirname(worktree), {recursive: true});
   const add = command("git", ["worktree", "add", "-b", branchName, worktree, "origin/main"], {timeout: 120_000});
@@ -449,6 +449,7 @@ async function executeIssue(issue, {tokensUsed}) {
   } finally {
     command("gh", ["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--remove-label", "nightly-running"]);
     command("git", ["worktree", "remove", "--force", worktree], {timeout: 120_000});
+    command("git", ["branch", "-D", branchName], {timeout: 120_000});
   }
 }
 
