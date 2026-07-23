@@ -65,6 +65,19 @@ test("high-risk work uses a second product and privacy verifier", () => {
   assert.match(controller, /automation-blocked/);
 });
 
+test("Windows automation resolves the native Codex executable before a command shim", () => {
+  const controller = read("tools/nightly/nightly-controller.mjs");
+  const cloud = read("tools/nightly/cloud-preflight.mjs");
+  const library = read("tools/nightly/nightly-lib.mjs");
+  assert.match(controller, /resolveCodexCommand/);
+  assert.match(cloud, /resolveCodexCommand/);
+  assert.match(library, /node_modules", "@openai", "codex", "bin", "codex\.js"/);
+  assert.match(library, /command: process\.execPath/);
+  assert.match(library, /where\.exe", \["codex\.exe"\]/);
+  assert.match(library, /OPENBUTLER_CODEX_EXE/);
+  assert.match(controller, /errorCode: result\.error\?\.code/);
+});
+
 test("fresh issue worktrees install npm dependencies before focused checks", () => {
   const controller = read("tools/nightly/nightly-controller.mjs");
   assert.match(controller, /function installNpmDependencies/);

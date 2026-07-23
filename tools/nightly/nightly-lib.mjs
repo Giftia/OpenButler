@@ -1,4 +1,7 @@
-import {readFileSync} from "node:fs";
+import {spawnSync} from "node:child_process";
+import {existsSync, readFileSync} from "node:fs";
+import {platform} from "node:os";
+import {dirname, join} from "node:path";
 
 export const NIGHTLY_TOKEN_CAP = 750_000;
 export const NIGHTLY_START_THRESHOLD = 600_000;
@@ -29,6 +32,37 @@ const forbiddenAcceptanceKeys = new Set([
   "apiKey", "embeddingApiKey", "raw", "raw_output", "raw_ref", "screenshot_paths",
   "local_path", "database_path", "activity_title", "window_title", "url"
 ]);
+
+export function resolveCodexCommand(env = process.env) {
+  if (env.OPENBUTLER_CODEX_EXE?.trim()) {
+    return {command: env.OPENBUTLER_CODEX_EXE.trim(), argsPrefix: []};
+  }
+  if (platform() !== "win32") return {command: "codex", argsPrefix: []};
+
+  const shim = spawnSync("where.exe", ["codex.cmd"], {
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 10_000,
+  });
+  const shimPath = shim.status === 0
+    ? shim.stdout.split(/\r?\n/).map((item) => item.trim()).find(Boolean)
+    : null;
+  if (shimPath) {
+    const scriptPath = join(dirname(shimPath), "node_modules", "@openai", "codex", "bin", "codex.js");
+    if (existsSync(scriptPath)) return {command: process.execPath, argsPrefix: [scriptPath]};
+  }
+
+  const native = spawnSync("where.exe", ["codex.exe"], {
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 10_000,
+  });
+  const nativePath = native.status === 0
+    ? native.stdout.split(/\r?\n/).map((item) => item.trim()).find(Boolean)
+    : null;
+  if (nativePath) return {command: nativePath, argsPrefix: []};
+  return {command: "codex.exe", argsPrefix: []};
+}
 
 export function parseCurrentLevel(markdown) {
   const match = markdown.match(/Current level:\s*(L\d)\s+active/i);

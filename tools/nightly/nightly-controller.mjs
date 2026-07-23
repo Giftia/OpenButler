@@ -10,6 +10,7 @@ import {
   evaluateIssueEligibility,
   mayStartIssue,
   parseCurrentLevel,
+  resolveCodexCommand,
   sanitizeAcceptanceValue,
   tokenUsageFromJsonl,
 } from "./nightly-lib.mjs";
@@ -27,6 +28,7 @@ const runDir = join(repoRoot, "data", "nightly", runId);
 const lockPath = join(repoRoot, "data", "nightly", "active-run.json");
 const cutoffFlag = join(repoRoot, "data", "nightly", "control", "stop-new-issues.flag");
 const eventsPath = join(runDir, "events.jsonl");
+const codexCommand = resolveCodexCommand();
 mkdirSync(runDir, {recursive: true});
 
 function log(type, detail = {}) {
@@ -51,7 +53,13 @@ function command(commandName, commandArgs, options = {}) {
     timeout: Math.min(requestedTimeout, millisecondsUntilLocalDeadline()),
     env: {...process.env, PYTHONUTF8: "1", ...(options.env ?? {})},
   });
-  return {ok: result.status === 0, status: result.status, stdout: result.stdout ?? "", stderr: result.stderr ?? ""};
+  return {
+    ok: result.status === 0,
+    status: result.status,
+    errorCode: result.error?.code ?? null,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+  };
 }
 
 function ghJson(commandArgs) {
@@ -313,15 +321,15 @@ async function executeIssue(issue, {tokensUsed}) {
         ? `Implement GitHub Issue #${issue.number}: ${issue.title}\n\n${issue.body}\n\nRead AGENTS.md, LOOP.md and loop-constraints.md. Work only in this worktree. Do not push, merge, deploy, read personal data, or change GitHub state. Run focused tests. Return the required JSON result.`
         : `Correct only the verifier findings for Issue #${issue.number}. Preserve the existing scope and tests. Verifier evidence:\n${verifierFeedback}`;
       const eventsFile = join(runDir, `issue-${issue.number}-maker-attempt-${attempt}.jsonl`);
-      const maker = command("codex", [
-        "exec", "-C", worktree, "-s", "workspace-write", "--json",
+      const maker = command(codexCommand.command, [
+        ...codexCommand.argsPrefix, "exec", "-C", worktree, "-s", "workspace-write", "--json",
         "--output-schema", join(here, "schemas", "maker-output.schema.json"),
         "--output-last-message", join(runDir, `issue-${issue.number}-maker-attempt-${attempt}.json`), prompt
       ], {cwd: worktree, timeout: 3 * 60 * 60 * 1000});
       writeFileSync(eventsFile, maker.stdout, "utf8");
       totalTokens += tokenUsageFromJsonl(maker.stdout);
       if (!maker.ok || totalTokens > ISSUE_TOKEN_CAP || tokensUsed + totalTokens > NIGHTLY_TOKEN_CAP) {
-        throw new Error(`maker failed or exceeded budget for #${issue.number}`);
+        throw new Error(`maker failed (${maker.errorCode ?? maker.status ?? "unknown"}) or exceeded budget for #${issue.number}`);
       }
 
       const changed = command("git", ["status", "--porcelain=v1"], {cwd: worktree});
@@ -342,8 +350,8 @@ async function executeIssue(issue, {tokensUsed}) {
       log("issue_tests_passed", {issue: issue.number, attempt, checks});
 
       const verdictPath = join(runDir, `issue-${issue.number}-verifier-attempt-${attempt}.json`);
-      const review = command("codex", [
-        "exec", "review", "--base", "origin/main", "--json",
+      const review = command(codexCommand.command, [
+        ...codexCommand.argsPrefix, "exec", "review", "--base", "origin/main", "--json",
         "--output-schema", join(here, "schemas", "verifier-output.schema.json"),
         "--output-last-message", verdictPath,
         "Apply .codex/agents/verifier.toml. Check issue scope, real test evidence, privacy, unrelated changes, and return only the structured verdict."
@@ -372,8 +380,8 @@ async function executeIssue(issue, {tokensUsed}) {
     }
 
     const productVerdictPath = join(runDir, `issue-${issue.number}-product-privacy-verifier.json`);
-    const productReview = command("codex", [
-      "exec", "review", "--base", "origin/main", "--json",
+    const productReview = command(codexCommand.command, [
+      ...codexCommand.argsPrefix, "exec", "review", "--base", "origin/main", "--json",
       "--output-schema", join(here, "schemas", "verifier-output.schema.json"),
       "--output-last-message", productVerdictPath,
       "Independently review the change as an ordinary-user product and privacy checker. Verify the Issue acceptance criteria, user-facing clarity, strict privacy invariants, hard-stop policy, rollback path, and absence of internal or personal data. Return only the structured verdict."
