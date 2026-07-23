@@ -418,10 +418,10 @@ class ButlerApiContractTests(unittest.TestCase):
         self.assertIn("evidence_boundary", template["criterion_contract"])
         self.assertIn("minecontext_source_deleted must remain 0", template["privacy_invariants"])
         objectives = {item["id"]: item for item in response["objectives"]}
-        self.assertEqual(set(objectives), {"OB-GOAL-027"})
-        objective = objectives["OB-GOAL-027"]
+        self.assertEqual(set(objectives), {"OB-GOAL-034"})
+        objective = objectives["OB-GOAL-034"]
         self.assertEqual(objective["status"], "needs_attention")
-        self.assertEqual(objective["title"], "Loop-Driven Ambient OpenButler")
+        self.assertEqual(objective["title"], "Secure Integrated Context Engine")
         self.assertEqual(objective["proven_count"], objective["criteria_count"] - 3)
         self.assertEqual(objective["priority"], "P0")
         self.assertTrue(objective["success_criteria"])
@@ -430,16 +430,12 @@ class ButlerApiContractTests(unittest.TestCase):
             self.assertTrue(criterion["evidence_refs"])
             self.assertTrue(criterion["evidence_boundary"])
         criteria = {item["id"]: item for item in objective["criteria"]}
-        self.assertEqual(criteria["canonical_repository_baseline"]["status"], "proven")
-        self.assertEqual(criteria["loop_control_plane_files"]["status"], "proven")
-        self.assertEqual(criteria["read_only_governance_audit"]["status"], "proven")
-        self.assertEqual(criteria["required_ci_gates"]["status"], "proven")
-        self.assertEqual(criteria["nightly_scheduler_runtime_readback"]["status"], "needs_attention")
-        self.assertEqual(criteria["supervised_dry_run_and_human_gate"]["status"], "needs_attention")
-        self.assertEqual(criteria["l2_pr_preview_contract"]["status"], "needs_attention")
-        self.assertEqual(criteria["integrated_context_engine_roadmap"]["status"], "proven")
-        self.assertEqual(criteria["first_manual_l1_accepted"]["status"], "proven")
-        self.assertTrue(criteria["first_manual_l1_accepted"]["details"]["human_gate"])
+        self.assertEqual(criteria["context_engine_skeleton"]["status"], "needs_attention")
+        self.assertEqual(criteria["local_session_and_origin"]["status"], "needs_attention")
+        self.assertEqual(criteria["central_privacy_guard"]["status"], "needs_attention")
+        self.assertEqual(criteria["minecontext_read_only_compatibility"]["status"], "proven")
+        self.assertEqual(criteria["redacted_status_interfaces"]["status"], "proven")
+        self.assertEqual(criteria["strict_blocks_external_calls"]["status"], "proven")
 
     def test_productization_objective_status_surfaces_unknown_goals(self) -> None:
         butler_router.run_demo(DemoRunRequest(import_pc_activity=False))
@@ -515,20 +511,17 @@ class ButlerApiContractTests(unittest.TestCase):
         self.assertTrue(response["privacy"]["strict_mode_respected"])
         self.assertTrue(response["evidence_boundary"])
         objectives = {item["id"]: item for item in response["objectives"]}
-        goal = objectives["OB-GOAL-027"]
+        goal = objectives["OB-GOAL-034"]
         self.assertEqual(goal["objective_status"], "needs_attention")
         checks = {item["success_criterion"]: item for item in goal["success_criteria"]}
-        self.assertEqual(checks["LOOP.md、STATE.md、loop-budget.md、loop-constraints.md、loop-run-log.md 存在且相互一致"]["verification_result"], "proven")
-        self.assertEqual(checks["L1 治理巡检仅写入忽略目录中的报告，不修改产品代码或 GitHub 状态"]["verification_result"], "proven")
-        self.assertEqual(checks["基础 CI 覆盖 Butler Core、PC Activity、Workstation Vision、Frontend 和 Desktop contract"]["verification_result"], "proven")
-        self.assertEqual(checks["Integrated Context Engine 路线固定为 OB-GOAL-034 到 OB-GOAL-041"]["verification_result"], "proven")
-        self.assertEqual(checks["未读取真实 MineContext 活动、未复制截图、未调用外部模型"]["verification_result"], "proven")
-        self.assertEqual(checks["首次人工 L1 已在 canonical main 上完成并被人工接受"]["verification_result"], "proven")
-        self.assertEqual(checks["19:00 本机夜间控制器和 08:00 验收任务有真实运行回读"]["verification_result"], "needs_attention")
-        self.assertEqual(checks["一次监督 dry-run 通过后仍需用户明确批准进入 L2"]["verification_result"], "needs_attention")
-        self.assertEqual(checks["L2 每个 Issue 使用独立 PR，早晨通过 OpenButler Preview 验收，夜间永不合并"]["verification_result"], "needs_attention")
-        self.assertTrue(checks["LOOP.md、STATE.md、loop-budget.md、loop-constraints.md、loop-run-log.md 存在且相互一致"]["evidence_refs"])
-        self.assertTrue(checks["未读取真实 MineContext 活动、未复制截图、未调用外部模型"]["evidence_boundary"])
+        self.assertEqual(checks["context_engine 内核骨架和 Apache-2.0 来源声明存在"]["verification_result"], "needs_attention")
+        self.assertEqual(checks["本地 API 有会话鉴权和 Origin 限制"]["verification_result"], "needs_attention")
+        self.assertEqual(checks["统一 PrivacyGuard 覆盖采集、模型、截图、迁移和外部写入"]["verification_result"], "needs_attention")
+        self.assertEqual(checks["旧 MineContext 仅作为只读迁移兼容层"]["verification_result"], "proven")
+        self.assertEqual(checks["普通状态接口不返回密钥、绝对路径、截图或 raw output"]["verification_result"], "proven")
+        self.assertEqual(checks["strict 模式禁止外部模型和 Webhook"]["verification_result"], "proven")
+        self.assertTrue(checks["旧 MineContext 仅作为只读迁移兼容层"]["evidence_refs"])
+        self.assertTrue(checks["strict 模式禁止外部模型和 Webhook"]["evidence_boundary"])
 
     def test_productization_l1_audit_report_distinguishes_missing_and_out_of_scope(self) -> None:
         butler_router.run_demo(DemoRunRequest(import_pc_activity=False))

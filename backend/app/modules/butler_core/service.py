@@ -2645,6 +2645,66 @@ class ButlerCoreService:
                         ],
                     ),
             ],
+            "OB-GOAL-034": [
+                    criterion(
+                        "context_engine_skeleton",
+                        "context_engine 内核骨架和 Apache-2.0 来源声明存在",
+                        (root / "backend" / "app" / "modules" / "context_engine").exists()
+                        and (root / "THIRD_PARTY_NOTICES.md").exists(),
+                        [
+                            {"kind": "file", "path": "backend/app/modules/context_engine"},
+                            {"kind": "file", "path": "THIRD_PARTY_NOTICES.md"},
+                        ],
+                    ),
+                    criterion(
+                        "local_session_and_origin",
+                        "本地 API 有会话鉴权和 Origin 限制",
+                        (root / "backend" / "app" / "security" / "local_session.py").exists()
+                        and (root / "backend" / "app" / "security" / "origin_policy.py").exists(),
+                        [
+                            {"kind": "file", "path": "backend/app/security/local_session.py"},
+                            {"kind": "file", "path": "backend/app/security/origin_policy.py"},
+                        ],
+                    ),
+                    criterion(
+                        "central_privacy_guard",
+                        "统一 PrivacyGuard 覆盖采集、模型、截图、迁移和外部写入",
+                        (root / "backend" / "app" / "security" / "privacy_guard.py").exists(),
+                        [{"kind": "file", "path": "backend/app/security/privacy_guard.py"}],
+                    ),
+                    criterion(
+                        "minecontext_read_only_compatibility",
+                        "旧 MineContext 仅作为只读迁移兼容层",
+                        (root / "backend" / "app" / "integrations" / "minecontext" / "adapter.py").exists()
+                        and "Do not delete or mutate MineContext source data"
+                        in (root / "AGENTS.md").read_text(encoding="utf-8"),
+                        [
+                            {"kind": "file", "path": "backend/app/integrations/minecontext/adapter.py"},
+                            {"kind": "file", "path": "AGENTS.md"},
+                        ],
+                    ),
+                    criterion(
+                        "redacted_status_interfaces",
+                        "普通状态接口不返回密钥、绝对路径、截图或 raw output",
+                        (root / "backend" / "app" / "modules" / "butler_core" / "tests" / "test_desktop_status.py").exists()
+                        and "raw_activity_titles_returned" in desktop_status_test_text
+                        and "screenshot_paths_returned" in desktop_status_test_text,
+                        [
+                            {"kind": "file", "path": "backend/app/modules/butler_core/tests/test_desktop_status.py"},
+                            {"kind": "api", "path": "GET /api/desktop/status"},
+                        ],
+                    ),
+                    criterion(
+                        "strict_blocks_external_calls",
+                        "strict 模式禁止外部模型和 Webhook",
+                        "external_model_allowed" in desktop_status_test_text
+                        and "webhook" in (root / "loop-constraints.md").read_text(encoding="utf-8").lower(),
+                        [
+                            {"kind": "file", "path": "backend/app/modules/butler_core/tests/test_desktop_status.py"},
+                            {"kind": "file", "path": "loop-constraints.md"},
+                        ],
+                    ),
+            ],
             "OB-GOAL-027": [
                     criterion(
                         "canonical_repository_baseline",

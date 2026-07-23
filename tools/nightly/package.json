@@ -6,6 +6,10 @@
     "test": "node --test tests",
     "dry-run": "node nightly-controller.mjs --mode dry-run",
     "morning": "node morning-report.mjs",
-    "approve": "node approve-release.mjs"
+    "approve": "node approve-release.mjs",
+    "auto-merge": "node auto-merge-controller.mjs",
+    "cloud:preflight": "node cloud-preflight.mjs",
+    "cutoff": "node set-cutoff.mjs",
+    "cleanup": "node cleanup-nightly.mjs"
   }
 }

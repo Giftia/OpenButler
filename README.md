@@ -6,7 +6,7 @@ Development is now governed by a separate loop-engineering control plane. The en
 
 ## Loop Engineering
 
-Install the pinned tools and run the report-only L1 audit:
+Install the pinned tools and run the report-only governance audit:
 
 ```powershell
 Push-Location tools/loop
@@ -15,24 +15,24 @@ npm run audit:governance -- --github
 Pop-Location
 ```
 
-The audit writes redacted reports only below ignored `data/loop-runs/`. It does not read real MineContext activity, modify product code, mutate GitHub, deploy, or call external models. See `LOOP.md`, `STATE.md`, and `docs/dev/LOOP_OPERATIONS.md`.
+The audit writes redacted reports only below ignored `data/loop-runs/`. It does not read real MineContext activity, modify product code, mutate GitHub, deploy, or call external models. It remains available as a governance check while delegated L2 delivery runs through a separate controller. See `LOOP.md`, `STATE.md`, and `docs/dev/LOOP_OPERATIONS.md`.
 
-### Nightly delivery rehearsal
+### Delegated Nightly delivery
 
-The human-gated nightly controller starts in L1 dry-run mode:
+The repository is in delegated L2. A dry-run remains available for governance verification:
 
 ```powershell
 node tools\nightly\nightly-controller.mjs --mode=dry-run
 node tools\nightly\morning-report.mjs
 ```
 
-Install the 19:00 and 08:00 Windows tasks only after reviewing the governance PR:
+After the governance change is merged, install the four Windows tasks:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tools\nightly\install-scheduled-tasks.ps1 -Mode dry-run
+powershell -ExecutionPolicy Bypass -File tools\nightly\install-scheduled-tasks.ps1 -Mode execute
 ```
 
-The executor refuses `execute` unless `STATE.md` explicitly records `L2 active`. Nightly work never merges; successful future L2 work is presented through the side-by-side `OpenButler Preview` acceptance center. See `docs/dev/NIGHTLY_DELIVERY_LOOP.md`.
+The schedule starts delivery at 20:00, stops taking new work at 07:15, finalizes and cleans up at 08:20, and prepares the redacted morning report at 08:30. The executor refuses `execute` unless `STATE.md` records `L2 active`. Eligible pull requests may auto-merge only after exact-SHA CI, two independent verifier results, privacy gates, and Nightly evidence; the stable release channel remains manual. See `docs/dev/NIGHTLY_DELIVERY_LOOP.md`.
 
 ## Current Reality
 
@@ -143,8 +143,8 @@ npm run build
 Most recent governance-run results:
 
 ```text
-pc_activity_context: 8 tests OK
-butler_core: 51 tests OK
+pc_activity_context: 10 tests OK
+butler_core: 57 tests OK
 workstation_vision: 7 tests OK
 frontend npm run build: OK
 ```

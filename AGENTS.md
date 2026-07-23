@@ -4,7 +4,7 @@ OpenButler is a local-first proactive AI butler prototype that turns authorized 
 
 ## Current Priority
 
-`OB-GOAL-027` is the only active objective. Complete one supervised report-only dry-run and obtain the exact L2 approval before implementing `OB-GOAL-034: Secure Integrated Context Engine`. Goals `OB-GOAL-028` through `OB-GOAL-033` are historical and must not be selected as the current implementation route. Read `LOOP.md`, `STATE.md`, `loop-budget.md`, and `loop-constraints.md` before any loop-driven work.
+`OB-GOAL-034: Secure Integrated Context Engine` is the only active objective. The repository is in delegated L2 after the supervised scheduler dry-run `2026-07-23T15-15-37-644Z` and the user's recorded pre-authorization. Read `.openbutler/automation-policy.yaml`, `LOOP.md`, `STATE.md`, `loop-budget.md`, and `loop-constraints.md` before any loop-driven work. Goals `OB-GOAL-028` through `OB-GOAL-033` remain historical.
 
 ## Real Directory Layout
 
@@ -81,7 +81,7 @@ Pop-Location
 ## Current Capabilities
 
 - MineContext/godview adapter exists and supports PowerShell query/search wrappers plus read-only SQLite activity import. Real 7-day dry-run against user data requires explicit confirmation.
-- The internal `context_engine` is planned under `OB-GOAL-034` through `OB-GOAL-037`; it is not implemented yet. Do not describe the external adapter as completed internalization.
+- The internal `context_engine` starts under active `OB-GOAL-034`; its security skeleton is not implemented yet. Do not describe the external adapter as completed internalization.
 - PC Activity Context exists with event storage, summaries, app/domain usage, focus blocks, workflow candidates, idempotent event creation, and tests.
 - Proactive Butler Core exists with unified timeline, metrics, insights, Inbox feedback, briefings, goals, context recovery, dry-run PC import preview, and tests.
 - Butler insight evidence is currently inline: `GET /api/butler/insights` returns `evidence_refs` and `evidence_boundary`. There is no dedicated `GET /api/butler/insights/{id}/evidence` endpoint.
@@ -128,4 +128,6 @@ Single-context repo. Engineering skills should read `AGENTS.md`, the architectur
 - Privacy boundaries: `docs/privacy/PRIVACY_BOUNDARIES.md`
 - Reality audit: `docs/dev/OPENBUTLER_REALITY_AUDIT_2026-05-30.md`
 - Loop operations: `docs/dev/LOOP_OPERATIONS.md`
+- Delegated delivery: `docs/dev/AUTONOMOUS_24X7_DELIVERY.md`
+- Automation policy: `.openbutler/automation-policy.yaml`
 - Ambient architecture: `docs/architecture/LOOP_DRIVEN_AMBIENT_ARCHITECTURE.md`

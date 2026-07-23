@@ -27,10 +27,12 @@
 npx @cobusgreyling/loop-cost@1.1.0 --pattern daily-triage --level L1
 ```
 
-## Future Levels
+## L2 Delegated Delivery
 
-- L2 nightly hard token cap is 750,000, with no new issue started after 600,000 tokens or 06:15 Asia/Shanghai.
+- L2 nightly hard token cap is 750,000, with no new issue started after 600,000 tokens or 07:15 Asia/Shanghai.
 - L2 may run one maker and one independent verifier per item, strictly serially.
 - An individual issue may consume at most 160,000 tokens before escalation.
 - L2 has no fixed issue-count limit; time, token, privacy, CI, and verifier circuit breakers are authoritative.
-- L3 budgets are not defined until the L2 promotion gate is satisfied.
+- Product/privacy verification uses a fresh context and is counted inside the same per-Issue cap.
+- Daytime Codex Cloud work is disabled until `OPENBUTLER_CODEX_CLOUD_ENV_ID` passes a docs-only smoke.
+- L3 budgets remain undefined until at least two complete delegated L2 cycles pass.

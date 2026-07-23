@@ -90,15 +90,15 @@ tasks:
     title: "启用本机夜间演练与 08:00 晨间验收"
     goal_id: OB-GOAL-027
     priority: P1
-    status: in_progress
+    status: done
     done_when:
-      - "Windows Task Scheduler 在 19:00 启动 L1 dry-run"
-      - "Windows Task Scheduler 在 08:00 打开脱敏验收包"
-      - "ChatGPT Web 只在 17:30 和 08:00 提供公开事实审查"
+      - "Windows Task Scheduler 已完成一次受监督 L1 dry-run"
+      - "运行回读、预算和零变更边界均已验证"
+      - "ChatGPT Web 仅提供公开事实审查，不作为本机触发器"
       - "一次监督 dry-run 有真实运行回读"
     evidence:
       - "Local Codex heartbeat is paused after producing no accepted runtime evidence"
-      - "Windows Task Scheduler scripts are delivered by PR #19 but are not installed or verified yet"
+      - "Windows Task Scheduler run 2026-07-23T15-15-37-644Z completed with LastTaskResult 0"
       - "ChatGPT Web reviewer is read-only and does not trigger local execution"
 
   - id: OB-TASK-277
@@ -119,7 +119,7 @@ tasks:
     title: "对齐 Integrated Context Engine 加速路线"
     goal_id: OB-GOAL-027
     priority: P0
-    status: in_progress
+    status: done
     done_when:
       - "OB-GOAL-034 到 OB-GOAL-041 成为计划路线"
       - "OB-GOAL-028 到 OB-GOAL-033 标记为 deferred 或 superseded"
@@ -130,11 +130,11 @@ tasks:
     title: "建立人工验收式夜间交付治理门禁"
     goal_id: OB-GOAL-027
     priority: P0
-    status: in_progress
+    status: done
     done_when:
       - "L1 到 L2 使用一次监督 dry-run 和明确人工批准"
-      - "夜间永不自动合并"
-      - "双标签和高风险授权规则有测试"
+      - "Nightly 仅自动发布隔离通道，稳定版保持人工批准"
+      - "硬停止动作、高风险双 verifier 和 SHA 新鲜度有测试"
 
   - id: OB-LOOP-002
     title: "实现夜间队列、预算、运行锁和串行控制器"
@@ -142,9 +142,9 @@ tasks:
     priority: P0
     status: in_progress
     done_when:
-      - "只选择 ready-for-agent 与 nightly-approved Issue"
-      - "L1 强制 dry-run"
-      - "06:15 与 750k token 断路器生效"
+      - "只选择 ready-for-agent 且无冲突租约的 Issue"
+      - "L2 execute 只在 canonical main 生效"
+      - "07:15 与 750k token 断路器生效"
 
   - id: OB-LOOP-003
     title: "实现 Codex maker 与独立 verifier 执行契约"
@@ -162,7 +162,7 @@ tasks:
     priority: P0
     status: in_progress
     done_when:
-      - "19:00 dry-run 和 08:00 晨间任务可回读"
+      - "20:00、07:15、08:20、08:30 四个任务可回读"
       - "重复安装不会产生重复任务"
       - "睡眠错过后可在恢复时运行"
 
@@ -209,16 +209,62 @@ tasks:
     title: "完成一次监督无修改演练"
     goal_id: OB-GOAL-027
     priority: P0
-    status: blocked
-    blocked_by: [OB-LOOP-001, OB-LOOP-002, OB-LOOP-004, OB-QA-002, OB-REPORT-001]
+    status: done
     done_when:
       - "监督 dry-run 有真实调度回读和脱敏验收包"
       - "没有产品或 GitHub 修改"
       - "用户明确批准进入 L2"
+    evidence:
+      - "scheduled run 2026-07-23T15-15-37-644Z"
+      - "LastTaskResult 0"
+      - "zero product/GitHub mutation and zero personal-data read"
+      - "user pre-authorization: 批准进入 L2，并启用完全自动代理"
+
+  - id: OB-AUTO-001
+    title: "建立 24x7 自动代理策略与四阶段 Windows 调度"
+    goal_id: OB-GOAL-034
+    priority: P0
+    status: in_progress
+    done_when:
+      - "automation-policy.yaml 是统一运行策略"
+      - "20:00、07:15、08:20、08:30 任务可回读"
+      - "Cloud 未配置时自动降级到夜间本机执行"
+
+  - id: OB-AUTO-002
+    title: "实现跨 Cloud 与本机的单 Issue 执行租约"
+    goal_id: OB-GOAL-034
+    priority: P0
+    status: in_progress
+    done_when:
+      - "cloud-running、nightly-running 和开放 PR 均阻止重复认领"
+      - "过期租约可回收并留下证据"
+      - "同一时间只运行一个 maker"
+
+  - id: OB-AUTO-003
+    title: "实现双 verifier 与自动合并门禁"
+    goal_id: OB-GOAL-034
+    priority: P0
+    status: in_progress
+    done_when:
+      - "代码 verifier 和产品隐私 verifier 均通过"
+      - "PR head SHA 与验收包一致"
+      - "必需 CI 全绿且无 requested changes"
+      - "高风险变更有 Nightly 隔离验证"
+      - "硬停止动作进入 automation-blocked"
+
+  - id: OB-AUTO-004
+    title: "完成 Codex Cloud docs-only 连接 smoke"
+    goal_id: OB-GOAL-034
+    priority: P0
+    status: blocked
+    blocked_by: [OB-AUTO-001]
+    done_when:
+      - "OPENBUTLER_CODEX_CLOUD_ENV_ID 已配置"
+      - "Cloud 在隔离分支完成 docs-only 变更"
+      - "CI 与 PR 回读通过"
+      - "smoke PR 合并后才启用白天 maker"
 
 blocked:
-  - id: OB-GOAL-034
-    blocked_by: [OB-GOAL-027]
   - id: OB-GOAL-035
     blocked_by: [OB-GOAL-034]
   - id: OB-GOAL-036

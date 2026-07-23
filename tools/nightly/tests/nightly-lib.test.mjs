@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildApprovalCommand,
+  canAutoMergePullRequest,
   claimedIssueNumbers,
   evaluateCanonicalCheckout,
   evaluateIssueEligibility,
@@ -15,9 +16,11 @@ test("parses loop level", () => {
   assert.equal(parseCurrentLevel("Current level: L1 active"), "L1");
 });
 
-test("requires both nightly labels", () => {
-  const issue = {title: "copy change", body: "", labels: [{name: "ready-for-agent"}]};
-  assert.equal(evaluateIssueEligibility(issue).eligible, false);
+test("requires the ready label and no execution lease", () => {
+  const ready = {title: "copy change", body: "", labels: [{name: "ready-for-agent"}]};
+  const running = {...ready, labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]};
+  assert.equal(evaluateIssueEligibility(ready).eligible, true);
+  assert.equal(evaluateIssueEligibility(running).eligible, false);
 });
 
 test("rejects an issue that already has an open implementation pull request", () => {
@@ -25,7 +28,7 @@ test("rejects an issue that already has an open implementation pull request", ()
     number: 42,
     title: "copy change",
     body: "",
-    labels: [{name: "ready-for-agent"}, {name: "nightly-approved"}],
+    labels: [{name: "ready-for-agent"}],
   };
   const result = evaluateIssueEligibility(issue, {claimedIssues: new Set([42])});
   assert.equal(result.eligible, false);
@@ -40,59 +43,15 @@ test("extracts claimed issue numbers from open nightly pull requests", () => {
   assert.deepEqual([...claimed].sort((a, b) => a - b), [42, 51, 52]);
 });
 
-test("requires fresh Giftia approval for high-risk work", () => {
+test("hard-stop work is never eligible for automation", () => {
   const issue = {
-    title: "Electron lifecycle change",
+    title: "Upload screenshots to a remote service",
     body: "",
-    createdAt: "2026-07-16T10:00:00Z",
-    updatedAt: "2026-07-16T12:00:00Z",
-    lastEditedAt: "2026-07-16T12:00:00Z",
-    specificationAuditAvailable: true,
-    labels: [{name: "ready-for-agent"}, {name: "nightly-approved"}],
+    labels: [{name: "ready-for-agent"}],
   };
-  const stale = [{event: "labeled", label: {name: "nightly-approved"}, actor: {login: "Giftia"}, created_at: "2026-07-16T11:00:00Z"}];
-  const fresh = [{event: "labeled", label: {name: "nightly-approved"}, actor: {login: "Giftia"}, created_at: "2026-07-16T13:00:00Z"}];
-  assert.equal(evaluateIssueEligibility(issue, {timeline: stale}).eligible, false);
-  assert.equal(evaluateIssueEligibility(issue, {timeline: fresh}).eligible, true);
-});
-
-test("requires approval after an explicit specification edit", () => {
-  const issue = {
-    title: "Electron lifecycle change",
-    body: "",
-    createdAt: "2026-07-16T10:00:00Z",
-    updatedAt: "2026-07-16T14:00:00Z",
-    lastEditedAt: "2026-07-16T14:00:00Z",
-    specificationAuditAvailable: true,
-    labels: [{name: "ready-for-agent"}, {name: "nightly-approved"}],
-  };
-  const timeline = [{event: "labeled", label: {name: "nightly-approved"}, actor: {login: "Giftia"}, created_at: "2026-07-16T13:00:00Z"}];
-  assert.equal(evaluateIssueEligibility(issue, {timeline}).eligible, false);
-});
-
-test("does not treat label-driven issue updatedAt as a specification edit", () => {
-  const issue = {
-    title: "Electron lifecycle change",
-    createdAt: "2026-07-16T10:00:00Z",
-    updatedAt: "2026-07-16T13:00:02Z",
-    lastEditedAt: null,
-    specificationAuditAvailable: true,
-    labels: [{name: "ready-for-agent"}, {name: "nightly-approved"}],
-  };
-  const timeline = [{event: "labeled", label: {name: "nightly-approved"}, actor: {login: "Giftia"}, created_at: "2026-07-16T13:00:00Z"}];
-  assert.equal(evaluateIssueEligibility(issue, {timeline}).eligible, true);
-});
-
-test("rejects high-risk work when the specification edit timestamp cannot be audited", () => {
-  const issue = {
-    title: "Electron lifecycle change",
-    createdAt: "2026-07-16T10:00:00Z",
-    labels: [{name: "ready-for-agent"}, {name: "nightly-approved"}],
-  };
-  const timeline = [{event: "labeled", label: {name: "nightly-approved"}, actor: {login: "Giftia"}, created_at: "2026-07-16T13:00:00Z"}];
-  const result = evaluateIssueEligibility(issue, {timeline});
+  const result = evaluateIssueEligibility(issue);
   assert.equal(result.eligible, false);
-  assert.match(result.reasons.join(" "), /specification edit timestamp unavailable/);
+  assert.equal(result.hardStop, true);
 });
 
 test("redacts local paths, external URLs, and raw fields", () => {
@@ -116,6 +75,41 @@ test("budget stops new work at 80 percent", () => {
   const evening = new Date("2026-07-16T20:00:00");
   assert.equal(mayStartIssue(599_999, evening), true);
   assert.equal(mayStartIssue(600_000, evening), false);
+  assert.equal(mayStartIssue(0, new Date("2026-07-17T07:14:00")), true);
+  assert.equal(mayStartIssue(0, new Date("2026-07-17T07:15:00")), false);
+});
+
+test("automatic merge requires fresh dual-verifier and CI evidence", () => {
+  const checks = ["Butler Core", "PC Activity"].map((name) => ({
+    name,
+    status: "COMPLETED",
+    conclusion: "SUCCESS",
+  }));
+  const pullRequest = {
+    state: "OPEN",
+    isDraft: false,
+    headRefOid: "abc",
+    reviewDecision: "",
+    statusCheckRollup: checks,
+  };
+  const acceptance = {
+    head_sha: "abc",
+    code_verifier: "APPROVE",
+    product_privacy_verifier: "APPROVE",
+    nightly_status: "passed",
+  };
+  assert.equal(canAutoMergePullRequest({
+    pullRequest,
+    acceptance,
+    requiredChecks: new Set(["Butler Core", "PC Activity"]),
+    requireNightly: true,
+  }).eligible, true);
+  assert.equal(canAutoMergePullRequest({
+    pullRequest: {...pullRequest, headRefOid: "changed"},
+    acceptance,
+    requiredChecks: new Set(["Butler Core", "PC Activity"]),
+    requireNightly: true,
+  }).eligible, false);
 });
 
 test("morning pack must be completed, matching, and fresh", () => {

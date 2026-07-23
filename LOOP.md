@@ -9,9 +9,14 @@ The development loop keeps repository facts, GitHub work, tests, and privacy con
 | Pattern | Cadence | Level | Authority |
 |---|---|---|---|
 | Local repository governance drift audit | On demand | L1 | Report only |
-| Local nightly delivery rehearsal | Daily 19:00 Asia/Shanghai | L1 dry-run | Queue/readiness report only until L2 is approved |
-| ChatGPT Web GitHub preflight | Daily 17:30 Asia/Shanghai | Independent reviewer | Read-only issue specification and PR review drafts |
-| ChatGPT Web morning product report | Daily 08:00 Asia/Shanghai | Independent reviewer | Public GitHub evidence summary only |
+| Local nightly delivery | Daily 20:00 Asia/Shanghai | L2 | Serial implementation, verification and Nightly packaging |
+| Local QA cutoff | Daily 07:15 Asia/Shanghai | L2 | Stop new work and finish the current safe unit |
+| Local cleanup | Daily 08:20 Asia/Shanghai | L2 | Finish report and terminate Nightly test processes |
+| Morning report | Daily 08:30 Asia/Shanghai | L2 | Redacted local and GitHub evidence |
+| ChatGPT Web morning report | Daily 08:30 Asia/Shanghai | Independent reviewer | Public GitHub evidence summary only |
+| ChatGPT Web issue preparation | Daily 09:00 Asia/Shanghai | Independent reviewer | Issue specification and acceptance drafts |
+| ChatGPT Web review checkpoint | Daily 13:30 Asia/Shanghai | Independent reviewer | Product, privacy and architecture review |
+| ChatGPT Web queue freeze | Daily 19:30 Asia/Shanghai | Independent reviewer | Final queue order and risk summary |
 
 Command:
 
@@ -35,13 +40,13 @@ GitHub Issues are the executable work queue. `.openbutler/task_queue.yaml` store
 
 The L1 loop must not inspect MineContext source data, OpenButler runtime databases, screenshots, raw activity output, microphone data, or camera data.
 
-The local Codex heartbeat `OpenButler Night Loop & Morning Report` remains paused because its first scheduled run produced no accepted runtime evidence. The durable local scheduler is Windows Task Scheduler, installed by `tools/nightly/install-scheduled-tasks.ps1`. It starts in `dry-run` mode and writes only ignored artifacts under `data/nightly/`. ChatGPT Web owns two public-GitHub reviewer workflows: a 17:30 preflight and an 08:00 morning report. Registration alone never counts as a useful run.
+The local Codex heartbeat `OpenButler Night Loop & Morning Report` remains paused. Windows Task Scheduler is the durable local scheduler. ChatGPT Web is an advisory reviewer and report surface; it is never the hard trigger.
 
 The independent web reviewer produces issue body patches, suggested triage-label changes, and pull-request review drafts. Its current GitHub connection cannot write; local Codex verifies and applies approved GitHub changes. The reviewer must not write code, create implementation pull requests, merge or close work, change the active goal, or remove a promotion gate. This reviewer workflow is not an L2 maker and does not advance the repository's Loop level by itself. Only local Codex implements one `ready-for-agent` issue at a time and supplies approved redacted local evidence when needed.
 
 The morning report summarizes public GitHub facts. Local tests, Electron behavior, deployments, and real-data checks remain `本机未验证` unless the user provides a redacted report. User authorization for local real-data testing, production deployment, and desktop installation is necessary but not sufficient: the current level, tests, verifier, privacy rules, and rollback gates still apply.
 
-After L2 promotion, production delivery remains in a supervised trial until two consecutive delivery cycles complete without a privacy violation, unresolved serious regression, failed production or desktop smoke, or rollback. This post-promotion release trial is separate from the single L1 dry-run promotion gate.
+Delegated L2 runs in the Nightly channel. Stable release remains manually approved until two consecutive delivery cycles complete without privacy, regression, lifecycle or rollback failures.
 
 ## Outputs
 
@@ -90,16 +95,19 @@ Stop and return partial evidence when:
 
 After the dry-run passes, L2 still requires the exact human approval `批准进入 L2`. A governance pull request records the promotion; the scheduler may not change its own authority.
 
-L2 fixes use one worktree per item, one maker, and an independent verifier. They open a PR and never merge automatically.
+L2 fixes use one worktree per item, one maker, a code verifier, and a separate
+product/privacy verifier. They always open a pull request. Delegated merge is
+allowed only through the contract below; no worker may push directly to `main`.
 
-## Nightly Delivery Contract
+## Delegated Delivery Contract
 
-- GitHub Issues are eligible only when both `ready-for-agent` and `nightly-approved` are present.
-- High-risk issues require `nightly-approved` from GitHub user `Giftia` after the latest issue specification change.
-- Work is serial, one issue and worktree at a time, from 19:00 until 06:15.
+- GitHub Issues are eligible when `ready-for-agent` is present and `automation-blocked` is absent.
+- A Cloud or local execution lease prevents duplicate work.
+- Work is serial, one Issue and worktree at a time, from 20:00 until 07:15.
 - The nightly hard cap is 750,000 tokens; at 80 percent no new issue is started.
-- Successful issue branches remain separate pull requests. A local-only integration worktree may combine conflict-free commits for `OpenButler Preview` acceptance testing.
-- Nightly execution never merges. The morning acceptance pack records exact PR head SHAs. Human approval is valid only while those SHAs and green checks remain unchanged.
+- Two fresh-context verifiers are required: code correctness and product/privacy.
+- Successful issue branches remain separate pull requests. A local-only integration worktree may combine conflict-free commits for OpenButler Nightly testing.
+- Fully verified PRs may squash-merge after exact SHA and CI revalidation. Stable publishing remains manual.
 
 ### L2 to L3
 
@@ -112,11 +120,15 @@ L3 auto-merge is restricted to the allowlist in `loop-constraints.md`.
 
 ## Human Gates
 
-Human review is always required for privacy, identity, consent, sensors, MineContext, Electron lifecycle, dependencies, schemas, migrations, GitHub governance, external writes, or changes spanning more than five files.
+The hard-stop actions in `.openbutler/automation-policy.yaml` always require a
+new human decision. Reversible high-risk changes such as privacy guards,
+authentication, sensors, MineContext adapters, Electron lifecycle,
+dependencies, schemas, and retention may proceed only with both verifiers,
+fresh CI, an isolated Nightly pass, and a verified rollback path.
 
 ## Connectors
 
-The local L1 audit uses `gh` read-only. ChatGPT Web currently reads public GitHub facts and emits change drafts under `docs/agents/chatgpt-web-reviewer.md`; it has no verified GitHub write connection. Local Codex is the only GitHub write proxy. L2 or L3 implementation connector scopes must be documented and approved separately.
+The local L1 audit uses `gh` read-only. ChatGPT Web reads public GitHub facts and emits review guidance; it is advisory and never the hard trigger. Codex Cloud is enabled only after a docs-only environment smoke. Local Codex remains the authoritative Nightly and device-validation worker.
 
 ## Kill Switch
 
