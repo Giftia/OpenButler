@@ -25,6 +25,7 @@ const now = new Date();
 const runId = (args.get("run-id") ?? now.toISOString()).replace(/[:.]/g, "-");
 const runDir = join(repoRoot, "data", "nightly", runId);
 const lockPath = join(repoRoot, "data", "nightly", "active-run.json");
+const cutoffFlag = join(repoRoot, "data", "nightly", "control", "stop-new-issues.flag");
 const eventsPath = join(runDir, "events.jsonl");
 mkdirSync(runDir, {recursive: true});
 
@@ -33,13 +34,21 @@ function log(type, detail = {}) {
   writeFileSync(eventsPath, `${JSON.stringify(event)}\n`, {encoding: "utf8", flag: "a"});
 }
 
+function millisecondsUntilLocalDeadline(now = new Date()) {
+  const deadline = new Date(now);
+  deadline.setHours(8, 10, 0, 0);
+  if (now.getHours() >= 12) deadline.setDate(deadline.getDate() + 1);
+  return Math.max(1_000, deadline.getTime() - now.getTime());
+}
+
 function command(commandName, commandArgs, options = {}) {
+  const requestedTimeout = options.timeout ?? 120_000;
   const result = spawnSync(commandName, commandArgs, {
     cwd: options.cwd ?? repoRoot,
     encoding: "utf8",
     windowsHide: true,
     maxBuffer: 32 * 1024 * 1024,
-    timeout: options.timeout ?? 120_000,
+    timeout: Math.min(requestedTimeout, millisecondsUntilLocalDeadline()),
     env: {...process.env, PYTHONUTF8: "1", ...(options.env ?? {})},
   });
   return {ok: result.status === 0, status: result.status, stdout: result.stdout ?? "", stderr: result.stderr ?? ""};
@@ -97,6 +106,36 @@ function runFocusedTests(worktree) {
   return checks;
 }
 
+function runRealDataSmoke(pack) {
+  if (process.env.OPENBUTLER_ENABLE_REAL_DATA_NIGHTLY !== "1") {
+    pack.real_data = {status: "disabled", lookback_hours: 48};
+    return;
+  }
+  const isolatedDir = join(repoRoot, "data", "nightly", "real-data", runId);
+  const result = command("python", [join(here, "real-data-smoke.py")], {
+    timeout: 10 * 60 * 1000,
+    env: {
+      OPENBUTLER_NIGHTLY_REAL_DATA_DIR: isolatedDir,
+      OPENBUTLER_PRIVACY_MODE: "strict",
+      OPENBUTLER_DISABLE_SEED_EVENTS: "1",
+    },
+  });
+  if (!result.ok) {
+    pack.real_data = {status: "failed", lookback_hours: 48, reason: "bounded local preview failed"};
+    pack.blockers.push("48 小时真实数据只读预览失败；后续产品验证只允许标记为合成数据。");
+    return;
+  }
+  const aggregate = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
+  pack.real_data = aggregate;
+  pack.privacy.real_activity_read = aggregate.status === "preview_ready";
+  pack.privacy.database_written = Boolean(aggregate.nightly_database_written);
+  pack.privacy.screenshots_copied = Boolean(aggregate.screenshots_copied);
+  pack.privacy.external_model_called = Boolean(aggregate.external_model_called);
+  pack.privacy.external_webhook_called = Boolean(aggregate.external_webhook_called);
+  pack.privacy.source_data_modified = Boolean(aggregate.source_modified);
+  log("real_data_smoke", aggregate);
+}
+
 function fail(reason, exitCode = 3) {
   log("run_stopped", {reason});
   const state = {run_id: runId, mode, outcome: "stopped", reason, database_written: false, screenshots_copied: false, external_model_called: false};
@@ -143,7 +182,7 @@ try {
   if (!status.ok || status.stdout.trim()) fail("working tree is not clean");
   const issues = ghJson([
     "issue", "list", "--repo", "Giftia/OpenButler", "--state", "open",
-    "--label", "ready-for-agent", "--label", "nightly-approved", "--limit", "100",
+    "--label", "ready-for-agent", "--limit", "100",
     "--json", "number,title,body,labels,createdAt,updatedAt,url"
   ]) ?? [];
   const closed = new Set((ghJson([
@@ -154,34 +193,13 @@ try {
     "--json", "number,title,body,headRefName,url"
   ]) ?? []);
 
-  const evaluated = [];
-  for (const issue of issues) {
-    let timeline = [];
-    let specificationAuditAvailable = false;
-    let lastEditedAt = null;
-    try {
-      timeline = ghJson(["api", `repos/Giftia/OpenButler/issues/${issue.number}/timeline`, "--paginate"]);
-    } catch (error) {
-      log("timeline_unavailable", {issue: issue.number, reason: error.message});
-    }
-    try {
-      const result = ghJson([
-        "api", "graphql",
-        "-f", "query=query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){issue(number:$number){lastEditedAt}}}",
-        "-F", "owner=Giftia", "-F", "name=OpenButler", "-F", `number=${issue.number}`,
-      ]);
-      lastEditedAt = result?.data?.repository?.issue?.lastEditedAt ?? null;
-      specificationAuditAvailable = Boolean(result?.data?.repository?.issue);
-    } catch (error) {
-      log("specification_timestamp_unavailable", {issue: issue.number, reason: error.message});
-    }
-    const auditedIssue = {...issue, lastEditedAt, specificationAuditAvailable};
-    evaluated.push({...auditedIssue, evaluation: evaluateIssueEligibility(auditedIssue, {
-      timeline,
+  const evaluated = issues.map((issue) => ({
+    ...issue,
+    evaluation: evaluateIssueEligibility(issue, {
       closedIssues: closed,
       claimedIssues: claimed,
-    })});
-  }
+    }),
+  }));
 
   const eligible = evaluated.filter((issue) => issue.evaluation.eligible);
   const pack = {
@@ -213,17 +231,20 @@ try {
       database_written: false,
       screenshots_copied: false,
       external_model_called: false,
+      external_webhook_called: false,
+      source_data_modified: false,
       github_mutated: false,
     },
-    blockers: mode === "execute" ? [] : ["L1 dry-run：等待一次真实调度回读和人工批准进入 L2。"],
+    execution_surface: "local",
+    blockers: mode === "execute" ? [] : ["L1 dry-run：仅验证队列、预算、隐私和调度，不执行 Issue。"],
   };
 
   if (mode === "execute") {
-    // Execution is deliberately unreachable until STATE.md is promoted to L2 by a human-reviewed PR.
+    runRealDataSmoke(pack);
     let tokensUsed = 0;
     for (const issue of eligible) {
-      if (!mayStartIssue(tokensUsed, new Date())) {
-        pack.blockers.push("达到夜间启动阈值或 06:15 截止时间，未继续领取 Issue。");
+      if (existsSync(cutoffFlag) || !mayStartIssue(tokensUsed, new Date())) {
+        pack.blockers.push("达到夜间启动阈值、07:15 截止时间或外部停止标记，未继续领取 Issue。");
         break;
       }
       log("issue_selected", {issue: issue.number, high_risk: issue.evaluation.highRisk});
@@ -241,6 +262,9 @@ try {
         pack.candidate_version = preview.version;
         pack.preview_installer = preview.installer_name;
         pack.preview_prs = preview.pull_requests;
+        for (const pullRequest of pack.pull_requests) {
+          if (preview.pull_requests.includes(pullRequest.number)) pullRequest.nightly_status = "passed";
+        }
       }
     }
   }
@@ -276,9 +300,14 @@ async function executeIssue(issue, {tokensUsed}) {
 
   let totalTokens = 0;
   try {
-    command("gh", ["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-running"]);
+    const lease = command("gh", [
+      "issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler",
+      "--add-label", "nightly-running",
+    ]);
+    if (!lease.ok) throw new Error(lease.stderr || `failed to acquire local lease for #${issue.number}`);
     let verifierFeedback = "";
     let approved = false;
+    let codeVerifierVerdict = null;
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       const prompt = attempt === 1
         ? `Implement GitHub Issue #${issue.number}: ${issue.title}\n\n${issue.body}\n\nRead AGENTS.md, LOOP.md and loop-constraints.md. Work only in this worktree. Do not push, merge, deploy, read personal data, or change GitHub state. Run focused tests. Return the required JSON result.`
@@ -328,6 +357,7 @@ async function executeIssue(issue, {tokensUsed}) {
       const verdict = JSON.parse(readFileSync(verdictPath, "utf8"));
       if (review.ok && verdict.verdict === "APPROVE") {
         approved = true;
+        codeVerifierVerdict = verdict;
         break;
       }
       verifierFeedback = JSON.stringify(verdict);
@@ -341,19 +371,38 @@ async function executeIssue(issue, {tokensUsed}) {
       return {tokens: totalTokens, stop: false, pullRequest: null, scenarios: []};
     }
 
+    const productVerdictPath = join(runDir, `issue-${issue.number}-product-privacy-verifier.json`);
+    const productReview = command("codex", [
+      "exec", "review", "--base", "origin/main", "--json",
+      "--output-schema", join(here, "schemas", "verifier-output.schema.json"),
+      "--output-last-message", productVerdictPath,
+      "Independently review the change as an ordinary-user product and privacy checker. Verify the Issue acceptance criteria, user-facing clarity, strict privacy invariants, hard-stop policy, rollback path, and absence of internal or personal data. Return only the structured verdict."
+    ], {cwd: worktree, timeout: 2 * 60 * 60 * 1000});
+    writeFileSync(join(runDir, `issue-${issue.number}-product-privacy-verifier.jsonl`), productReview.stdout, "utf8");
+    totalTokens += tokenUsageFromJsonl(productReview.stdout);
+    if (!productReview.ok || totalTokens > ISSUE_TOKEN_CAP || tokensUsed + totalTokens > NIGHTLY_TOKEN_CAP) {
+      command("gh", ["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
+      return {tokens: totalTokens, stop: true, pullRequest: null, scenarios: []};
+    }
+    const productVerifierVerdict = JSON.parse(readFileSync(productVerdictPath, "utf8"));
+    if (productVerifierVerdict.verdict !== "APPROVE") {
+      const blockLabel = productVerifierVerdict.verdict === "ESCALATE_HUMAN" ? "automation-blocked" : "nightly-failed";
+      command("gh", ["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", blockLabel]);
+      return {tokens: totalTokens, stop: productVerifierVerdict.verdict === "ESCALATE_HUMAN", pullRequest: null, scenarios: []};
+    }
+
     const push = command("git", ["push", "-u", "origin", branchName], {cwd: worktree, timeout: 10 * 60 * 1000});
     if (!push.ok) throw new Error(push.stderr || "push failed");
     const createdPullRequest = command("gh", [
       "pr", "create", "--repo", "Giftia/OpenButler", "--draft", "--base", "main", "--head", branchName,
-      "--title", `${issue.title} (#${issue.number})`, "--body", `Closes #${issue.number}\n\nNightly run: ${runId}\n\nHuman acceptance required.`
+      "--title", `${issue.title} (#${issue.number})`, "--body", `Closes #${issue.number}\n\nNightly run: ${runId}\n\nTwo independent verifiers are required before delegated merge.`
     ], {cwd: worktree});
     if (!createdPullRequest.ok) throw new Error(createdPullRequest.stderr || `pull request creation failed for #${issue.number}`);
     const prUrl = createdPullRequest.stdout.trim();
     const queueTransition = command("gh", [
       "issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler",
       "--remove-label", "ready-for-agent",
-      "--remove-label", "nightly-approved",
-      "--add-label", "ready-for-human",
+      "--add-label", "review-pending",
     ]);
     if (!queueTransition.ok) throw new Error(queueTransition.stderr || `failed to move #${issue.number} to human review`);
     log("issue_claimed_by_pull_request", {issue: issue.number, pull_request_url: prUrl});
@@ -365,7 +414,12 @@ async function executeIssue(issue, {tokensUsed}) {
       return {tokens: totalTokens, stop: false, pullRequest: {...pr, head_sha: pr.headRefOid, status: "ci_failed"}, scenarios: []};
     }
     command("gh", ["pr", "ready", String(pr.number), "--repo", "Giftia/OpenButler"]);
-    command("gh", ["pr", "edit", String(pr.number), "--repo", "Giftia/OpenButler", "--add-label", "acceptance-ready"]);
+    command("gh", [
+      "pr", "edit", String(pr.number), "--repo", "Giftia/OpenButler",
+      "--remove-label", "review-pending",
+      "--add-label", "acceptance-ready",
+      "--add-label", "auto-merge-eligible",
+    ]);
     return {
       tokens: totalTokens,
       stop: false,
@@ -376,6 +430,11 @@ async function executeIssue(issue, {tokensUsed}) {
         commit_shas: (pr.commits ?? []).map((commit) => commit.oid),
         title: pr.title,
         status: "acceptance_ready",
+        risk: issue.evaluation?.highRisk ? "high" : "normal",
+        code_verifier: codeVerifierVerdict?.verdict ?? "UNKNOWN",
+        product_privacy_verifier: productVerifierVerdict.verdict,
+        nightly_status: "pending",
+        execution_surface: "local",
       },
       scenarios: [{id: `pr-${pr.number}`, pr_number: pr.number, title: issue.title, purpose: "验证本次修复", steps: ["打开对应产品入口", "执行 Issue 验收步骤"], expected: "行为符合 Issue done_when，且无隐私回归。", status: "pending"}],
     };

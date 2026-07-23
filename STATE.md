@@ -1,29 +1,33 @@
 # OpenButler Loop State
 
-Last accepted run: 2026-07-15T20:06:11+08:00
-Current level: L1 active
+Last accepted run: 2026-07-23T23:15:37+08:00
+Current level: L2 active
 Canonical branch: `main`
-Active objective: `OB-GOAL-027`
+Active objective: `OB-GOAL-034`
 loop-pause-all: false
 
 ## High Priority
 
-- Repair and land PR #18 and PR #19 without changing product behavior.
-- Complete one supervised 19:00 local dry-run and verify its 08:00 redacted acceptance pack; registration alone is not runtime evidence.
-- Keep the nightly controller in dry-run mode until the exact human approval `批准进入 L2` is recorded through a governance PR.
-- Use ChatGPT Web to draft one GitHub implementation issue at a time, while local Codex remains the sole GitHub write, implementation, and local-validation worker.
-- Keep `OB-GOAL-034` blocked until the L1-to-L2 promotion evidence is accepted.
-- Use the 08:00 report to surface attention points, verification paths, and decisions for the user.
+- Implement `OB-GOAL-034: Secure Integrated Context Engine` through decision-complete GitHub Issues.
+- Keep Cloud execution disabled until a docs-only Codex Cloud smoke succeeds.
+- Run local execution only from 20:00 to 07:15; finish cleanup by 08:20.
+- Keep exactly one execution lease per Issue across Cloud and local workers.
+- Install only the isolated OpenButler Nightly channel automatically.
+- Publish the redacted delivery report at 08:30.
 
 ## Human Inbox
 
 - The first canonical L1 report was accepted after a clean GitHub-connected run with zero mutations.
-- The local Codex heartbeat `OpenButler Night Loop & Morning Report` is paused after producing no accepted scheduled-run evidence.
-- Windows Task Scheduler will own the local 19:00 dry-run and 08:00 acceptance opening after PR #19 is reviewed and merged; it is not installed or verified yet.
-- ChatGPT Web reviewer schedules are 17:30 preflight and 08:00 report; they remain independent of local execution.
+- PR #18 and #19 were squash-merged after fresh green CI.
+- A supervised Windows Task Scheduler dry-run completed with `LastTaskResult=0`.
+- The accepted run `2026-07-23T15-15-37-644Z` reported zero product/GitHub mutation,
+  zero real-activity read, zero database write, zero screenshot copy and zero external-model call.
+- The user pre-authorized `批准进入 L2，并启用完全自动代理`; this governance change records it.
+- Windows Task Scheduler owns the 20:00, 07:15, 08:20 and 08:30 local phases.
+- ChatGPT Web checkpoints are 08:30, 09:00, 13:30 and 19:30; they remain independent of local execution.
 - ChatGPT Web has no verified GitHub write connection; every issue patch, label change, and PR review remains a draft until local Codex applies it.
 - Issues #10 through #15 describe the superseded OB-GOAL-028 through OB-GOAL-033 route and must not be selected as Integrated Context Engine implementation work.
-- OB-GOAL-034 through OB-GOAL-041 need new implementation Issues only after L2 is explicitly approved.
+- OB-GOAL-034 needs new decision-complete implementation Issues before execution.
 - Review any future proposal that touches privacy, identity, sensors, MineContext, Electron lifecycle, dependencies, API schemas, or external actions.
 
 ## Watch List
@@ -47,5 +51,6 @@ loop-pause-all: false
 | CI | passed | all six required checks passed on PR #16 |
 | Branch protection | passed | PR required; strict checks; force-push and deletion disabled |
 | Manual L1 run | passed | canonical main; clean; zero product/GitHub mutations; ignored report `2026-07-15T12-06-11-179Z` |
-| Supervised nightly dry-run | pending | requires canonical scheduler runtime readback and a redacted acceptance pack |
-| L2 human approval | pending | exact approval `批准进入 L2` is required after the supervised dry-run |
+| Supervised nightly dry-run | passed | scheduled run `2026-07-23T15-15-37-644Z`; task result 0; redacted pack |
+| L2 human approval | passed | user pre-authorization recorded by this governance change |
+| L2 delegated policy | pending merge | `.openbutler/automation-policy.yaml` |

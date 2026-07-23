@@ -1,0 +1,83 @@
+schema_version: 1
+timezone: "Asia/Shanghai"
+authority:
+  loop_level: L2
+  mode: fully_delegated
+  authorized_by: Giftia
+  authorized_at: "2026-07-23"
+  stable_release: manual
+  nightly_release: automatic
+
+windows:
+  cloud_review_start: "08:30"
+  cloud_issue_prep: "09:00"
+  cloud_review_checkpoint: "13:30"
+  nightly_queue_freeze: "19:30"
+  local_execution_start: "20:00"
+  stop_new_issues: "07:15"
+  local_cleanup: "08:20"
+  morning_report: "08:30"
+
+executors:
+  chatgpt_web:
+    role: independent_product_privacy_reviewer
+    required_for_trigger: false
+    github_write: false
+  codex_cloud:
+    role: daytime_isolated_maker
+    status: authenticated_environment_unconfigured
+    environment_variable: OPENBUTLER_CODEX_CLOUD_ENV_ID
+    fallback: defer_code_to_local_nightly
+  local_codex:
+    role: nightly_maker_verifier_packager
+    status: enabled
+
+queue:
+  source: github_issues
+  ready_label: ready-for-agent
+  blocked_label: automation-blocked
+  execution_labels:
+    cloud: cloud-running
+    local: nightly-running
+  one_active_lease_per_issue: true
+  stale_lease_hours: 14
+
+merge:
+  method: squash
+  require_required_checks: true
+  require_code_verifier: true
+  require_product_privacy_verifier: true
+  require_nightly_for_high_risk: true
+  invalidate_on_head_change: true
+  invalidate_on_requested_changes: true
+  create_revert_pr_on_main_failure: true
+  enable_repository_auto_merge: true
+
+hard_stops:
+  - mutate_or_delete_source_personal_data
+  - upload_personal_activity_or_media
+  - payment_purchase_subscription_or_billing
+  - irreversible_external_write
+  - weaken_branch_protection_privacy_or_tests
+  - data_migration_without_verified_rollback
+
+real_data:
+  enabled_for_nightly: true
+  lookback_hours: 48
+  source_mode: read_only
+  destination: nightly_isolated_store
+  copy_screenshots: false
+  upload_data: false
+  external_model_allowed: false
+  external_webhook_allowed: false
+  retention_hours: 48
+  report_mode: aggregate_only
+
+nightly:
+  app_name: "OpenButler Nightly"
+  app_id: "moe.giftia.openbutler.preview"
+  separate_user_data: true
+  token_cap: 750000
+  stop_starting_at_tokens: 600000
+  issue_token_cap: 160000
+  max_fix_attempts: 3

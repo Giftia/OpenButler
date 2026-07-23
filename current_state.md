@@ -1,14 +1,14 @@
 # OpenButler Current State
 
-Updated: 2026-07-17
+Updated: 2026-07-23
 
 ## Current Stage
 
-The only active product objective is `OB-GOAL-027: Loop-Driven Ambient OpenButler`.
+The only active product objective is `OB-GOAL-034: Secure Integrated Context Engine`.
 
-OpenButler is preparing a loop-driven Integrated Context Engine roadmap. The canonical main baseline and first GitHub-connected L1 audit are complete. The original local Codex heartbeat is paused. PR #18 aligns the public reviewer and governance facts; stacked PR #19 delivers the local night controller, Preview acceptance path, and Windows scheduler scripts. Neither PR is merged, the scheduler is not installed, and no supervised nightly dry-run has been accepted yet.
+OpenButler has completed the L1 governance bootstrap and is recording delegated L2 through the current governance pull request. The original local Codex heartbeat remains paused. PR #18 and #19 are merged, and the Windows scheduler has a successful supervised dry-run readback.
 
-ChatGPT Web is a read-only public-GitHub reviewer at 17:30 and 08:00. Windows Task Scheduler will own the local 19:00 dry-run and 08:00 acceptance opening. Local Codex remains the only implementation and GitHub write worker.
+ChatGPT Web is an advisory public-GitHub reviewer. Codex Cloud is the intended daytime maker after a docs-only environment smoke. Windows Task Scheduler owns local execution, QA cleanup and the redacted morning report. GitHub is the shared queue and evidence source.
 
 ## Repository Baseline
 
@@ -42,7 +42,7 @@ Important gaps before the Integrated Context Engine can start:
 1. **Development loop**: triage repository drift, keep state, isolate changes, verify, and escalate.
 2. **Context product loop**: capture authorized context, deduplicate, understand, store, generate results, explain evidence, and learn from feedback.
 
-The L1 development loop is report-only. It must not read real MineContext activity, change product code, mutate GitHub, deploy, or call external models.
+The on-demand L1 audit remains report-only. Delegated L2 uses isolated worktrees, two independent verifiers, protected pull requests and the separate Nightly channel. Stable release remains manually approved.
 
 ## Source Of Truth
 
@@ -55,20 +55,22 @@ The L1 development loop is report-only. It must not read real MineContext activi
 
 ## Planned Product Route
 
-`OB-GOAL-034` through `OB-GOAL-041` define the new sequence: secure internal context engine, three-route model gateway, MineContext feature parity, migration and product shell, OpenButler Cloud, NanoKVM screen recall, controlled KVM autonomy, then ambient expansion. Historical goals `OB-GOAL-028` through `OB-GOAL-033` are deferred or superseded and their existing Issues are not executable under the new route.
+`OB-GOAL-034` through `OB-GOAL-041` define the sequence: secure internal context engine, three-route model gateway, MineContext feature parity, migration and product shell, OpenButler Cloud, NanoKVM screen recall, controlled KVM autonomy, then ambient expansion. Historical goals `OB-GOAL-028` through `OB-GOAL-033` are deferred or superseded and their existing Issues are not executable under the new route.
 
-## Nightly Delivery Bootstrap
+## Delegated Delivery
 
-- GitHub Issues require both `ready-for-agent` and `nightly-approved` before the local runner may select them.
-- L1 runs are forcibly read-only and write only ignored artifacts under `data/nightly/`.
-- One supervised scheduled dry-run needs real runtime readback. Registration alone does not count.
-- The exact approval `批准进入 L2` is required before the executor may create worktrees, branches, PRs or Preview builds.
-- L2 never merges at night. It prepares independent PRs and a side-by-side `OpenButler Preview` acceptance center for the user.
-- The nightly budget is 750,000 tokens; no new Issue starts after 600,000 tokens or 06:15.
+- GitHub Issues require `ready-for-agent`, no automation block and no active Cloud/local lease.
+- Every Issue uses one worktree, one PR, a code verifier and a product/privacy verifier.
+- Fully verified PRs may be squash-merged after exact SHA and CI revalidation.
+- OpenButler Nightly uses a separate app id, installation and user-data directory.
+- The nightly budget is 750,000 tokens; no new Issue starts after 600,000 tokens or 07:15.
+- The 08:20 phase stops Nightly processes and applies the 48-hour isolated-data retention policy.
 
-## Next Promotion Gate
+## Accepted Promotion Evidence
 
-The repository remains at L1. PR #18 and PR #19 must be reviewed and merged first. Then one supervised dry-run must produce accepted runtime readback without product or GitHub mutation. Only the exact approval `批准进入 L2` may activate `OB-GOAL-034`; this governance repair does not itself enter L2.
+PR #18 and PR #19 were squash-merged as `52c7f32` and `48c2c65`. Windows Task Scheduler completed the supervised L1 dry-run `2026-07-23T15-15-37-644Z` with task result 0 and a redacted acceptance pack. It reported no product or GitHub mutation, no personal-data read, no database write, no screenshot copy and no external-model call. The user's pre-authorization activates delegated L2 through the current governance pull request.
+
+The local schedule is 20:00 execution, 07:15 cutoff, 08:20 cleanup and 08:30 report. Codex Cloud is authenticated but remains disabled as a maker until `OPENBUTLER_CODEX_CLOUD_ENV_ID` completes a docs-only smoke. ChatGPT Web remains advisory and is not a hard trigger.
 
 ## Privacy Boundary
 

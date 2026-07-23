@@ -7,15 +7,15 @@ import {fileURLToPath} from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const read = (path) => readFileSync(join(root, path), "utf8");
 
-test("merge approval is bound to the accepted head SHA", () => {
-  const source = read("tools/nightly/approve-release.mjs");
+test("automatic merge is bound to dual verification and accepted head SHA", () => {
+  const source = read("tools/nightly/auto-merge-controller.mjs");
   assert.match(source, /--match-head-commit/);
-  assert.match(source, /expected\.head_sha/);
+  assert.match(source, /acceptance\.head_sha/);
+  assert.match(source, /canAutoMergePullRequest/);
+  assert.match(source, /createRevertPullRequest/);
   for (const check of ["Butler Core", "PC Activity", "Workstation Vision", "Frontend Build", "Desktop Contract", "Loop Governance"]) {
     assert.match(source, new RegExp(check));
   }
-  assert.match(source, /missing required checks/);
-  assert.match(source, /OPENBUTLER_APPROVED_MAIN_SHA/);
 });
 
 test("stable release waits for the complete required check set and has rollback", () => {
@@ -46,19 +46,19 @@ test("Preview delivery verifies install result, exact version, and lifecycle", (
   assert.match(controller, /preview-install-backup/);
 });
 
-test("Windows scheduler supports overnight laptop battery operation", () => {
+test("Windows scheduler supports four bounded delivery phases", () => {
   const source = read("tools/nightly/install-scheduled-tasks.ps1");
   assert.match(source, /AllowStartIfOnBatteries/);
   assert.match(source, /DontStopIfGoingOnBatteries/);
   assert.match(source, /\[string\]\$Mode = "dry-run"/);
+  for (const time of ["20:00", "07:15", "08:20", "08:30"]) assert.match(source, new RegExp(time));
 });
 
-test("high-risk approval uses GitHub's auditable specification edit timestamp", () => {
+test("high-risk work uses a second product and privacy verifier", () => {
   const controller = read("tools/nightly/nightly-controller.mjs");
-  const library = read("tools/nightly/nightly-lib.mjs");
-  assert.match(controller, /lastEditedAt/);
-  assert.match(controller, /specificationAuditAvailable/);
-  assert.match(library, /high-risk specification edit timestamp unavailable/);
+  assert.match(controller, /product-privacy-verifier/);
+  assert.match(controller, /product_privacy_verifier/);
+  assert.match(controller, /automation-blocked/);
 });
 
 test("fresh issue worktrees install npm dependencies before focused checks", () => {
@@ -70,10 +70,27 @@ test("fresh issue worktrees install npm dependencies before focused checks", () 
   assert.match(controller, /installNpmDependencies\("Loop Governance", join\(worktree, "tools", "loop"\)/);
 });
 
-test("an issue moves out of the nightly queue as soon as its pull request exists", () => {
+test("an issue moves from its execution lease to review as soon as its pull request exists", () => {
   const controller = read("tools/nightly/nightly-controller.mjs");
   assert.match(controller, /claimedIssueNumbers/);
   assert.match(controller, /--remove-label", "ready-for-agent"/);
-  assert.match(controller, /--remove-label", "nightly-approved"/);
-  assert.match(controller, /--add-label", "ready-for-human"/);
+  assert.match(controller, /--add-label", "review-pending"/);
+  assert.match(controller, /--remove-label", "nightly-running"/);
+});
+
+test("real data smoke is isolated, bounded, and redacted", () => {
+  const source = read("tools/nightly/real-data-smoke.py");
+  assert.match(source, /lookback_days=2/);
+  assert.match(source, /include_screenshot_paths=False/);
+  assert.match(source, /copy_screenshots=False/);
+  assert.match(source, /raw_output_persisted/);
+  assert.match(source, /data.*nightly.*real-data/s);
+});
+
+test("automation policy keeps stable release manual", () => {
+  const source = read(".openbutler/automation-policy.yaml");
+  assert.match(source, /loop_level: L2/);
+  assert.match(source, /stable_release: manual/);
+  assert.match(source, /nightly_release: automatic/);
+  assert.match(source, /retention_hours: 48/);
 });

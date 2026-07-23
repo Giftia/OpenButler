@@ -34,6 +34,7 @@ const lines = [
   `- 模式：\`${pack.mode ?? "unknown"}\``,
   `- Loop 等级：\`${pack.loop_level ?? "unknown"}\``,
   `- Preview：${pack.candidate_version ?? "本轮没有可安装候选"}`,
+  `- 执行面：${pack.execution_surface ?? "unknown"}`,
   "",
   "## 昨夜结果",
   "",
@@ -49,6 +50,16 @@ for (const scenario of pack.scenarios ?? []) {
 }
 lines.push("## 隐私检查", "");
 for (const [key, value] of Object.entries(pack.privacy ?? {})) lines.push(`- ${key}: ${value}`);
+if (pack.auto_merge) {
+  lines.push(
+    "",
+    "## 自动合并",
+    "",
+    `- 已尝试：${pack.auto_merge.attempted ?? 0}`,
+    `- 已合并：${(pack.auto_merge.merged ?? []).length}`,
+    `- 已阻塞：${(pack.auto_merge.blocked ?? []).length}`,
+  );
+}
 lines.push("", "## 当前批准命令", "", `\`${buildApprovalCommand(pack, {})}\``, "");
 if ((pack.blockers ?? []).length) {
   lines.push("## 阻塞", "", ...pack.blockers.map((item) => `- ${item}`), "");
@@ -56,6 +67,7 @@ if ((pack.blockers ?? []).length) {
 
 const report = `${lines.join("\n")}\n`;
 writeFileSync(join(runDir, "MORNING_ACCEPTANCE.md"), report, "utf8");
+writeFileSync(join(nightlyRoot, "LATEST_MORNING_REPORT.md"), report, "utf8");
 
 mkdirSync(previewDataDir, {recursive: true});
 writeFileSync(publishedPackPath, `${JSON.stringify(pack, null, 2)}\n`, "utf8");

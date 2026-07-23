@@ -3,14 +3,26 @@ import {readFileSync} from "node:fs";
 export const NIGHTLY_TOKEN_CAP = 750_000;
 export const NIGHTLY_START_THRESHOLD = 600_000;
 export const ISSUE_TOKEN_CAP = 160_000;
-export const CUTOFF_HOUR = 6;
+export const CUTOFF_HOUR = 7;
 export const CUTOFF_MINUTE = 15;
+export const NIGHTLY_START_HOUR = 20;
+export const EXECUTION_LEASE_HOURS = 14;
 
 const highRiskTerms = [
   "privacy", "consent", "authorization", "authentication", "origin", "sensor",
   "minecontext", "electron", "installer", "tray", "lifecycle", "schema", "migration",
   "retention", "webhook", "external write", "摄像头", "麦克风", "隐私", "授权",
   "鉴权", "安装", "托盘", "传感器", "数据迁移"
+];
+
+const hardStopTerms = [
+  "delete source data", "mutate source data", "delete minecontext", "modify minecontext",
+  "upload screenshot", "upload activity", "upload database", "payment", "purchase",
+  "subscription", "billing", "irreversible external write", "disable branch protection",
+  "weaken privacy", "disable tests", "migration without rollback",
+  "删除源数据", "修改源数据", "删除 minecontext", "上传截图", "上传活动", "上传数据库",
+  "付费", "购买", "订阅", "账单", "不可逆外部写入", "降低分支保护", "削弱隐私",
+  "禁用测试", "无回滚迁移",
 ];
 
 const forbiddenAcceptanceKeys = new Set([
@@ -27,6 +39,12 @@ export function classifyHighRisk(issue) {
   const labels = (issue.labels ?? []).map((label) => String(label.name ?? label).toLowerCase());
   const haystack = `${issue.title ?? ""}\n${issue.body ?? ""}\n${labels.join(" ")}`.toLowerCase();
   return highRiskTerms.some((term) => haystack.includes(term));
+}
+
+export function classifyHardStop(issue) {
+  const labels = (issue.labels ?? []).map((label) => String(label.name ?? label).toLowerCase());
+  const haystack = `${issue.title ?? ""}\n${issue.body ?? ""}\n${labels.join(" ")}`.toLowerCase();
+  return labels.includes("automation-blocked") || hardStopTerms.some((term) => haystack.includes(term));
 }
 
 export function parseDependencies(body = "") {
@@ -73,7 +91,8 @@ export function evaluateIssueEligibility(issue, {timeline = [], closedIssues = n
   const labels = new Set((issue.labels ?? []).map((label) => label.name ?? label));
   const reasons = [];
   if (!labels.has("ready-for-agent")) reasons.push("missing ready-for-agent");
-  if (!labels.has("nightly-approved")) reasons.push("missing nightly-approved");
+  if (labels.has("automation-blocked")) reasons.push("automation-blocked");
+  if (labels.has("cloud-running") || labels.has("nightly-running")) reasons.push("issue has an active execution lease");
   if (claimedIssues.has(Number(issue.number))) reasons.push("open implementation pull request already claims issue");
 
   const dependencies = parseDependencies(issue.body);
@@ -81,28 +100,15 @@ export function evaluateIssueEligibility(issue, {timeline = [], closedIssues = n
   if (unresolved.length) reasons.push(`unresolved dependencies: ${unresolved.map((item) => `#${item}`).join(", ")}`);
 
   const highRisk = classifyHighRisk(issue);
-  const approval = latestNightlyApproval(timeline);
-  if (highRisk) {
-    if (issue.specificationAuditAvailable !== true) {
-      reasons.push("high-risk specification edit timestamp unavailable");
-    } else if (!approval) {
-      reasons.push("high-risk approval event unavailable");
-    } else {
-      if (String(approval.actor?.login ?? "").toLowerCase() !== "giftia") {
-        reasons.push("high-risk approval was not applied by Giftia");
-      }
-      if (Date.parse(approval.created_at) <= Date.parse(latestSpecificationChange(issue, timeline))) {
-        reasons.push("high-risk approval predates latest issue update");
-      }
-    }
-  }
+  const hardStop = classifyHardStop(issue);
+  if (hardStop) reasons.push("hard-stop action requires human decision");
 
-  return {eligible: reasons.length === 0, reasons, highRisk, dependencies};
+  return {eligible: reasons.length === 0, reasons, highRisk, hardStop, dependencies};
 }
 
 export function beforeNightlyCutoff(now = new Date()) {
   const minutes = now.getHours() * 60 + now.getMinutes();
-  return minutes >= 19 * 60 || minutes < CUTOFF_HOUR * 60 + CUTOFF_MINUTE;
+  return minutes >= NIGHTLY_START_HOUR * 60 || minutes < CUTOFF_HOUR * 60 + CUTOFF_MINUTE;
 }
 
 export function mayStartIssue(tokensUsed, now = new Date()) {
@@ -113,6 +119,32 @@ export function evaluateCanonicalCheckout({branch, head, originMain}) {
   const reasons = [];
   if (String(branch).trim() !== "main") reasons.push("branch is not main");
   if (!head || !originMain || String(head).trim() !== String(originMain).trim()) reasons.push("HEAD does not match origin/main");
+  return {eligible: reasons.length === 0, reasons};
+}
+
+export function hasActiveExecutionLease(issue) {
+  const labels = new Set((issue.labels ?? []).map((label) => label.name ?? label));
+  return labels.has("cloud-running") || labels.has("nightly-running");
+}
+
+export function canAutoMergePullRequest({
+  pullRequest,
+  acceptance,
+  requiredChecks,
+  requireNightly = false,
+}) {
+  const reasons = [];
+  if (!pullRequest || pullRequest.state !== "OPEN" || pullRequest.isDraft) reasons.push("pull request is not open and ready");
+  if (!acceptance || acceptance.head_sha !== pullRequest?.headRefOid) reasons.push("head SHA is stale");
+  if (pullRequest?.reviewDecision === "CHANGES_REQUESTED") reasons.push("requested changes");
+  if (acceptance?.code_verifier !== "APPROVE") reasons.push("code verifier missing");
+  if (acceptance?.product_privacy_verifier !== "APPROVE") reasons.push("product/privacy verifier missing");
+  if (requireNightly && acceptance?.nightly_status !== "passed") reasons.push("Nightly verification missing");
+  const byName = new Map((pullRequest?.statusCheckRollup ?? []).map((check) => [check.name ?? check.context, check]));
+  for (const name of requiredChecks) {
+    const check = byName.get(name);
+    if (!check || check.status !== "COMPLETED" || check.conclusion !== "SUCCESS") reasons.push(`required check not green: ${name}`);
+  }
   return {eligible: reasons.length === 0, reasons};
 }
 

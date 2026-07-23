@@ -12,10 +12,6 @@ try {
   if ($reportExitCode -ne 0) {
     exit $reportExitCode
   }
-  $preview = Join-Path $env:LOCALAPPDATA "Programs\OpenButler Preview\OpenButler Preview.exe"
-  if (Test-Path $preview) {
-    Start-Process -FilePath $preview -WindowStyle Hidden
-  }
   exit 0
 }
 finally {

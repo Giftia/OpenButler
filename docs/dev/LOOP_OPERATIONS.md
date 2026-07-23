@@ -39,11 +39,29 @@ Exit codes:
 - `2`: repository or governance drift.
 - `3`: partial evidence or a circuit breaker.
 
-## Scheduled L1 Gate
+## Scheduled Delegated Delivery
 
-The canonical local schedule is Windows Task Scheduler. PR #19 supplies an idempotent installer for a 19:00 local dry-run and an 08:00 acceptance-pack opening. Until that PR is merged and the tasks are installed with runtime readback, the schedule is `not verified`.
+The canonical local schedule is Windows Task Scheduler:
 
-Every L1 dry-run reads the `loop-pause-all` flag and writes only ignored artifacts under `data/nightly/`. ChatGPT Web's 17:30 preflight and 08:00 report are independent read-only reviews; they do not trigger local Codex and do not count as local runtime evidence.
+- 20:00: start delegated Nightly delivery.
+- 07:15: stop taking new Issues.
+- 08:20: finalize eligible merges and clean Nightly processes.
+- 08:30: generate the redacted morning report.
+
+Install it after the governing changes are present on canonical `main`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\nightly\install-scheduled-tasks.ps1 -Mode execute
+```
+
+The supervised L1 scheduler dry-run `2026-07-23T15-15-37-644Z` completed with
+task result 0, zero product/GitHub mutation, and no personal-data read. The
+repository then entered delegated L2 through a governance pull request and the
+user's recorded authorization.
+
+Every run reads `loop-pause-all` and writes runtime evidence only under ignored
+`data/nightly/`. ChatGPT Web is an independent public-fact reviewer; it does not
+trigger local Codex and does not count as local runtime evidence.
 
 ## What L1 Can Read
 
@@ -63,7 +81,11 @@ Every L1 dry-run reads the `loop-pause-all` flag and writes only ignored artifac
 
 ## Promotion
 
-L1 remains report-only until one supervised nightly dry-run has accepted runtime readback, stays within budget, and produces no unresolved governance drift. Promotion still requires the exact human approval `批准进入 L2` and a governance PR. L2 requires isolated worktrees and an independent verifier. L3 remains disabled until ten successful L2 fixes, an exercised rollback and circuit breaker, stable CI, and zero privacy incidents.
+The report-only L1 gate has been satisfied. Delegated L2 requires one Issue per
+lease/worktree/pull request, two independent verifiers, fresh exact-SHA CI,
+privacy invariants, and rollback evidence. High-risk work additionally requires
+an isolated Nightly pass. L3 remains disabled until ten successful L2 fixes, an
+exercised rollback and circuit breaker, stable CI, and zero privacy incidents.
 
 ## Failure Handling
 
