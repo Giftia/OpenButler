@@ -87,18 +87,19 @@ tasks:
       - "zero product mutations, GitHub mutations, MineContext reads, screenshot copies, external model calls, or webhook calls"
 
   - id: OB-TASK-276
-    title: "启用夜间 L1 巡检与 08:00 晨报"
+    title: "启用本机夜间演练与 08:00 晨间验收"
     goal_id: OB-GOAL-027
     priority: P1
     status: in_progress
     done_when:
-      - "自动化仅执行 report-only 巡检"
-      - "每日 token 硬上限 100k"
-      - "无可执行事项时在 5k tokens 左右退出"
-      - "晨报包含注意点、人工体验路径和阻塞选择项"
+      - "Windows Task Scheduler 在 19:00 启动 L1 dry-run"
+      - "Windows Task Scheduler 在 08:00 打开脱敏验收包"
+      - "ChatGPT Web 只在 17:30 和 08:00 提供公开事实审查"
+      - "一次监督 dry-run 有真实运行回读"
     evidence:
-      - "Codex heartbeat OpenButler Night Loop & Morning Report registered at 19:00 and 08:00 Asia/Shanghai"
-      - "first scheduled evening and morning wakes still require runtime readback"
+      - "Local Codex heartbeat is paused after producing no accepted runtime evidence"
+      - "Windows Task Scheduler scripts are delivered by PR #19 but are not installed or verified yet"
+      - "ChatGPT Web reviewer is read-only and does not trigger local execution"
 
   - id: OB-TASK-277
     title: "记录 Ambient 路线、类型和安全门槛"
@@ -114,16 +115,31 @@ tasks:
       - "docs/architecture/decisions/0011-loop-engineering-development-control-plane.md"
       - "docs/architecture/decisions/0012-windows-laptop-first-ambient-reference.md"
 
+  - id: OB-TASK-278
+    title: "对齐 Integrated Context Engine 加速路线"
+    goal_id: OB-GOAL-027
+    priority: P0
+    status: in_progress
+    done_when:
+      - "OB-GOAL-034 到 OB-GOAL-041 成为计划路线"
+      - "OB-GOAL-028 到 OB-GOAL-033 标记为 deferred 或 superseded"
+      - "L1 到 L2 门槛调整为一次监督 dry-run 和明确人工批准"
+      - "本次治理修复不修改产品业务代码"
+
 blocked:
-  - id: OB-GOAL-028
+  - id: OB-GOAL-034
     blocked_by: [OB-GOAL-027]
-  - id: OB-GOAL-029
-    blocked_by: [OB-GOAL-028]
-  - id: OB-GOAL-030
-    blocked_by: [OB-GOAL-029]
-  - id: OB-GOAL-031
-    blocked_by: [OB-GOAL-030]
-  - id: OB-GOAL-032
-    blocked_by: [OB-GOAL-031]
-  - id: OB-GOAL-033
-    blocked_by: [OB-GOAL-032]
+  - id: OB-GOAL-035
+    blocked_by: [OB-GOAL-034]
+  - id: OB-GOAL-036
+    blocked_by: [OB-GOAL-035]
+  - id: OB-GOAL-037
+    blocked_by: [OB-GOAL-036]
+  - id: OB-GOAL-038
+    blocked_by: [OB-GOAL-037]
+  - id: OB-GOAL-039
+    blocked_by: [OB-GOAL-037]
+  - id: OB-GOAL-040
+    blocked_by: [OB-GOAL-039]
+  - id: OB-GOAL-041
+    blocked_by: [OB-GOAL-040]

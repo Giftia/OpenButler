@@ -8,8 +8,10 @@ The development loop keeps repository facts, GitHub work, tests, and privacy con
 
 | Pattern | Cadence | Level | Authority |
 |---|---|---|---|
-| Repository governance drift audit | Daily 19:00 Asia/Shanghai | L1 | Report only |
-| Operator morning report | Daily 08:00 Asia/Shanghai | L1 | Evidence summary only |
+| Local repository governance drift audit | On demand | L1 | Report only |
+| Local nightly delivery rehearsal | Daily 19:00 Asia/Shanghai | L1 dry-run | Queue/readiness report only until L2 is approved |
+| ChatGPT Web GitHub preflight | Daily 17:30 Asia/Shanghai | Independent reviewer | Read-only issue specification and PR review drafts |
+| ChatGPT Web morning product report | Daily 08:00 Asia/Shanghai | Independent reviewer | Public GitHub evidence summary only |
 
 Command:
 
@@ -33,9 +35,13 @@ GitHub Issues are the executable work queue. `.openbutler/task_queue.yaml` store
 
 The L1 loop must not inspect MineContext source data, OpenButler runtime databases, screenshots, raw activity output, microphone data, or camera data.
 
-The Codex heartbeat `OpenButler Night Loop & Morning Report` is configured to own both scheduled wakes; the first evening and morning executions require runtime readback before the schedule task is complete. The evening wake follows the current promotion level and processes GitHub work strictly one issue at a time. At L1 it runs only the report-only governance audit. The morning wake summarizes completed work, tests, deployment evidence, privacy checks, attention points, manual experience paths, and decisions requiring the user. User authorization for local real-data testing, production deployment, and desktop installation is necessary but not sufficient: the current level, tests, verifier, privacy rules, and rollback gates still apply.
+The local Codex heartbeat `OpenButler Night Loop & Morning Report` remains paused because its first scheduled run produced no accepted runtime evidence. The durable local scheduler is Windows Task Scheduler, installed by `tools/nightly/install-scheduled-tasks.ps1`. It starts in `dry-run` mode and writes only ignored artifacts under `data/nightly/`. ChatGPT Web owns two public-GitHub reviewer workflows: a 17:30 preflight and an 08:00 morning report. Registration alone never counts as a useful run.
 
-Production delivery remains in a supervised trial until two consecutive nightly cycles complete without a privacy violation, unresolved serious regression, failed production or desktop smoke, or rollback. A failed cycle resets the count.
+The independent web reviewer produces issue body patches, suggested triage-label changes, and pull-request review drafts. Its current GitHub connection cannot write; local Codex verifies and applies approved GitHub changes. The reviewer must not write code, create implementation pull requests, merge or close work, change the active goal, or remove a promotion gate. This reviewer workflow is not an L2 maker and does not advance the repository's Loop level by itself. Only local Codex implements one `ready-for-agent` issue at a time and supplies approved redacted local evidence when needed.
+
+The morning report summarizes public GitHub facts. Local tests, Electron behavior, deployments, and real-data checks remain `本机未验证` unless the user provides a redacted report. User authorization for local real-data testing, production deployment, and desktop installation is necessary but not sufficient: the current level, tests, verifier, privacy rules, and rollback gates still apply.
+
+After L2 promotion, production delivery remains in a supervised trial until two consecutive delivery cycles complete without a privacy violation, unresolved serious regression, failed production or desktop smoke, or rollback. This post-promotion release trial is separate from the single L1 dry-run promotion gate.
 
 ## Outputs
 
@@ -77,10 +83,12 @@ Stop and return partial evidence when:
 
 ### L1 to L2
 
-- seven useful report-only runs;
+- one supervised nightly dry-run with accepted runtime readback;
 - false-positive rate below 20 percent;
 - no budget violation;
 - no unresolved active-goal drift.
+
+After the dry-run passes, L2 still requires the exact human approval `批准进入 L2`. A governance pull request records the promotion; the scheduler may not change its own authority.
 
 L2 fixes use one worktree per item, one maker, and an independent verifier. They open a PR and never merge automatically.
 
@@ -99,7 +107,7 @@ Human review is always required for privacy, identity, consent, sensors, MineCon
 
 ## Connectors
 
-L1 uses the local `gh` CLI with read-only GitHub Actions permissions. No MCP connector is required. L2 or L3 connector scopes must be documented and approved before use.
+The local L1 audit uses `gh` read-only. ChatGPT Web currently reads public GitHub facts and emits change drafts under `docs/agents/chatgpt-web-reviewer.md`; it has no verified GitHub write connection. Local Codex is the only GitHub write proxy. L2 or L3 implementation connector scopes must be documented and approved separately.
 
 ## Kill Switch
 

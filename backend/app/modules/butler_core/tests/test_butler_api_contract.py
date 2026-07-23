@@ -402,7 +402,7 @@ class ButlerApiContractTests(unittest.TestCase):
         response = butler_router.productization_objective_status()
 
         self.assertEqual(response["schema_version"], "productization_objective_status_v1")
-        self.assertEqual(response["status"], "proven")
+        self.assertEqual(response["status"], "needs_attention")
         self.assertTrue(response["evidence_boundary"])
         self.assertFalse(response["privacy"]["external_model_used"])
         self.assertFalse(response["privacy"]["external_model_allowed"])
@@ -420,14 +420,13 @@ class ButlerApiContractTests(unittest.TestCase):
         objectives = {item["id"]: item for item in response["objectives"]}
         self.assertEqual(set(objectives), {"OB-GOAL-027"})
         objective = objectives["OB-GOAL-027"]
-        self.assertEqual(objective["status"], "proven")
+        self.assertEqual(objective["status"], "needs_attention")
         self.assertEqual(objective["title"], "Loop-Driven Ambient OpenButler")
-        self.assertEqual(objective["proven_count"], objective["criteria_count"])
+        self.assertEqual(objective["proven_count"], objective["criteria_count"] - 3)
         self.assertEqual(objective["priority"], "P0")
         self.assertTrue(objective["success_criteria"])
         self.assertEqual(objective["source_ref"]["path"], ".openbutler/goals.yaml")
         for criterion in objective["criteria"]:
-            self.assertEqual(criterion["status"], "proven", criterion["id"])
             self.assertTrue(criterion["evidence_refs"])
             self.assertTrue(criterion["evidence_boundary"])
         criteria = {item["id"]: item for item in objective["criteria"]}
@@ -435,7 +434,10 @@ class ButlerApiContractTests(unittest.TestCase):
         self.assertEqual(criteria["loop_control_plane_files"]["status"], "proven")
         self.assertEqual(criteria["read_only_governance_audit"]["status"], "proven")
         self.assertEqual(criteria["required_ci_gates"]["status"], "proven")
-        self.assertEqual(criteria["ambient_roadmap_ordered"]["status"], "proven")
+        self.assertEqual(criteria["nightly_scheduler_runtime_readback"]["status"], "needs_attention")
+        self.assertEqual(criteria["supervised_dry_run_and_human_gate"]["status"], "needs_attention")
+        self.assertEqual(criteria["l2_pr_preview_contract"]["status"], "needs_attention")
+        self.assertEqual(criteria["integrated_context_engine_roadmap"]["status"], "proven")
         self.assertEqual(criteria["first_manual_l1_accepted"]["status"], "proven")
         self.assertTrue(criteria["first_manual_l1_accepted"]["details"]["human_gate"])
 
@@ -497,7 +499,7 @@ class ButlerApiContractTests(unittest.TestCase):
         response = butler_router.productization_l1_audit_report()
 
         self.assertEqual(response["schema_version"], "l1_active_objectives_audit_v1")
-        self.assertEqual(response["status"], "proven")
+        self.assertEqual(response["status"], "needs_attention")
         self.assertEqual(response["source"]["goals_path"], ".openbutler/goals.yaml")
         self.assertIn("missing_evidence", response["allowed_results"])
         self.assertIn("out_of_scope", response["allowed_results"])
@@ -505,7 +507,7 @@ class ButlerApiContractTests(unittest.TestCase):
         self.assertGreaterEqual(response["summary"]["success_criteria_count"], 6)
         self.assertEqual(response["summary"]["missing_evidence"], 0)
         self.assertEqual(response["summary"]["out_of_scope"], 0)
-        self.assertEqual(response["summary"]["needs_attention"], 0)
+        self.assertEqual(response["summary"]["needs_attention"], 3)
         self.assertFalse(response["privacy"]["external_model_used"])
         self.assertFalse(response["privacy"]["external_model_allowed"])
         self.assertEqual(response["privacy"]["minecontext_source_deleted"], 0)
@@ -514,13 +516,17 @@ class ButlerApiContractTests(unittest.TestCase):
         self.assertTrue(response["evidence_boundary"])
         objectives = {item["id"]: item for item in response["objectives"]}
         goal = objectives["OB-GOAL-027"]
-        self.assertEqual(goal["objective_status"], "proven")
+        self.assertEqual(goal["objective_status"], "needs_attention")
         checks = {item["success_criterion"]: item for item in goal["success_criteria"]}
         self.assertEqual(checks["LOOP.md、STATE.md、loop-budget.md、loop-constraints.md、loop-run-log.md 存在且相互一致"]["verification_result"], "proven")
         self.assertEqual(checks["L1 治理巡检仅写入忽略目录中的报告，不修改产品代码或 GitHub 状态"]["verification_result"], "proven")
         self.assertEqual(checks["基础 CI 覆盖 Butler Core、PC Activity、Workstation Vision、Frontend 和 Desktop contract"]["verification_result"], "proven")
+        self.assertEqual(checks["Integrated Context Engine 路线固定为 OB-GOAL-034 到 OB-GOAL-041"]["verification_result"], "proven")
         self.assertEqual(checks["未读取真实 MineContext 活动、未复制截图、未调用外部模型"]["verification_result"], "proven")
         self.assertEqual(checks["首次人工 L1 已在 canonical main 上完成并被人工接受"]["verification_result"], "proven")
+        self.assertEqual(checks["19:00 本机夜间控制器和 08:00 验收任务有真实运行回读"]["verification_result"], "needs_attention")
+        self.assertEqual(checks["一次监督 dry-run 通过后仍需用户明确批准进入 L2"]["verification_result"], "needs_attention")
+        self.assertEqual(checks["L2 每个 Issue 使用独立 PR，早晨通过 OpenButler Preview 验收，夜间永不合并"]["verification_result"], "needs_attention")
         self.assertTrue(checks["LOOP.md、STATE.md、loop-budget.md、loop-constraints.md、loop-run-log.md 存在且相互一致"]["evidence_refs"])
         self.assertTrue(checks["未读取真实 MineContext 活动、未复制截图、未调用外部模型"]["evidence_boundary"])
 
@@ -565,10 +571,10 @@ class ButlerApiContractTests(unittest.TestCase):
         response = butler_router.productization_demo_pack()
 
         self.assertEqual(response["schema_version"], "productization_demo_pack_v1")
-        self.assertEqual(response["status"], "ready")
+        self.assertEqual(response["status"], "attention_needed")
         self.assertEqual(response["readiness"]["status"], "ready")
         self.assertEqual(response["mvp_report"]["status"], "ready")
-        self.assertEqual(response["objective_status"]["status"], "proven")
+        self.assertEqual(response["objective_status"]["status"], "needs_attention")
         self.assertGreaterEqual(response["latest_harness_runs"]["count"], 1)
         self.assertIn("POST /api/butler/demo/run", response["demo_commands"])
         self.assertIn("GET /api/butler/productization/demo-pack", response["demo_commands"])

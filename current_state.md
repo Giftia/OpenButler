@@ -1,12 +1,14 @@
 # OpenButler Current State
 
-Updated: 2026-07-15
+Updated: 2026-07-17
 
 ## Current Stage
 
 The only active product objective is `OB-GOAL-027: Loop-Driven Ambient OpenButler`.
 
-OpenButler is moving from prompt-driven development to a controlled loop-engineering workflow. The canonical main baseline is merged and the first GitHub-connected L1 audit passed cleanly. A Codex heartbeat is registered for the evening Loop wake and the 08:00 morning evidence report; the first scheduled executions still require runtime readback. This stage does not add sensors or smart-home actions.
+OpenButler is preparing a loop-driven Integrated Context Engine roadmap. The canonical main baseline and first GitHub-connected L1 audit are complete. The original local Codex heartbeat is paused. PR #18 aligns the public reviewer and governance facts; stacked PR #19 delivers the local night controller, Preview acceptance path, and Windows scheduler scripts. Neither PR is merged, the scheduler is not installed, and no supervised nightly dry-run has been accepted yet.
+
+ChatGPT Web is a read-only public-GitHub reviewer at 17:30 and 08:00. Windows Task Scheduler will own the local 19:00 dry-run and 08:00 acceptance opening. Local Codex remains the only implementation and GitHub write worker.
 
 ## Repository Baseline
 
@@ -27,18 +29,18 @@ Already implemented and tested:
 - React/Vite ordinary-user product shell and Windows Electron shell.
 - Local-mode activation flow with redacted preview boundaries.
 
-Important gaps before ambient operation:
+Important gaps before the Integrated Context Engine can start:
 
 - No unified local API authentication or central PrivacyGuard.
-- No continuous sensor scheduler, checkpoint recovery, or power policy.
-- No real household identity and consent model.
-- Quiet hours and intervention budgets are not yet the global decision gate.
-- No approved external action execution state machine.
+- No internal `context_engine` implementation yet; MineContext remains an external read-only compatibility source.
+- No three-route image, text, and Embedding model gateway with protected secret storage.
+- No verified migration preview and read-only copy path for existing MineContext data.
+- No feature-parity implementation for capture, activities, reports, tasks, search, and memory.
 
 ## Two Different Loops
 
 1. **Development loop**: triage repository drift, keep state, isolate changes, verify, and escalate.
-2. **Ambient product loop**: observe, normalize, identify, apply consent, decide whether to stay silent, deliver a suggestion, and learn from feedback.
+2. **Context product loop**: capture authorized context, deduplicate, understand, store, generate results, explain evidence, and learn from feedback.
 
 The L1 development loop is report-only. It must not read real MineContext activity, change product code, mutate GitHub, deploy, or call external models.
 
@@ -51,9 +53,13 @@ The L1 development loop is report-only. It must not read real MineContext activi
 5. `loop-run-log.md` - append-only run evidence.
 6. `current_state.md` - concise historical and architectural orientation only.
 
+## Planned Product Route
+
+`OB-GOAL-034` through `OB-GOAL-041` define the new sequence: secure internal context engine, three-route model gateway, MineContext feature parity, migration and product shell, OpenButler Cloud, NanoKVM screen recall, controlled KVM autonomy, then ambient expansion. Historical goals `OB-GOAL-028` through `OB-GOAL-033` are deferred or superseded and their existing Issues are not executable under the new route.
+
 ## Next Promotion Gate
 
-CI, branch protection, the first canonical L1 run, and the scheduled evening/morning heartbeat are ready. The repository remains at L1 until the useful-run, false-positive, budget, and active-goal-drift gates in `LOOP.md` are satisfied. `OB-GOAL-028: Secure Local Control Plane & PrivacyGuard` remains blocked until that evidence is accepted.
+The repository remains at L1. PR #18 and PR #19 must be reviewed and merged first. Then one supervised dry-run must produce accepted runtime readback without product or GitHub mutation. Only the exact approval `批准进入 L2` may activate `OB-GOAL-034`; this governance repair does not itself enter L2.
 
 ## Privacy Boundary
 

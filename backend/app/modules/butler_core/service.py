@@ -1123,6 +1123,8 @@ class ButlerCoreService:
         readiness = self.readiness()
         report = self.mvp_report()
         checks = {item["id"]: item for item in readiness.get("checks", [])}
+        loop_state_text = (root / "STATE.md").read_text(encoding="utf-8")
+        supervised_nightly_passed = "| Supervised nightly dry-run | passed |" in loop_state_text
         acceptance = {item["id"]: item for item in report.get("acceptance", [])}
 
         def criterion(
@@ -2714,20 +2716,22 @@ class ButlerCoreService:
                         ],
                     ),
                     criterion(
-                        "ambient_roadmap_ordered",
-                        "Ambient 产品路线固定为 OB-GOAL-028 到 OB-GOAL-033，并保持安全前置顺序",
+                        "integrated_context_engine_roadmap",
+                        "Integrated Context Engine 路线固定为 OB-GOAL-034 到 OB-GOAL-041",
                         all(goal in (root / ".openbutler" / "goals.yaml").read_text(encoding="utf-8") for goal in [
-                            "OB-GOAL-028",
-                            "OB-GOAL-029",
-                            "OB-GOAL-030",
-                            "OB-GOAL-031",
-                            "OB-GOAL-032",
-                            "OB-GOAL-033",
+                            "OB-GOAL-034",
+                            "OB-GOAL-035",
+                            "OB-GOAL-036",
+                            "OB-GOAL-037",
+                            "OB-GOAL-038",
+                            "OB-GOAL-039",
+                            "OB-GOAL-040",
+                            "OB-GOAL-041",
                         ])
-                        and (root / "docs" / "architecture" / "LOOP_DRIVEN_AMBIENT_ARCHITECTURE.md").exists(),
+                        and "paused_objectives:" in (root / ".openbutler" / "goals.yaml").read_text(encoding="utf-8"),
                         [
                             {"kind": "file", "path": ".openbutler/goals.yaml"},
-                            {"kind": "file", "path": "docs/architecture/LOOP_DRIVEN_AMBIENT_ARCHITECTURE.md"},
+                            {"kind": "file", "path": "current_state.md"},
                         ],
                     ),
                     criterion(
@@ -2753,6 +2757,44 @@ class ButlerCoreService:
                             {"kind": "file", "path": "loop-run-log.md"},
                         ],
                         {"human_gate": True, "canonical_main_required": True},
+                    ),
+                    criterion(
+                        "nightly_scheduler_runtime_readback",
+                        "19:00 本机夜间控制器和 08:00 验收任务有真实运行回读",
+                        supervised_nightly_passed,
+                        [
+                            {"kind": "local_artifact", "path": "data/nightly/<run-id>/state.json"},
+                            {"kind": "local_artifact", "path": "data/nightly/<run-id>/MORNING_ACCEPTANCE.md"},
+                            {"kind": "script", "path": "tools/nightly/install-scheduled-tasks.ps1"},
+                        ],
+                        {"required": "nightly and morning scheduler runtime readback", "tracked_state": "STATE.md"},
+                    ),
+                    criterion(
+                        "supervised_dry_run_and_human_gate",
+                        "一次监督 dry-run 通过后仍需用户明确批准进入 L2",
+                        supervised_nightly_passed
+                        and "Current level: L1 active" in loop_state_text,
+                        [
+                            {"kind": "local_artifact", "path": "data/nightly/<run-id>/state.json"},
+                            {"kind": "file", "path": "STATE.md"},
+                            {"kind": "file", "path": "LOOP.md"},
+                        ],
+                        {
+                            "supervised_dry_run_passed": supervised_nightly_passed,
+                            "human_approval_required": True,
+                        },
+                    ),
+                    criterion(
+                        "l2_pr_preview_contract",
+                        "L2 每个 Issue 使用独立 PR，早晨通过 OpenButler Preview 验收，夜间永不合并",
+                        "| L2 Preview delivery exercise | passed |" in loop_state_text,
+                        [
+                            {"kind": "script", "path": "tools/nightly/nightly-controller.mjs"},
+                            {"kind": "script", "path": "tools/nightly/morning-report.mjs"},
+                            {"kind": "script", "path": "desktop/scripts/build-preview-installer.mjs"},
+                            {"kind": "file", "path": "loop-constraints.md"},
+                        ],
+                        {"required": "verified issue PR, Preview install, and morning acceptance readback"},
                     ),
             ],
         }

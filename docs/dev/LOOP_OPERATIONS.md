@@ -41,9 +41,9 @@ Exit codes:
 
 ## Scheduled L1 Gate
 
-The weekday workflow is installed but remains dormant until a human sets the repository variable `OPENBUTLER_L1_SCHEDULE_ENABLED=true`. Merging the workflow does not enable unattended runs by itself.
+The canonical local schedule is Windows Task Scheduler. PR #19 supplies an idempotent installer for a 19:00 local dry-run and an 08:00 acceptance-pack opening. Until that PR is merged and the tasks are installed with runtime readback, the schedule is `not verified`.
 
-Every dispatched run reads only the `loop-pause-all` flag before the audit. When the flag is `true`, the audit and artifact upload are skipped. The job has a five-minute hard timeout. The schedule must not be enabled until the first canonical-main manual L1 report is reviewed and accepted.
+Every L1 dry-run reads the `loop-pause-all` flag and writes only ignored artifacts under `data/nightly/`. ChatGPT Web's 17:30 preflight and 08:00 report are independent read-only reviews; they do not trigger local Codex and do not count as local runtime evidence.
 
 ## What L1 Can Read
 
@@ -63,7 +63,7 @@ Every dispatched run reads only the `loop-pause-all` flag before the audit. When
 
 ## Promotion
 
-L1 remains report-only for at least seven useful runs. L2 requires isolated worktrees and an independent verifier. L3 remains disabled until ten successful L2 fixes, an exercised rollback and circuit breaker, stable CI, and zero privacy incidents.
+L1 remains report-only until one supervised nightly dry-run has accepted runtime readback, stays within budget, and produces no unresolved governance drift. Promotion still requires the exact human approval `批准进入 L2` and a governance PR. L2 requires isolated worktrees and an independent verifier. L3 remains disabled until ten successful L2 fixes, an exercised rollback and circuit breaker, stable CI, and zero privacy incidents.
 
 ## Failure Handling
 
