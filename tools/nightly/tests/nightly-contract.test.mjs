@@ -34,6 +34,10 @@ test("morning report rejects stale or incomplete packs", () => {
   assert.match(source, /isFreshAcceptancePack/);
   assert.match(source, /process\.exit\(2\)/);
   assert.match(source, /rmSync\(publishedPackPath/);
+  assert.match(source, /Nightly 隔离库已写入/);
+  assert.match(source, /来源数据已修改/);
+  assert.match(source, /稳定版发布仍需单独批准/);
+  assert.doesNotMatch(source, /当前批准命令/);
   const runner = read("tools/nightly/run-morning.ps1");
   assert.match(runner, /if \(\$reportExitCode -ne 0\)/);
 });

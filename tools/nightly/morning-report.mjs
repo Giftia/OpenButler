@@ -1,7 +1,7 @@
 import {existsSync, mkdirSync, readFileSync, rmSync, writeFileSync} from "node:fs";
 import {dirname, join, resolve} from "node:path";
 import {fileURLToPath} from "node:url";
-import {buildApprovalCommand, isFreshAcceptancePack, readJson, sanitizeAcceptanceValue} from "./nightly-lib.mjs";
+import {isFreshAcceptancePack, readJson, sanitizeAcceptanceValue} from "./nightly-lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..", "..");
@@ -49,7 +49,28 @@ for (const scenario of pack.scenarios ?? []) {
   lines.push(`- 预期：${scenario.expected ?? "未提供"}`, "");
 }
 lines.push("## 隐私检查", "");
-for (const [key, value] of Object.entries(pack.privacy ?? {})) lines.push(`- ${key}: ${value}`);
+lines.push(
+  `- 来源记录已读取：${pack.privacy?.real_activity_read ? "是" : "否"}`,
+  `- Nightly 隔离库已写入：${pack.privacy?.database_written ? "是" : "否"}`,
+  `- 来源数据已修改：${pack.privacy?.source_data_modified ? "是" : "否"}`,
+  `- 截图已复制：${pack.privacy?.screenshots_copied ? "是" : "否"}`,
+  `- 外部模型已调用：${pack.privacy?.external_model_called ? "是" : "否"}`,
+  `- 外部回调已调用：${pack.privacy?.external_webhook_called ? "是" : "否"}`,
+  `- GitHub 已产生实现变更：${pack.privacy?.github_mutated ? "是" : "否"}`,
+);
+if (pack.real_data) {
+  lines.push(
+    "",
+    "## 本地数据验证",
+    "",
+    `- 状态：${pack.real_data.status ?? "unknown"}`,
+    `- 时间范围：最近 ${pack.real_data.lookback_hours ?? 48} 小时`,
+    `- 预计来源记录：${pack.real_data.estimated_source_events ?? 0}`,
+    `- 预计新增记录：${pack.real_data.estimated_new_events ?? 0}`,
+    `- 预计重复记录：${pack.real_data.estimated_duplicate_events ?? 0}`,
+    "- 说明：只读来源，结果仅写入 Nightly 隔离库。",
+  );
+}
 if (pack.auto_merge) {
   lines.push(
     "",
@@ -60,7 +81,15 @@ if (pack.auto_merge) {
     `- 已阻塞：${(pack.auto_merge.blocked ?? []).length}`,
   );
 }
-lines.push("", "## 当前批准命令", "", `\`${buildApprovalCommand(pack, {})}\``, "");
+lines.push(
+  "",
+  "## 下一步",
+  "",
+  pack.auto_merge?.blocked?.length
+    ? "- 查看自动合并阻塞原因；控制器不会绕过门禁。"
+    : "- 没有需要人工批准的合并；稳定版发布仍需单独批准。",
+  "",
+);
 if ((pack.blockers ?? []).length) {
   lines.push("## 阻塞", "", ...pack.blockers.map((item) => `- ${item}`), "");
 }
