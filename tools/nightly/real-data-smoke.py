@@ -27,6 +27,14 @@ def main() -> int:
     runtime_dir.mkdir(parents=True, exist_ok=True)
 
     with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+            """
+        )
         init_pc_activity_context_db(connection)
         init_butler_core_db(connection)
 

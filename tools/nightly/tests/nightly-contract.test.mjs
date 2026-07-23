@@ -83,6 +83,7 @@ test("real data smoke is isolated, bounded, and redacted", () => {
   assert.match(source, /lookback_days=2/);
   assert.match(source, /include_screenshot_paths=False/);
   assert.match(source, /copy_screenshots=False/);
+  assert.match(source, /CREATE TABLE IF NOT EXISTS settings/);
   assert.match(source, /raw_output_persisted/);
   assert.match(source, /data.*nightly.*real-data/s);
 });
