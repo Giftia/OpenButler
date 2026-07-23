@@ -1,8 +1,10 @@
 !macro openbutlerKillProcess PROCESS_NAME
   DetailPrint "Stopping ${PROCESS_NAME}..."
-  nsExec::ExecToLog `$SYSDIR\cmd.exe /d /c taskkill /IM "${PROCESS_NAME}" /T /F 1>nul 2>nul`
+  nsExec::Exec `$SYSDIR\cmd.exe /d /c taskkill /IM "${PROCESS_NAME}" /T /F 1>nul 2>nul`
+  Pop $0
   Sleep 500
-  nsExec::ExecToLog `$SYSDIR\cmd.exe /d /c taskkill /IM "${PROCESS_NAME}" /T /F 1>nul 2>nul`
+  nsExec::Exec `$SYSDIR\cmd.exe /d /c taskkill /IM "${PROCESS_NAME}" /T /F 1>nul 2>nul`
+  Pop $0
 !macroend
 
 !macro openbutlerKillRuntime
@@ -11,14 +13,6 @@
   Sleep 1000
   !insertmacro openbutlerKillProcess "openbutler-backend.exe"
   Sleep 500
-!macroend
-
-!macro preInit
-  !insertmacro openbutlerKillRuntime
-!macroend
-
-!macro customInit
-  !insertmacro openbutlerKillRuntime
 !macroend
 
 !macro customCheckAppRunning

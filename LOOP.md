@@ -92,6 +92,15 @@ After the dry-run passes, L2 still requires the exact human approval `批准进�
 
 L2 fixes use one worktree per item, one maker, and an independent verifier. They open a PR and never merge automatically.
 
+## Nightly Delivery Contract
+
+- GitHub Issues are eligible only when both `ready-for-agent` and `nightly-approved` are present.
+- High-risk issues require `nightly-approved` from GitHub user `Giftia` after the latest issue specification change.
+- Work is serial, one issue and worktree at a time, from 19:00 until 06:15.
+- The nightly hard cap is 750,000 tokens; at 80 percent no new issue is started.
+- Successful issue branches remain separate pull requests. A local-only integration worktree may combine conflict-free commits for `OpenButler Preview` acceptance testing.
+- Nightly execution never merges. The morning acceptance pack records exact PR head SHAs. Human approval is valid only while those SHAs and green checks remain unchanged.
+
 ### L2 to L3
 
 - ten successful worktree fixes;

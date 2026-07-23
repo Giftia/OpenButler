@@ -126,6 +126,96 @@ tasks:
       - "L1 到 L2 门槛调整为一次监督 dry-run 和明确人工批准"
       - "本次治理修复不修改产品业务代码"
 
+  - id: OB-LOOP-001
+    title: "建立人工验收式夜间交付治理门禁"
+    goal_id: OB-GOAL-027
+    priority: P0
+    status: in_progress
+    done_when:
+      - "L1 到 L2 使用一次监督 dry-run 和明确人工批准"
+      - "夜间永不自动合并"
+      - "双标签和高风险授权规则有测试"
+
+  - id: OB-LOOP-002
+    title: "实现夜间队列、预算、运行锁和串行控制器"
+    goal_id: OB-GOAL-027
+    priority: P0
+    status: in_progress
+    done_when:
+      - "只选择 ready-for-agent 与 nightly-approved Issue"
+      - "L1 强制 dry-run"
+      - "06:15 与 750k token 断路器生效"
+
+  - id: OB-LOOP-003
+    title: "实现 Codex maker 与独立 verifier 执行契约"
+    goal_id: OB-GOAL-027
+    priority: P0
+    status: in_progress
+    done_when:
+      - "一个 Issue 一个 worktree 与 PR"
+      - "verifier 只返回 APPROVE、REJECT 或 ESCALATE_HUMAN"
+      - "三次失败后停止并升级"
+
+  - id: OB-LOOP-004
+    title: "安装 Windows 夜间与晨间计划任务"
+    goal_id: OB-GOAL-027
+    priority: P0
+    status: in_progress
+    done_when:
+      - "19:00 dry-run 和 08:00 晨间任务可回读"
+      - "重复安装不会产生重复任务"
+      - "睡眠错过后可在恢复时运行"
+
+  - id: OB-QA-001
+    title: "建立 OpenButler Preview 并行打包通道"
+    goal_id: OB-GOAL-027
+    priority: P0
+    status: in_progress
+    done_when:
+      - "Preview 不覆盖稳定版"
+      - "app id、安装目录和用户数据相互隔离"
+      - "构建失败保留上一份可用 Preview"
+
+  - id: OB-QA-002
+    title: "实现桌面晨间验收中心和 acceptance pack"
+    goal_id: OB-GOAL-027
+    priority: P0
+    status: in_progress
+    done_when:
+      - "场景可标记通过、不通过或有条件通过"
+      - "生成精确批准或修复命令"
+      - "不保存真实活动、路径、Key 或 raw output"
+
+  - id: OB-REPORT-001
+    title: "生成脱敏本机晨报"
+    goal_id: OB-GOAL-027
+    priority: P0
+    status: in_progress
+    done_when:
+      - "区分 GitHub、CI、本机与未验证证据"
+      - "列出阻塞和 2 到 3 个选择"
+
+  - id: OB-RELEASE-001
+    title: "实现批准后的 SHA 校验、合并和稳定版发布"
+    goal_id: OB-GOAL-027
+    priority: P0
+    status: in_progress
+    done_when:
+      - "陈旧批准会被拒绝"
+      - "只 squash merge 已批准 PR"
+      - "main CI 通过后才 bump、发布和安装"
+
+  - id: OB-DRYRUN-001
+    title: "完成一次监督无修改演练"
+    goal_id: OB-GOAL-027
+    priority: P0
+    status: blocked
+    blocked_by: [OB-LOOP-001, OB-LOOP-002, OB-LOOP-004, OB-QA-002, OB-REPORT-001]
+    done_when:
+      - "监督 dry-run 有真实调度回读和脱敏验收包"
+      - "没有产品或 GitHub 修改"
+      - "用户明确批准进入 L2"
+
 blocked:
   - id: OB-GOAL-034
     blocked_by: [OB-GOAL-027]

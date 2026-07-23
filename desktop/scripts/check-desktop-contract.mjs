@@ -25,6 +25,10 @@ const preload = readFileSync(join(root, "src/preload.cjs"), "utf8");
 const backendEntry = readFileSync(join(root, "backend_entry.py"), "utf8");
 const packageJson = readFileSync(join(root, "package.json"), "utf8");
 const installerNsh = readFileSync(join(root, "installer/installer.nsh"), "utf8");
+const previewInstallerNsh = readFileSync(join(root, "installer/installer-preview.nsh"), "utf8");
+const previewBuilder = readFileSync(join(root, "scripts/build-preview-installer.mjs"), "utf8");
+const packagedSmoke = readFileSync(join(root, "scripts/smoke-packaged-app.mjs"), "utf8");
+const nightlyController = readFileSync(join(root, "../tools/nightly/nightly-controller.mjs"), "utf8");
 
 const expectations = [
   ["main binds backend to loopback", main.includes("127.0.0.1")],
@@ -45,7 +49,7 @@ const expectations = [
   ["main has desktop load error page", main.includes("loadDesktopErrorPage") && main.includes("did-fail-load")],
   ["main writes packaged smoke state", main.includes("OPENBUTLER_DESKTOP_SMOKE_FILE") && main.includes("bodyTextLength")],
   ["main stops backend process tree on quit", main.includes("function killProcessTree") && main.includes('taskkill", ["/PID", String(pid), "/T", "/F"') && main.includes("OPENBUTLER_DESKTOP_SMOKE_QUIT_AFTER_MS")],
-  ["main kills stale backend by image name", main.includes("function killProcessByImageName") && main.includes('killProcessByImageName("openbutler-backend.exe")')],
+  ["main kills only the active channel backend image", main.includes("function killProcessByImageName") && main.includes("killProcessByImageName(backendImageName)")],
   ["main cleans backend on will-quit and process exit", main.includes('app.on("will-quit"') && main.includes('process.on("exit"')],
   ["backend entry guards missing standard streams", backendEntry.includes("_ensure_standard_streams") && backendEntry.includes("sys.stderr is None")],
   ["backend entry disables uvicorn default log config", backendEntry.includes("log_config=None") && backendEntry.includes("access_log=False")],
@@ -60,11 +64,17 @@ const expectations = [
   ["preload exposes MineContext scan", preload.includes("scanMineContextInstallations")],
   ["preload exposes MineContext download/install", preload.includes("downloadMineContextInstaller") && preload.includes("installMineContextWithApproval")],
   ["preload exposes MineContext download page", preload.includes("openMineContextDownloadPage")],
+  ["preload exposes preview acceptance pack", preload.includes("getAcceptancePack") && preload.includes("saveAcceptanceFeedback")],
+  ["main isolates preview channel", main.includes('moe.giftia.openbutler.preview') || (main.includes("desktopChannel") && main.includes("OpenButler Preview"))],
+  ["preview builder uses separate app identity", previewBuilder.includes("moe.giftia.openbutler.preview") && previewBuilder.includes("OpenButler Preview")],
+  ["preview builder uses separate backend image", previewBuilder.includes("openbutler-backend-preview.exe")],
+  ["preview packaged smoke checks its own executable and backend", packagedSmoke.includes("OpenButler Preview.exe") && packagedSmoke.includes("openbutler-backend-preview.exe")],
+  ["preview controller kills only preview runtime before install", nightlyController.includes('command("taskkill", ["/IM", "OpenButler Preview.exe"') && nightlyController.includes('command("taskkill", ["/IM", "openbutler-backend-preview.exe"') && !nightlyController.includes('command("taskkill", ["/IM", "OpenButler.exe"')],
   ["windows build config uses app icon", packageJson.includes('"icon": "assets/openbutler.ico"')],
   ["electron builder packages desktop assets", packageJson.includes('"from": "assets"') && packageJson.includes('"to": "assets"')],
   ["nsis installer includes lifecycle cleanup", packageJson.includes('"include": "installer/installer.nsh"')],
   ["nsis installer kills app and backend", installerNsh.includes('taskkill /IM "${PROCESS_NAME}" /T /F') && installerNsh.includes('"OpenButler.exe"') && installerNsh.includes('"openbutler-backend.exe"')],
-  ["nsis installer cleanup runs on install and uninstall", installerNsh.includes("preInit") && installerNsh.includes("customInit") && installerNsh.includes("customInstall") && installerNsh.includes("customRemoveFiles") && installerNsh.includes("customUnInit") && installerNsh.includes("customUnInstall")],
+  ["nsis installer cleanup runs on install and uninstall", installerNsh.includes("customCheckAppRunning") && installerNsh.includes("customInstall") && installerNsh.includes("customRemoveFiles") && installerNsh.includes("customUnInit") && installerNsh.includes("customUnInstall")],
   ["nsis installer repeats backend cleanup", (installerNsh.match(/openbutler-backend\.exe/g) || []).length >= 2 && installerNsh.includes("customRemoveFiles")],
 ];
 

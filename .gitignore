@@ -11,9 +11,12 @@ env/
 # Node / frontend
 node_modules/
 dist/
+dist-preview/
+dist-release/
 build/
 .vite/
 coverage/
+desktop/.tmp/
 
 # Environment / secrets
 .env

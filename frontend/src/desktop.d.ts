@@ -4,11 +4,14 @@ declare global {
   interface Window {
     openbutlerDesktop?: {
       apiBase?: string;
+      channel?: "stable" | "preview";
       getRuntime: () => Promise<{
         apiBase: string;
         mode: "desktop";
         platform: string;
         appVersion: string;
+        channel: "stable" | "preview";
+        acceptancePackAvailable: boolean;
         backend: {
           pid: number | null;
           running: boolean;
@@ -29,6 +32,8 @@ declare global {
       applyMineContextModelConfig: (config: Record<string, unknown>) => Promise<Record<string, any>>;
       showMainWindow: () => Promise<{ok: boolean}>;
       quitApp: () => Promise<{ok: boolean}>;
+      getAcceptancePack: () => Promise<Record<string, any> | null>;
+      saveAcceptanceFeedback: (feedback: Record<string, unknown>) => Promise<{ok: boolean; savedAt?: string; message?: string}>;
     };
   }
 }

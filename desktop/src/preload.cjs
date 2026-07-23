@@ -7,9 +7,11 @@ function readArg(name) {
 }
 
 const apiBase = readArg("openbutler-api-base");
+const channel = readArg("openbutler-channel") || "stable";
 
 contextBridge.exposeInMainWorld("openbutlerDesktop", {
   apiBase,
+  channel,
   getRuntime: () => ipcRenderer.invoke("openbutler:get-runtime"),
   restartBackend: () => ipcRenderer.invoke("openbutler:restart-backend"),
   chooseMineContextHome: () => ipcRenderer.invoke("openbutler:choose-minecontext-home"),
@@ -25,4 +27,6 @@ contextBridge.exposeInMainWorld("openbutlerDesktop", {
   applyMineContextModelConfig: (config) => ipcRenderer.invoke("openbutler:apply-minecontext-model-config", config),
   showMainWindow: () => ipcRenderer.invoke("openbutler:show-main-window"),
   quitApp: () => ipcRenderer.invoke("openbutler:quit-app"),
+  getAcceptancePack: () => ipcRenderer.invoke("openbutler:get-acceptance-pack"),
+  saveAcceptanceFeedback: (feedback) => ipcRenderer.invoke("openbutler:save-acceptance-feedback", feedback),
 });

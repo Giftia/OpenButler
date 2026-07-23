@@ -1,0 +1,11 @@
+{
+  "name": "openbutler-nightly-delivery",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests",
+    "dry-run": "node nightly-controller.mjs --mode dry-run",
+    "morning": "node morning-report.mjs",
+    "approve": "node approve-release.mjs"
+  }
+}

@@ -10,6 +10,7 @@ loop-pause-all: false
 
 - Repair and land PR #18 and PR #19 without changing product behavior.
 - Complete one supervised 19:00 local dry-run and verify its 08:00 redacted acceptance pack; registration alone is not runtime evidence.
+- Keep the nightly controller in dry-run mode until the exact human approval `批准进入 L2` is recorded through a governance PR.
 - Use ChatGPT Web to draft one GitHub implementation issue at a time, while local Codex remains the sole GitHub write, implementation, and local-validation worker.
 - Keep `OB-GOAL-034` blocked until the L1-to-L2 promotion evidence is accepted.
 - Use the 08:00 report to surface attention points, verification paths, and decisions for the user.
