@@ -29,10 +29,12 @@ test("stable release waits for the complete required check set and has rollback"
   assert.match(source, /smoke:installer-lifecycle/);
 });
 
-test("morning report rejects stale or incomplete packs", () => {
+test("morning report publishes a redacted blocker report for incomplete runs", () => {
   const source = read("tools/nightly/morning-report.mjs");
   assert.match(source, /isFreshAcceptancePack/);
-  assert.match(source, /process\.exit\(2\)/);
+  assert.match(source, /publishFailureReport/);
+  assert.match(source, /MORNING_REPORT\.md/);
+  assert.match(source, /process\.exit\(0\)/);
   assert.match(source, /rmSync\(publishedPackPath/);
   assert.match(source, /Nightly 隔离库已写入/);
   assert.match(source, /来源数据已修改/);
@@ -40,6 +42,13 @@ test("morning report rejects stale or incomplete packs", () => {
   assert.doesNotMatch(source, /当前批准命令/);
   const runner = read("tools/nightly/run-morning.ps1");
   assert.match(runner, /if \(\$reportExitCode -ne 0\)/);
+});
+
+test("finalize treats a missing acceptance pack as a safe no-op", () => {
+  const source = read("tools/nightly/auto-merge-controller.mjs");
+  assert.match(source, /status: "no_fresh_acceptance_pack"/);
+  assert.match(source, /auto_merge_attempted: false/);
+  assert.match(source, /process\.exit\(0\)/);
 });
 
 test("Preview delivery verifies install result, exact version, and lifecycle", () => {

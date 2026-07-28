@@ -73,7 +73,14 @@ const runDir = join(nightlyRoot, runId);
 const packPath = join(runDir, "acceptance-pack.json");
 const state = readJson(join(runDir, "state.json"), null);
 const pack = readJson(packPath, null);
-if (!isFreshAcceptancePack(pack, state)) throw new Error("latest acceptance pack is stale or incomplete");
+if (!isFreshAcceptancePack(pack, state)) {
+  console.log(JSON.stringify({
+    status: "no_fresh_acceptance_pack",
+    run_id: runId,
+    auto_merge_attempted: false,
+  }, null, 2));
+  process.exit(0);
+}
 
 pack.auto_merge = pack.auto_merge ?? {attempted: 0, merged: [], blocked: []};
 for (const acceptance of pack.pull_requests ?? []) {
