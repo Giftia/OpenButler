@@ -328,9 +328,9 @@ async function executeIssue(issue, {tokensUsed}) {
       ], {cwd: worktree, timeout: 3 * 60 * 60 * 1000});
       writeFileSync(eventsFile, maker.stdout, "utf8");
       totalTokens += tokenUsageFromJsonl(maker.stdout);
-      if (!maker.ok || totalTokens > ISSUE_TOKEN_CAP || tokensUsed + totalTokens > NIGHTLY_TOKEN_CAP) {
-        throw new Error(`maker failed (${maker.errorCode ?? maker.status ?? "unknown"}) or exceeded budget for #${issue.number}`);
-      }
+      if (!maker.ok) throw new Error(`maker failed (${maker.errorCode ?? maker.status ?? "unknown"}) for #${issue.number}`);
+      if (totalTokens > ISSUE_TOKEN_CAP) throw new Error(`Issue #${issue.number} token budget exceeded (${totalTokens} > ${ISSUE_TOKEN_CAP})`);
+      if (tokensUsed + totalTokens > NIGHTLY_TOKEN_CAP) throw new Error(`Nightly token budget exceeded while processing #${issue.number}`);
 
       const changed = command("git", ["status", "--porcelain=v1"], {cwd: worktree});
       if (!changed.stdout.trim()) throw new Error(`maker produced no changes for #${issue.number} attempt ${attempt}`);

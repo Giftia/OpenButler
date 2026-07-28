@@ -190,9 +190,10 @@ export function tokenUsageFromJsonl(text) {
       const event = JSON.parse(line);
       const usage = event.usage ?? event.item?.usage ?? event.data?.usage;
       if (!usage || typeof usage !== "object") continue;
-      total += Number(usage.input_tokens ?? usage.inputTokens ?? 0);
-      total += Number(usage.output_tokens ?? usage.outputTokens ?? 0);
-      total += Number(usage.cached_input_tokens ?? usage.cachedInputTokens ?? 0);
+      const input = Number(usage.input_tokens ?? usage.inputTokens ?? 0);
+      const cachedInput = Number(usage.cached_input_tokens ?? usage.cachedInputTokens ?? 0);
+      const output = Number(usage.output_tokens ?? usage.outputTokens ?? 0);
+      total += Math.max(input - cachedInput, 0) + output;
     } catch {
       // Non-JSON diagnostic lines do not contribute to the budget.
     }
