@@ -9,13 +9,70 @@ const nightlyRoot = join(root, "data", "nightly");
 const previewDataDir = process.env.OPENBUTLER_PREVIEW_DATA_DIR
   || join(process.env.APPDATA || join(process.env.USERPROFILE || "", "AppData", "Roaming"), "OpenButler Preview", "data");
 const publishedPackPath = join(previewDataDir, "acceptance-pack.json");
+
+function lastRealDataEvent(runDir) {
+  const eventsPath = join(runDir, "events.jsonl");
+  if (!existsSync(eventsPath)) return null;
+  let latestEvent = null;
+  for (const line of readFileSync(eventsPath, "utf8").split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      const event = JSON.parse(line);
+      if (event.type === "real_data_smoke") latestEvent = event;
+    } catch {
+      // A malformed diagnostic line is omitted from the redacted report.
+    }
+  }
+  return sanitizeAcceptanceValue(latestEvent);
+}
+
+function publishFailureReport({runId = "none", runDir = null, state = null, reason}) {
+  const safeState = sanitizeAcceptanceValue(state ?? {});
+  const realData = runDir ? lastRealDataEvent(runDir) : null;
+  const lines = [
+    "# OpenButler 晨报",
+    "",
+    `- 运行：\`${runId}\``,
+    "- 交付状态：昨夜没有生成可验收候选",
+    "- 稳定版：未修改",
+    "",
+    "## 阻塞原因",
+    "",
+    `- ${safeState.reason ?? reason}`,
+    "",
+    "## 隐私检查",
+    "",
+    `- 来源数据已修改：${realData?.source_modified ? "是" : "否"}`,
+    `- 截图已复制：${realData?.screenshots_copied ? "是" : "否"}`,
+    `- 外部模型已调用：${realData?.external_model_called ? "是" : "否"}`,
+    `- 外部回调已调用：${realData?.external_webhook_called ? "是" : "否"}`,
+    "",
+  ];
+  if (realData) {
+    lines.push(
+      "## 本地数据预览",
+      "",
+      `- 状态：${realData.status ?? "unknown"}`,
+      `- 时间范围：最近 ${realData.lookback_hours ?? 48} 小时`,
+      `- 预计来源记录：${realData.estimated_source_events ?? 0}`,
+      "- 说明：只读来源；没有发布原始活动、截图路径或摘要。",
+      "",
+    );
+  }
+  lines.push("## 下一步", "", "- 自动化将在下一夜继续处理；若需要产品或隐私决定，会单独列入 GitHub 阻塞 Issue。", "");
+  const report = `${lines.join("\n")}\n`;
+  if (runDir) writeFileSync(join(runDir, "MORNING_REPORT.md"), report, "utf8");
+  writeFileSync(join(nightlyRoot, "LATEST_MORNING_REPORT.md"), report, "utf8");
+  console.log(report);
+}
+
 const latest = existsSync(join(nightlyRoot, "latest-run.txt"))
   ? readFileSync(join(nightlyRoot, "latest-run.txt"), "utf8").trim()
   : "";
 if (!latest) {
   rmSync(publishedPackPath, {force: true});
-  console.error("No nightly run is available.");
-  process.exit(2);
+  publishFailureReport({reason: "没有可用的夜间运行记录。"});
+  process.exit(0);
 }
 
 const runDir = join(nightlyRoot, latest);
@@ -23,8 +80,13 @@ const state = readJson(join(runDir, "state.json"), null);
 const rawPack = readJson(join(runDir, "acceptance-pack.json"), null);
 if (!isFreshAcceptancePack(rawPack, state)) {
   rmSync(publishedPackPath, {force: true});
-  console.error("The latest nightly acceptance pack is missing, incomplete, mismatched, or older than 16 hours.");
-  process.exit(2);
+  publishFailureReport({
+    runId: latest,
+    runDir,
+    state,
+    reason: "最新运行未完成、验收包缺失或证据已经过期。",
+  });
+  process.exit(0);
 }
 const pack = sanitizeAcceptanceValue(rawPack);
 const lines = [
