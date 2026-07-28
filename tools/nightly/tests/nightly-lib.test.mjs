@@ -10,6 +10,7 @@ import {
   mayStartIssue,
   parseCurrentLevel,
   sanitizeAcceptanceValue,
+  tokenUsageFromJsonl,
 } from "../nightly-lib.mjs";
 
 test("parses loop level", () => {
@@ -77,6 +78,18 @@ test("budget stops new work at 80 percent", () => {
   assert.equal(mayStartIssue(600_000, evening), false);
   assert.equal(mayStartIssue(0, new Date("2026-07-17T07:14:00")), true);
   assert.equal(mayStartIssue(0, new Date("2026-07-17T07:15:00")), false);
+});
+
+test("token budget counts uncached input and output without double-counting cache hits", () => {
+  const jsonl = JSON.stringify({
+    type: "turn.completed",
+    usage: {
+      input_tokens: 3_597_620,
+      cached_input_tokens: 3_469_568,
+      output_tokens: 27_064,
+    },
+  });
+  assert.equal(tokenUsageFromJsonl(jsonl), 155_116);
 });
 
 test("automatic merge requires fresh dual-verifier and CI evidence", () => {
