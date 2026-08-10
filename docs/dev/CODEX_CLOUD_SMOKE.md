@@ -1,7 +1,9 @@
 # Codex Cloud Connectivity Smoke
 
 On 2026-08-10, a non-sensitive smoke check confirmed that the Codex Cloud
-environment can receive and inspect a Git clone of `Giftia/OpenButler`.
+environment received and inspected an existing `Giftia/OpenButler` checkout.
+Direct remote reachability was not verified because the Cloud CONNECT proxy
+blocked the `git ls-remote` probe.
 
 Read-only repository inspection recognized the expected top-level areas:
 `backend/`, `frontend/`, `api/`, `docs/`, and `.openbutler/`. Git metadata was
