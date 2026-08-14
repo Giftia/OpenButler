@@ -120,6 +120,10 @@ async function runDaytimeDispatcherUnlocked({
 
     try {
       const pr = services.materialize({state, diff, paths: evaluatedDiff.paths});
+      if (!services.waitForChecks?.(pr.number, pr.headRefOid)) {
+        services.closePullRequest?.(pr.number);
+        return terminalFailure(services, state, "Cloud pull request did not pass required CI at the exact head SHA", "failed");
+      }
       const issueAfterPullRequest = services.issue(state.issue);
       const afterPullRequestEligibility = evaluateIssueEligibility(issueAfterPullRequest, {
         closedIssues: services.closedIssues(),
@@ -232,7 +236,7 @@ async function runDaytimeDispatcherUnlocked({
   if (!submitted.ok || !submitted.taskId) {
     return services.saveState({...state, status: "submission-uncertain", reason: "Cloud submission did not return a confirmed task ID; lease retained for recovery"});
   }
-  if (!services.recordTaskMarker?.({issue: issue.number, taskId: submitted.taskId, runId})) {
+  if (!services.recordTaskMarker?.({issue: issue.number, taskId: submitted.taskId, runId, claimedAt: state.claimed_at})) {
     return services.saveState({...state, task_id: submitted.taskId, status: "cleanup-required", reason: "Cloud task was created but its crash-recovery marker could not be recorded; lease retained"});
   }
   return services.saveState({...state, task_id: submitted.taskId, status: "submitted", reason: null});
@@ -259,7 +263,7 @@ async function main() {
   if (!Number.isFinite(now.getTime())) throw new Error("invalid dry-run time");
   const result = await runDaytimeDispatcher({mode, now});
   console.log(JSON.stringify(redactedCloudStatus({updated_at: new Date().toISOString(), ...result}), null, 2));
-  process.exit(["blocked", "failed"].includes(result.status) ? 2 : 0);
+  process.exit(["blocked", "failed", "cleanup-required"].includes(result.status) ? 2 : 0);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {

@@ -169,7 +169,9 @@ test("automatic merge requires fresh dual-verifier and CI evidence", () => {
   const acceptance = {
     head_sha: "abc",
     code_verifier: "APPROVE",
+    code_verifier_head_sha: "abc",
     product_privacy_verifier: "APPROVE",
+    product_privacy_verifier_head_sha: "abc",
     nightly_status: "passed",
   };
   assert.equal(canAutoMergePullRequest({

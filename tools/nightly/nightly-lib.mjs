@@ -217,6 +217,8 @@ export function canAutoMergePullRequest({
   if (pullRequest?.reviewDecision === "CHANGES_REQUESTED") reasons.push("requested changes");
   if (acceptance?.code_verifier !== "APPROVE") reasons.push("code verifier missing");
   if (acceptance?.product_privacy_verifier !== "APPROVE") reasons.push("product/privacy verifier missing");
+  if (acceptance?.code_verifier_head_sha !== acceptance?.head_sha) reasons.push("code verifier head SHA is stale");
+  if (acceptance?.product_privacy_verifier_head_sha !== acceptance?.head_sha) reasons.push("product/privacy verifier head SHA is stale");
   if (requireNightly && acceptance?.nightly_status !== "passed") reasons.push("Nightly verification missing");
   const byName = new Map((pullRequest?.statusCheckRollup ?? []).map((check) => [check.name ?? check.context, check]));
   for (const name of requiredChecks) {

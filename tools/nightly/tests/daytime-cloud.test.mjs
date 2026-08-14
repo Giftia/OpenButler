@@ -104,6 +104,7 @@ function mockServices(options = {}) {
     taskDiff: () => options.diff ?? safeDiff,
     openPullRequests: () => options.openPullRequests ?? [],
     materialize: () => { calls.push(["materialize"]); if (options.materializeError) throw new Error(options.materializeError); return {number: 77}; },
+    waitForChecks: () => { calls.push(["waitForChecks"]); return options.checksOk ?? true; },
   };
 }
 
@@ -248,15 +249,16 @@ test("orphan recovery trusts only the current lease epoch and authenticated acto
     {event: "labeled", label: {name: "cloud-running"}, created_at: "2026-08-12T03:00:00Z"},
   ];
   const comments = [
-    {createdAt: "2026-08-12T01:01:00Z", author: {login: "Giftia"}, body: "[OpenButler automation marker] Cloud task: task_old"},
-    {createdAt: "2026-08-12T03:01:00Z", author: {login: "other"}, body: "[OpenButler automation marker] Cloud task: task_untrusted"},
-    {createdAt: "2026-08-12T03:02:00Z", author: {login: "Giftia"}, body: "[OpenButler automation marker] Cloud task: task_current"},
+    {createdAt: "2026-08-12T01:01:00Z", author: {login: "Giftia"}, body: "[OpenButler automation marker] Cloud task: task_old\nClaimed at: 2026-08-12T01:00:00Z"},
+    {createdAt: "2026-08-12T03:01:00Z", author: {login: "other"}, body: "[OpenButler automation marker] Cloud task: task_untrusted\nClaimed at: 2026-08-12T03:00:00Z"},
+    {createdAt: "2026-08-12T03:03:00Z", author: {login: "Giftia"}, body: "[OpenButler automation marker] Cloud task: task_delayed_old\nClaimed at: 2026-08-12T01:00:00Z"},
+    {createdAt: "2026-08-12T03:02:00Z", author: {login: "Giftia"}, body: "[OpenButler automation marker] Cloud task: task_current\nClaimed at: 2026-08-12T03:00:00Z"},
   ];
   assert.match(trustedCloudTaskMarker({comments, timeline, actor: "Giftia"})?.body ?? "", /task_current/);
-  assert.equal(trustedCloudTaskMarker({comments: comments.slice(0, 2), timeline, actor: "Giftia"}), null);
+  assert.equal(trustedCloudTaskMarker({comments: comments.slice(0, 3), timeline, actor: "Giftia"}), null);
   assert.equal(trustedCloudTaskMarker({comments, timeline, actor: null}), null);
   assert.equal(trustedCloudTaskMarker({
-    comments: [{createdAt: "2026-08-12T03:00:00Z", author: {login: "Giftia"}, body: "[OpenButler automation marker] Cloud task: task_same_second"}],
+    comments: [{createdAt: "2026-08-12T03:00:00Z", author: {login: "Giftia"}, body: "[OpenButler automation marker] Cloud task: task_same_second\nClaimed at: 2026-08-12T03:00:00Z"}],
     timeline,
     actor: "Giftia",
   }), null);
@@ -381,6 +383,15 @@ test("ready result becomes PR-ready only after materialization and label transit
   assert.equal(result.status, "pr-ready");
   assert.equal(result.pr_number, 77);
   assert.deepEqual(services.calls.filter(([name]) => ["materialize", "transition"].includes(name)), [["materialize"], ["transition"]]);
+});
+
+test("Cloud pull request remains quarantined unless exact-head required CI passes", async () => {
+  const issue = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});
+  const services = mockServices({issue, state: activeState(issue), taskStatus: "ready", checksOk: false});
+  const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services});
+  assert.equal(result.status, "failed");
+  assert.match(result.reason, /required CI/);
+  assert.equal(services.calls.some(([name]) => name === "transition"), false);
 });
 
 test("ready Cloud result is rejected when the Issue closes or a dependency reopens", async () => {

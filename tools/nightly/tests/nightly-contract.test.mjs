@@ -82,15 +82,20 @@ test("daytime Cloud scheduling is bounded and never auto-merges", () => {
   assert.match(scheduler, /19 \* 60 \+ 30/);
   assert.match(controller, /Issue specification changed after Cloud submission/);
   assert.match(controller, /origin\/main changed after Cloud submission/);
-  assert.match(services, /const createdPullRequest = ghJson[\s\S]*verifyIssueContract\(\)[\s\S]*"pr", "close", createdUrl/);
+  assert.match(controller, /"cleanup-required"/);
+  assert.match(services, /const createdPullRequest = ghJson[\s\S]*verifyIssueContract\(\)[\s\S]*openForBranch/);
   assert.match(services, /cloud", "exec"/);
   assert.match(services, /cloud", "diff"/);
+  assert.match(services, /waitForChecks/);
+  assert.match(services, /requiredChecks/);
   assert.match(services, /normalizeUnifiedDiff/);
   assert.match(services, /Cloud-authored code is never executed/);
   assert.doesNotMatch(services, /for \(const test of requiredTestsForPaths\(paths, worktree\)\)/);
   assert.match(services, /origin\/main changed during Cloud result verification/);
   assert.match(services, /Issue specification changed during Cloud result verification/);
   assert.match(services, /--force-with-lease/);
+  assert.match(services, /rollback could not prove remote branch deletion/);
+  assert.match(services, /Product code has not been executed on this PC; required tests run in CI/);
   assert.match(services, /"--head", state\.branch/);
   assert.match(services, /--draft/);
   assert.doesNotMatch(controller, /pr", "merge"/);
@@ -105,6 +110,9 @@ test("high-risk work uses a second product and privacy verifier", () => {
   const controller = read("tools/nightly/nightly-controller.mjs");
   assert.match(controller, /product-privacy-verifier/);
   assert.match(controller, /product_privacy_verifier/);
+  assert.match(controller, /code_verifier_head_sha/);
+  assert.match(controller, /product_privacy_verifier_head_sha/);
+  assert.match(controller, /independent verifier evidence does not match the reviewed commit/);
   assert.match(controller, /automation-blocked/);
 });
 

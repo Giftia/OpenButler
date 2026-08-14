@@ -44,7 +44,9 @@ remains authoritative for live authentication and environment configuration.
 
 Ready results are applied in an isolated worktree only after the Issue
 fingerprint, exact `origin/main` SHA, exact unified diff, changed paths,
-privacy boundaries, and focused tests are rechecked. The controller creates or
+privacy boundaries, exact diff, and base SHA are rechecked. The controller does
+not execute Cloud-authored product code on the user's PC; required tests first
+run in GitHub CI. The controller creates or
 updates a draft pull request and moves the Issue to review; it never merges.
 
 ## Merge Gate

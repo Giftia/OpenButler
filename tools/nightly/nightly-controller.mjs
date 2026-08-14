@@ -508,6 +508,8 @@ async function executeIssue(issue, {tokensUsed}) {
       log("issue_tests_passed", {issue: issue.number, attempt, checks});
 
       const verdictPath = join(runDir, `issue-${issue.number}-verifier-attempt-${attempt}.json`);
+      const codeHeadBefore = command("git", ["rev-parse", "HEAD"], {cwd: worktree});
+      if (!codeHeadBefore.ok) throw new Error("unable to bind code verifier to a commit");
       const review = command(codexCommand.command, [
         ...codexCommand.argsPrefix, "exec", "review", "--base", "origin/main", "--json",
         "--output-schema", join(here, "schemas", "verifier-output.schema.json"),
@@ -520,9 +522,13 @@ async function executeIssue(issue, {tokensUsed}) {
         return quarantineReturn("verifier token budget exceeded", true);
       }
       const verdict = JSON.parse(readFileSync(verdictPath, "utf8"));
+      const codeHeadAfter = command("git", ["rev-parse", "HEAD"], {cwd: worktree});
+      if (!codeHeadAfter.ok || codeHeadAfter.stdout.trim() !== codeHeadBefore.stdout.trim()) {
+        return quarantineReturn("worktree head changed during code verification", true);
+      }
       if (review.ok && verdict.verdict === "APPROVE") {
         approved = true;
-        codeVerifierVerdict = verdict;
+        codeVerifierVerdict = {...verdict, reviewed_head_sha: codeHeadBefore.stdout.trim()};
         break;
       }
       verifierFeedback = JSON.stringify(verdict);
@@ -535,6 +541,8 @@ async function executeIssue(issue, {tokensUsed}) {
     }
 
     const productVerdictPath = join(runDir, `issue-${issue.number}-product-privacy-verifier.json`);
+    const productHeadBefore = command("git", ["rev-parse", "HEAD"], {cwd: worktree});
+    if (!productHeadBefore.ok) throw new Error("unable to bind product/privacy verifier to a commit");
     const productReview = command(codexCommand.command, [
       ...codexCommand.argsPrefix, "exec", "review", "--base", "origin/main", "--json",
       "--output-schema", join(here, "schemas", "verifier-output.schema.json"),
@@ -546,7 +554,11 @@ async function executeIssue(issue, {tokensUsed}) {
     if (!productReview.ok || totalTokens > ISSUE_TOKEN_CAP || tokensUsed + totalTokens > NIGHTLY_TOKEN_CAP) {
       return quarantineReturn("product/privacy verifier failed or budget was exceeded", true);
     }
-    const productVerifierVerdict = JSON.parse(readFileSync(productVerdictPath, "utf8"));
+    const productHeadAfter = command("git", ["rev-parse", "HEAD"], {cwd: worktree});
+    if (!productHeadAfter.ok || productHeadAfter.stdout.trim() !== productHeadBefore.stdout.trim()) {
+      return quarantineReturn("worktree head changed during product/privacy verification", true);
+    }
+    const productVerifierVerdict = {...JSON.parse(readFileSync(productVerdictPath, "utf8")), reviewed_head_sha: productHeadBefore.stdout.trim()};
     if (productVerifierVerdict.verdict !== "APPROVE") {
       const blockLabel = productVerifierVerdict.verdict === "ESCALATE_HUMAN" ? "automation-blocked" : "nightly-failed";
       return quarantineReturn(`product/privacy verifier returned ${productVerifierVerdict.verdict}`, productVerifierVerdict.verdict === "ESCALATE_HUMAN", blockLabel);
@@ -556,6 +568,9 @@ async function executeIssue(issue, {tokensUsed}) {
     const reviewedHead = command("git", ["rev-parse", "HEAD"], {cwd: worktree});
     if (!reviewedHead.ok) throw new Error("unable to bind verifier evidence to the reviewed commit");
     const reviewedHeadSha = reviewedHead.stdout.trim();
+    if (codeVerifierVerdict.reviewed_head_sha !== reviewedHeadSha || productVerifierVerdict.reviewed_head_sha !== reviewedHeadSha) {
+      throw new Error("independent verifier evidence does not match the reviewed commit");
+    }
     const push = command("git", ["push", "-u", "origin", branchName], {cwd: worktree, timeout: 10 * 60 * 1000});
     if (!push.ok) throw new Error(push.stderr || "push failed");
     const createdPullRequest = ghCommand([
@@ -612,7 +627,9 @@ async function executeIssue(issue, {tokensUsed}) {
         status: "acceptance_ready",
         risk: issue.evaluation?.highRisk ? "high" : "normal",
         code_verifier: codeVerifierVerdict?.verdict ?? "UNKNOWN",
+        code_verifier_head_sha: codeVerifierVerdict?.reviewed_head_sha ?? null,
         product_privacy_verifier: productVerifierVerdict.verdict,
+        product_privacy_verifier_head_sha: productVerifierVerdict.reviewed_head_sha,
         nightly_status: "pending",
         execution_surface: "local",
         issue_number: issue.number,

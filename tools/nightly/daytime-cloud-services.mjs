@@ -14,6 +14,7 @@ const latestStatusPath = join(runtimeRoot, "latest-status.json");
 const lockPath = join(runtimeRoot, "controller.lock");
 const executionClaimLockPath = join(repoRoot, "data", "automation", "execution-claim.lock");
 const repo = "Giftia/OpenButler";
+const requiredChecks = new Set(["Butler Core", "PC Activity", "Workstation Vision", "Frontend Build", "Desktop Contract", "Loop Governance"]);
 
 function processIsAlive(pid) {
   try {
@@ -272,9 +273,9 @@ export function createProductionServices() {
         return null;
       }
     },
-    recordTaskMarker: ({issue, taskId, runId}) => ghCommand([
+    recordTaskMarker: ({issue, taskId, runId, claimedAt}) => ghCommand([
       "issue", "comment", String(issue), "--repo", repo,
-      "--body", `[OpenButler automation marker]\nCloud task: ${taskId}\nRun: ${runId}\nThis marker is used only for fail-closed crash recovery.`,
+      "--body", `[OpenButler automation marker]\nCloud task: ${taskId}\nRun: ${runId}\nClaimed at: ${claimedAt}\nThis marker is used only for fail-closed crash recovery.`,
     ]).ok,
     reconcileOrphanCloudLease: (number) => {
       const issue = ghJson(["issue", "view", String(number), "--repo", repo, "--json", "comments"]);
@@ -297,6 +298,17 @@ export function createProductionServices() {
       return diffBody(result.stdout);
     },
     openPullRequests: () => ghJson(["pr", "list", "--repo", repo, "--state", "open", "--limit", "200", "--json", "number,title,body,headRefName,url"]),
+    waitForChecks: (number, expectedHead) => {
+      const watched = ghCommand(["pr", "checks", String(number), "--repo", repo, "--watch", "--fail-fast"], {timeout: 45 * 60_000});
+      if (!watched.ok) return false;
+      const pullRequest = ghJson(["pr", "view", String(number), "--repo", repo, "--json", "headRefOid,statusCheckRollup"]);
+      if (pullRequest.headRefOid !== expectedHead) return false;
+      const byName = new Map((pullRequest.statusCheckRollup ?? []).map((check) => [check.name ?? check.context, check]));
+      return [...requiredChecks].every((name) => {
+        const check = byName.get(name);
+        return check?.status === "COMPLETED" && check?.conclusion === "SUCCESS";
+      });
+    },
     materialize: ({state, diff, paths}) => {
       const worktree = join(runtimeRoot, "worktrees", state.run_id);
       mkdirSync(dirname(worktree), {recursive: true});
@@ -308,7 +320,7 @@ export function createProductionServices() {
         const expectedPaths = new Set(paths);
         const preTestStatus = command("git", ["status", "--porcelain=v1", "--untracked-files=all"], {cwd: worktree});
         const preTestUnexpected = preTestStatus.stdout.split(/\r?\n/).filter(Boolean).map((line) => line.slice(3)).filter((path) => !expectedPaths.has(path));
-        if (!preTestStatus.ok || preTestUnexpected.length) throw new Error("Cloud apply created paths outside the verified diff before tests");
+        if (!preTestStatus.ok || preTestUnexpected.length) throw new Error("Cloud apply created paths outside the verified diff");
         if (!command("git", ["add", "-N", "--", ...paths], {cwd: worktree}).ok) throw new Error("unable to prepare exact Cloud diff verification");
         const exact = command("git", ["diff", "--no-ext-diff", "--binary"], {cwd: worktree});
         if (!exact.ok || normalizeUnifiedDiff(diffBody(exact.stdout)) !== normalizeUnifiedDiff(diff)) {
@@ -326,7 +338,7 @@ export function createProductionServices() {
         const allowedPaths = new Set(paths);
         const status = command("git", ["status", "--porcelain=v1", "--untracked-files=all"], {cwd: worktree});
         const unexpected = status.stdout.split(/\r?\n/).filter(Boolean).map((line) => line.slice(3)).filter((path) => !allowedPaths.has(path));
-        if (unexpected.length) throw new Error("focused tests created paths outside the verified Cloud diff");
+        if (unexpected.length) throw new Error("Cloud apply created unverified paths");
 
         const refreshBase = () => {
           if (!commandWithRetry("git", ["fetch", "origin", "main"], {cwd: worktree, timeout: 10 * 60_000}).ok) throw new Error("unable to refresh origin/main before pull request");
@@ -353,30 +365,39 @@ export function createProductionServices() {
 
         if (!command("git", ["add", "--", ...paths], {cwd: worktree}).ok) throw new Error("unable to stage verified paths");
         if (!command("git", ["-c", "core.hooksPath=NUL", "commit", "--no-verify", "-m", `feat: implement Issue #${state.issue} with Codex Cloud`], {cwd: worktree}).ok) throw new Error("unable to commit verified Cloud diff");
-        const pushed = commandWithRetry("git", ["-c", "core.hooksPath=NUL", "push", "--no-verify", "-u", "origin", state.branch], {cwd: worktree, timeout: 10 * 60_000});
-        if (!pushed.ok && !commandWithRetry("git", ["-c", "core.hooksPath=NUL", "push", "--no-verify", "--force-with-lease", "-u", "origin", state.branch], {cwd: worktree, timeout: 10 * 60_000}).ok) {
-          throw new Error("unable to push or safely update Cloud result branch");
-        }
-        refreshBase();
-        verifyIssueContract();
-
-        const existing = ghJson(["pr", "list", "--repo", repo, "--state", "open", "--head", state.branch, "--json", "number,url"])[0];
-        if (existing) return existing;
-        const created = ghCommand([
-          "pr", "create", "--repo", repo, "--base", "main", "--head", state.branch, "--draft",
-          "--title", `Implement #${state.issue}: Codex Cloud result`,
-          "--body", `Closes #${state.issue}\n\nCreated by the daytime Cloud dispatcher after exact-diff, privacy, base-SHA, and focused-test verification. This controller never auto-merges.`,
-        ], {cwd: worktree});
-        if (!created.ok) throw new Error("unable to create draft pull request");
-        const createdUrl = created.stdout.trim();
-        const createdPullRequest = ghJson(["pr", "view", createdUrl, "--repo", repo, "--json", "number,url"]);
         try {
+          const pushed = commandWithRetry("git", ["-c", "core.hooksPath=NUL", "push", "--no-verify", "-u", "origin", state.branch], {cwd: worktree, timeout: 10 * 60_000});
+          if (!pushed.ok && !commandWithRetry("git", ["-c", "core.hooksPath=NUL", "push", "--no-verify", "--force-with-lease", "-u", "origin", state.branch], {cwd: worktree, timeout: 10 * 60_000}).ok) {
+            throw new Error("unable to push or safely update Cloud result branch");
+          }
+          refreshBase();
           verifyIssueContract();
+
+          const existing = ghJson(["pr", "list", "--repo", repo, "--state", "open", "--head", state.branch, "--json", "number,url"])[0];
+          if (existing) return existing;
+          const created = ghCommand([
+            "pr", "create", "--repo", repo, "--base", "main", "--head", state.branch, "--draft",
+            "--title", `Implement #${state.issue}: Codex Cloud result`,
+            "--body", `Closes #${state.issue}\n\nCreated by the daytime Cloud dispatcher after exact-diff, privacy and base-SHA verification. Product code has not been executed on this PC; required tests run in CI. This controller never auto-merges.`,
+          ], {cwd: worktree});
+          if (!created.ok) throw new Error("unable to create draft pull request");
+          const createdUrl = created.stdout.trim();
+          const createdPullRequest = ghJson(["pr", "view", createdUrl, "--repo", repo, "--json", "number,url,headRefOid"]);
+          verifyIssueContract();
+          return createdPullRequest;
         } catch (error) {
-          ghCommand(["pr", "close", createdUrl, "--repo", repo, "--delete-branch"]);
+          const openForBranch = ghJson(["pr", "list", "--repo", repo, "--state", "open", "--head", state.branch, "--json", "number,url"]);
+          for (const pullRequest of openForBranch) {
+            const closed = ghCommand(["pr", "close", String(pullRequest.number), "--repo", repo, "--delete-branch"]);
+            if (!closed.ok) throw new Error(`${String(error?.message ?? error)}; rollback could not close PR #${pullRequest.number}`);
+          }
+          const deleted = commandWithRetry("git", ["-c", "core.hooksPath=NUL", "push", "--no-verify", "origin", "--delete", state.branch], {cwd: worktree, timeout: 10 * 60_000});
+          const remote = command("git", ["ls-remote", "--heads", "origin", state.branch], {cwd: worktree});
+          if ((!deleted.ok && remote.stdout.trim()) || !remote.ok || remote.stdout.trim()) {
+            throw new Error(`${String(error?.message ?? error)}; rollback could not prove remote branch deletion`);
+          }
           throw error;
         }
-        return createdPullRequest;
       } finally {
         command("git", ["worktree", "remove", "--force", worktree], {timeout: 120_000});
       }

@@ -100,9 +100,13 @@ export function trustedCloudTaskMarker({comments = [], timeline = [], actor}) {
   return [...comments]
     .filter((comment) => {
       const createdAt = Date.parse(comment.createdAt ?? comment.created_at) || 0;
+      const claimedAtText = String(comment.body ?? "").match(/Claimed at:\s*([^\s]+)/)?.[1] ?? "";
+      const claimedAt = Date.parse(claimedAtText) || 0;
       // GitHub timestamps have second-level resolution. Same-second markers
       // are ambiguous across a remove/re-add lease epoch and must fail closed.
       return createdAt > leaseAt
+        && claimedAt > 0
+        && Math.abs(claimedAt - leaseAt) <= 5_000
         && comment.author?.login === actor
         && String(comment.body ?? "").startsWith("[OpenButler automation marker]");
     })
