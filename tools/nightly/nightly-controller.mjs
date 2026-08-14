@@ -18,7 +18,7 @@ import {
   tokenUsageFromJsonl,
 } from "./nightly-lib.mjs";
 import {acquireOwnedLock, releaseOwnedLock} from "./daytime-cloud-services.mjs";
-import {evaluateSpecificationFreshness} from "./daytime-cloud-lib.mjs";
+import {evaluateSpecificationFreshness, issueSpecificationFingerprint} from "./daytime-cloud-lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..");
@@ -394,6 +394,25 @@ async function executeIssue(issue, {tokensUsed}) {
   let preserveWorktree = false;
   let releaseExecutionLease = true;
   let leaseAcquired = false;
+  const verifyCurrentIssueContract = () => {
+    const currentIssue = ghJson([
+      "issue", "view", String(issue.number), "--repo", "Giftia/OpenButler",
+      "--json", "number,title,body,labels,createdAt,updatedAt,state,url",
+    ]);
+    const openPullRequests = ghJson([
+      "pr", "list", "--repo", "Giftia/OpenButler", "--state", "open", "--limit", "200",
+      "--json", "number,title,body,headRefName,url",
+    ]) ?? [];
+    const currentEvaluation = evaluateIssueEligibility(currentIssue, {
+      closedIssues: new Set((ghJson(["issue", "list", "--repo", "Giftia/OpenButler", "--state", "closed", "--limit", "200", "--json", "number"]) ?? []).map((item) => item.number)),
+      claimedIssues: claimedIssueNumbers(openPullRequests.filter((pullRequest) => pullRequest.headRefName !== branchName)),
+      ownedLease: "nightly-running",
+    });
+    const currentFreshness = evaluateSpecificationFreshness(currentIssue, ghJson(["api", `repos/Giftia/OpenButler/issues/${issue.number}/timeline`, "--paginate"]));
+    if (!currentEvaluation.eligible || !currentFreshness.fresh || issueSpecificationFingerprint(currentIssue) !== issueSpecificationFingerprint(issue)) {
+      throw new Error(`Issue #${issue.number} changed after approval and requires retriage`);
+    }
+  };
   try {
     const executionClaimLock = acquireOwnedLock(executionClaimLockPath);
     if (!executionClaimLock.acquired) throw new Error("another execution surface is claiming work");
@@ -523,6 +542,7 @@ async function executeIssue(issue, {tokensUsed}) {
       return quarantineReturn(`product/privacy verifier returned ${productVerifierVerdict.verdict}`, productVerifierVerdict.verdict === "ESCALATE_HUMAN", blockLabel);
     }
 
+    verifyCurrentIssueContract();
     const push = command("git", ["push", "-u", "origin", branchName], {cwd: worktree, timeout: 10 * 60 * 1000});
     if (!push.ok) throw new Error(push.stderr || "push failed");
     const createdPullRequest = ghCommand([
@@ -531,6 +551,12 @@ async function executeIssue(issue, {tokensUsed}) {
     ], {cwd: worktree});
     if (!createdPullRequest.ok) throw new Error(createdPullRequest.stderr || `pull request creation failed for #${issue.number}`);
     const prUrl = createdPullRequest.stdout.trim();
+    try {
+      verifyCurrentIssueContract();
+    } catch (error) {
+      ghCommand(["pr", "close", prUrl, "--repo", "Giftia/OpenButler", "--delete-branch"]);
+      throw error;
+    }
     const queueTransition = ghCommand([
       "issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler",
       "--remove-label", "ready-for-agent",

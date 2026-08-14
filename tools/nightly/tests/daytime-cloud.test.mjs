@@ -391,6 +391,20 @@ test("owned lock cannot be removed by a non-owner and safely replaces a stale lo
   }
 });
 
+test("owned lock recovers a stale reclaim sentinel", () => {
+  const root = mkdtempSync(join(tmpdir(), "openbutler-cloud-reclaim-"));
+  const lock = join(root, "controller.lock");
+  try {
+    writeFileSync(lock, JSON.stringify({pid: 999998, token: "stale-owner"}), "utf8");
+    writeFileSync(`${lock}.reclaim`, JSON.stringify({pid: 999999, token: "stale-reclaim"}), "utf8");
+    const acquired = acquireOwnedLock(lock, {pid: 1234, token: "new-owner", isAlive: () => false});
+    assert.equal(acquired.acquired, true);
+    assert.equal(releaseOwnedLock(lock, "new-owner"), true);
+  } finally {
+    rmSync(root, {recursive: true, force: true});
+  }
+});
+
 test("only one process acquires a stale lock during concurrent takeover", {timeout: 15_000}, async () => {
   const root = mkdtempSync(join(tmpdir(), "openbutler-cloud-lock-race-"));
   const lock = join(root, "controller.lock");

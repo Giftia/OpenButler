@@ -182,6 +182,13 @@ test("a quarantined Nightly failure returns control to the serial queue", () => 
   assert.match(controller, /continue;/);
 });
 
+test("Nightly revalidates the Issue before and after pull request creation", () => {
+  const controller = read("tools/nightly/nightly-controller.mjs");
+  assert.match(controller, /verifyCurrentIssueContract\(\);[\s\S]*git", \["push"/);
+  assert.match(controller, /const prUrl = createdPullRequest\.stdout\.trim\(\);[\s\S]*verifyCurrentIssueContract\(\)/);
+  assert.match(controller, /"pr", "close", prUrl[\s\S]*"--delete-branch"/);
+});
+
 test("real data smoke is isolated, bounded, and redacted", () => {
   const source = read("tools/nightly/real-data-smoke.py");
   assert.match(source, /lookback_days=2/);

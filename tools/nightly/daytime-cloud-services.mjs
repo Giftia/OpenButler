@@ -49,7 +49,19 @@ export function acquireOwnedLock(path, {pid = process.pid, token = `${pid}-${ran
   // lock is deliberately fail-closed and requires operator cleanup.
   const reclaimPath = `${path}.reclaim`;
   const reclaimToken = `reclaim-${token}`;
-  if (!create(reclaimPath, reclaimToken)) return {acquired: false, token: null};
+  if (!create(reclaimPath, reclaimToken)) {
+    let reclaimOwner = null;
+    try { reclaimOwner = JSON.parse(readFileSync(reclaimPath, "utf8")); } catch {}
+    if (reclaimOwner?.pid && isAlive(Number(reclaimOwner.pid))) return {acquired: false, token: null};
+    const staleReclaimPath = `${reclaimPath}.stale-${randomUUID()}`;
+    try {
+      renameSync(reclaimPath, staleReclaimPath);
+      rmSync(staleReclaimPath, {force: true});
+    } catch {
+      return {acquired: false, token: null};
+    }
+    if (!create(reclaimPath, reclaimToken)) return {acquired: false, token: null};
+  }
   try {
     try {
       owner = JSON.parse(readFileSync(path, "utf8"));
