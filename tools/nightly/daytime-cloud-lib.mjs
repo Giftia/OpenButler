@@ -133,11 +133,21 @@ export function approvalTimelineIsCurrent(timeline = [], approvedAtValue) {
   if (!Number.isFinite(approvedAt)) return false;
   const workflowLabels = new Set(["nightly-running", "review-pending", "acceptance-ready", "auto-merge-eligible"]);
   const workflowEvents = new Set(["cross-referenced", "connected", "referenced", "mentioned", "subscribed", "unsubscribed"]);
+  const isAutomatedReadyTransition = (event) => {
+    if (event.event !== "unlabeled" || event.label?.name !== "ready-for-agent") return false;
+    const at = Date.parse(event.created_at) || 0;
+    const actor = event.actor?.login ?? null;
+    return timeline.some((candidate) => {
+      if (candidate.event !== "labeled" || candidate.label?.name !== "review-pending") return false;
+      if ((candidate.actor?.login ?? null) !== actor) return false;
+      return Math.abs((Date.parse(candidate.created_at) || 0) - at) <= 5_000;
+    });
+  };
   return !timeline.some((event) => {
     const at = Math.max(Date.parse(event.created_at) || 0, Date.parse(event.updated_at) || 0);
     if (at <= approvedAt) return false;
     if (event.event === "labeled" && event.label?.name === "ready-for-agent") return true;
-    if (event.event === "unlabeled" && event.label?.name === "ready-for-agent") return false;
+    if (event.event === "unlabeled" && event.label?.name === "ready-for-agent") return !isAutomatedReadyTransition(event);
     if (event.event === "commented" && String(event.body ?? "").startsWith("[OpenButler automation marker]")) return false;
     if (["labeled", "unlabeled"].includes(event.event) && workflowLabels.has(event.label?.name)) return false;
     return !workflowEvents.has(event.event);

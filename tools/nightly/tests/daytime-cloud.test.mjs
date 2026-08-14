@@ -282,9 +282,26 @@ test("a later ready-for-agent approval invalidates older merge evidence", () => 
   ];
   assert.equal(approvalTimelineIsCurrent(timeline, "2026-08-12T01:00:00Z"), true);
   timeline.push({event: "unlabeled", label: {name: "ready-for-agent"}, created_at: "2026-08-12T01:30:00Z"});
-  assert.equal(approvalTimelineIsCurrent(timeline, "2026-08-12T01:00:00Z"), true);
+  assert.equal(approvalTimelineIsCurrent(timeline, "2026-08-12T01:00:00Z"), false);
   timeline.push({event: "labeled", label: {name: "ready-for-agent"}, created_at: "2026-08-12T02:00:00Z"});
   assert.equal(approvalTimelineIsCurrent(timeline, "2026-08-12T01:00:00Z"), false);
+});
+
+test("ready approval removal is revocation unless paired with review transition", () => {
+  const approvedAt = "2026-08-12T01:00:00Z";
+  const base = [{event: "labeled", label: {name: "ready-for-agent"}, actor: {login: "Giftia"}, created_at: approvedAt}];
+  const revoked = [...base, {event: "unlabeled", label: {name: "ready-for-agent"}, actor: {login: "Giftia"}, created_at: "2026-08-12T02:00:00Z"}];
+  assert.equal(approvalTimelineIsCurrent(revoked, approvedAt), false);
+  const transitioned = [
+    ...revoked,
+    {event: "labeled", label: {name: "review-pending"}, actor: {login: "Giftia"}, created_at: "2026-08-12T02:00:02Z"},
+  ];
+  assert.equal(approvalTimelineIsCurrent(transitioned, approvedAt), true);
+  const wrongActor = [
+    ...revoked,
+    {event: "labeled", label: {name: "review-pending"}, actor: {login: "automation"}, created_at: "2026-08-12T02:00:02Z"},
+  ];
+  assert.equal(approvalTimelineIsCurrent(wrongActor, approvedAt), false);
 });
 
 test("the dispatcher records a Cloud recovery marker before reporting submission", async () => {
