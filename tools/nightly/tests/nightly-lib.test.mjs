@@ -6,6 +6,8 @@ import {
   claimedIssueNumbers,
   evaluateCanonicalCheckout,
   evaluateIssueEligibility,
+  isTransientCommandFailure,
+  runWithRetry,
   isFreshAcceptancePack,
   mayStartIssue,
   parseCurrentLevel,
@@ -22,6 +24,39 @@ test("requires the ready label and no execution lease", () => {
   const running = {...ready, labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]};
   assert.equal(evaluateIssueEligibility(ready).eligible, true);
   assert.equal(evaluateIssueEligibility(running).eligible, false);
+});
+
+test("failed nightly work is quarantined until explicitly retriaged", () => {
+  const issue = {
+    title: "bounded repair",
+    body: "",
+    labels: [{name: "ready-for-agent"}, {name: "nightly-failed"}],
+  };
+  const result = evaluateIssueEligibility(issue);
+  assert.equal(result.eligible, false);
+  assert.match(result.reasons.join("; "), /nightly-failed/);
+});
+
+test("transient GitHub failures retry but permanent failures fail immediately", () => {
+  let calls = 0;
+  const recovered = runWithRetry(() => {
+    calls += 1;
+    return calls < 3
+      ? {ok: false, status: 1, stderr: "Post https://api.github.com/graphql: EOF"}
+      : {ok: true, status: 0, stdout: "ok", stderr: ""};
+  }, {attempts: 3, sleep: () => {}});
+  assert.equal(recovered.ok, true);
+  assert.equal(calls, 3);
+
+  calls = 0;
+  const permanent = runWithRetry(() => {
+    calls += 1;
+    return {ok: false, status: 1, stderr: "validation failed"};
+  }, {attempts: 3, sleep: () => {}});
+  assert.equal(permanent.ok, false);
+  assert.equal(calls, 1);
+  assert.equal(isTransientCommandFailure({stderr: "HTTP 502 Bad Gateway"}), true);
+  assert.equal(isTransientCommandFailure({stderr: "permission denied"}), false);
 });
 
 test("rejects an issue that already has an open implementation pull request", () => {

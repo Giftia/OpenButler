@@ -126,6 +126,7 @@ export function evaluateIssueEligibility(issue, {timeline = [], closedIssues = n
   const reasons = [];
   if (!labels.has("ready-for-agent")) reasons.push("missing ready-for-agent");
   if (labels.has("automation-blocked")) reasons.push("automation-blocked");
+  if (labels.has("nightly-failed")) reasons.push("nightly-failed requires retriage");
   if (labels.has("cloud-running") || labels.has("nightly-running")) reasons.push("issue has an active execution lease");
   if (claimedIssues.has(Number(issue.number))) reasons.push("open implementation pull request already claims issue");
 
@@ -138,6 +139,26 @@ export function evaluateIssueEligibility(issue, {timeline = [], closedIssues = n
   if (hardStop) reasons.push("hard-stop action requires human decision");
 
   return {eligible: reasons.length === 0, reasons, highRisk, hardStop, dependencies};
+}
+
+export function isTransientCommandFailure(result) {
+  const message = `${result?.stderr ?? ""}\n${result?.stdout ?? ""}\n${result?.errorCode ?? ""}`;
+  return /(?:unexpected\s+EOF|\bEOF\b|HTTP\s+(?:408|429|5\d\d)\b|Bad Gateway|ECONNRESET|ETIMEDOUT|socket hang up|connection.*(?:reset|closed)|TLS handshake timeout)/i.test(message);
+}
+
+export function runWithRetry(run, {
+  attempts = 3,
+  isRetryable = isTransientCommandFailure,
+  sleep = (milliseconds) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds),
+  delays = [1_000, 3_000],
+} = {}) {
+  let result;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    result = run(attempt);
+    if (result?.ok || attempt === attempts || !isRetryable(result)) return result;
+    sleep(delays[Math.min(attempt - 1, delays.length - 1)] ?? 0);
+  }
+  return result;
 }
 
 export function beforeNightlyCutoff(now = new Date()) {

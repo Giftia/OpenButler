@@ -9,6 +9,7 @@ $nightScript = Join-Path $PSScriptRoot "run-nightly.ps1"
 $cutoffScript = Join-Path $PSScriptRoot "run-cutoff.ps1"
 $finalizeScript = Join-Path $PSScriptRoot "run-finalize.ps1"
 $morningScript = Join-Path $PSScriptRoot "run-morning.ps1"
+$daytimeCloudScript = Join-Path $PSScriptRoot "run-daytime-cloud.ps1"
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 12 -Minutes 15) -MultipleInstances IgnoreNew
 
@@ -28,7 +29,13 @@ $morningAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-N
 $morningTrigger = New-ScheduledTaskTrigger -Daily -At "08:30"
 Register-ScheduledTask -TaskName "OpenButler-Morning-Report" -Action $morningAction -Trigger $morningTrigger -Principal $principal -Settings $settings -Description "Prepare the redacted OpenButler morning report" -Force | Out-Null
 
+$daytimeAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$daytimeCloudScript`" -Mode $Mode" -WorkingDirectory $repoRoot
+$daytimeTriggers = for ($minutes = 8 * 60 + 30; $minutes -lt 19 * 60 + 30; $minutes += 30) {
+  New-ScheduledTaskTrigger -Daily -At ((Get-Date).Date.AddMinutes($minutes))
+}
+Register-ScheduledTask -TaskName "OpenButler-Daytime-Cloud" -Action $daytimeAction -Trigger $daytimeTriggers -Principal $principal -Settings $settings -Description "Submit or resume one bounded Codex Cloud Issue ($Mode)" -Force | Out-Null
+
 Unregister-ScheduledTask -TaskName "OpenButler-Morning-Acceptance" -Confirm:$false -ErrorAction SilentlyContinue
 
-Get-ScheduledTask -TaskName "OpenButler-Nightly-Delivery", "OpenButler-Nightly-Cutoff", "OpenButler-Nightly-Finalize", "OpenButler-Morning-Report" |
+Get-ScheduledTask -TaskName "OpenButler-Nightly-Delivery", "OpenButler-Nightly-Cutoff", "OpenButler-Nightly-Finalize", "OpenButler-Morning-Report", "OpenButler-Daytime-Cloud" |
   Select-Object TaskName, State, Description

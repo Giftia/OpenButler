@@ -11,6 +11,7 @@ import {
   mayStartIssue,
   parseCurrentLevel,
   resolveCodexCommand,
+  runWithRetry,
   sanitizeAcceptanceValue,
   tokenUsageFromJsonl,
 } from "./nightly-lib.mjs";
@@ -28,6 +29,7 @@ const runDir = join(repoRoot, "data", "nightly", runId);
 const lockPath = join(repoRoot, "data", "nightly", "active-run.json");
 const cutoffFlag = join(repoRoot, "data", "nightly", "control", "stop-new-issues.flag");
 const eventsPath = join(runDir, "events.jsonl");
+const quarantineRoot = join(repoRoot, "data", "nightly", "quarantine");
 const codexCommand = resolveCodexCommand();
 mkdirSync(runDir, {recursive: true});
 
@@ -62,8 +64,19 @@ function command(commandName, commandArgs, options = {}) {
   };
 }
 
+function commandWithRetry(commandName, commandArgs, options = {}) {
+  return runWithRetry(
+    () => command(commandName, commandArgs, options),
+    {attempts: options.attempts ?? 3},
+  );
+}
+
+function ghCommand(commandArgs, options = {}) {
+  return commandWithRetry("gh", commandArgs, {timeout: 60_000, ...options});
+}
+
 function ghJson(commandArgs) {
-  const result = command("gh", commandArgs, {timeout: 60_000});
+  const result = ghCommand(commandArgs);
   if (!result.ok) throw new Error(result.stderr || `gh ${commandArgs.join(" ")} failed`);
   return JSON.parse(result.stdout || "null");
 }
@@ -155,7 +168,7 @@ function fail(reason, exitCode = 3) {
 
 if (!new Set(["dry-run", "execute"]).has(mode)) fail(`unsupported mode: ${mode}`);
 
-const fetchedMain = command("git", ["fetch", "origin", "main"], {timeout: 10 * 60 * 1000});
+const fetchedMain = commandWithRetry("git", ["fetch", "origin", "main"], {timeout: 10 * 60 * 1000});
 if (!fetchedMain.ok) fail("unable to refresh canonical origin/main");
 const branch = command("git", ["branch", "--show-current"]);
 const head = command("git", ["rev-parse", "HEAD"]);
@@ -201,13 +214,16 @@ try {
     "--json", "number,title,body,headRefName,url"
   ]) ?? []);
 
-  const evaluated = issues.map((issue) => ({
-    ...issue,
-    evaluation: evaluateIssueEligibility(issue, {
+  const evaluated = issues.map((issue) => {
+    const evaluation = evaluateIssueEligibility(issue, {
       closedIssues: closed,
       claimedIssues: claimed,
-    }),
-  }));
+    });
+    const localQuarantine = existsSync(join(quarantineRoot, `issue-${issue.number}.json`));
+    if (localQuarantine) evaluation.reasons.push("local failure quarantine requires retriage");
+    evaluation.eligible = evaluation.reasons.length === 0;
+    return {...issue, evaluation};
+  });
 
   const eligible = evaluated.filter((issue) => issue.evaluation.eligible);
   const pack = {
@@ -307,8 +323,9 @@ async function executeIssue(issue, {tokensUsed}) {
   if (!add.ok) throw new Error(`worktree creation failed for #${issue.number}: ${add.stderr}`);
 
   let totalTokens = 0;
+  let preserveWorktree = false;
   try {
-    const lease = command("gh", [
+    const lease = ghCommand([
       "issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler",
       "--add-label", "nightly-running",
     ]);
@@ -318,7 +335,7 @@ async function executeIssue(issue, {tokensUsed}) {
     let codeVerifierVerdict = null;
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       const prompt = attempt === 1
-        ? `Implement GitHub Issue #${issue.number}: ${issue.title}\n\n${issue.body}\n\nRead AGENTS.md, LOOP.md and loop-constraints.md. Work only in this worktree. Do not push, merge, deploy, read personal data, or change GitHub state. Run focused tests. Return the required JSON result.`
+        ? `Implement GitHub Issue #${issue.number}: ${issue.title}\n\n${issue.body}\n\nRead AGENTS.md, LOOP.md and loop-constraints.md. Work only in this worktree. Do not push, merge, deploy, read personal data, or change GitHub state. Run focused tests. Keep combined uncached input and output below 120000 tokens; prefer the smallest complete patch. Return the required JSON result.`
         : `Correct only the verifier findings for Issue #${issue.number}. Preserve the existing scope and tests. Verifier evidence:\n${verifierFeedback}`;
       const eventsFile = join(runDir, `issue-${issue.number}-maker-attempt-${attempt}.jsonl`);
       const maker = command(codexCommand.command, [
@@ -359,7 +376,7 @@ async function executeIssue(issue, {tokensUsed}) {
       writeFileSync(join(runDir, `issue-${issue.number}-verifier-attempt-${attempt}.jsonl`), review.stdout, "utf8");
       totalTokens += tokenUsageFromJsonl(review.stdout);
       if (totalTokens > ISSUE_TOKEN_CAP || tokensUsed + totalTokens > NIGHTLY_TOKEN_CAP) {
-        command("gh", ["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
+        ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
         return {tokens: totalTokens, stop: true, pullRequest: null, scenarios: []};
       }
       const verdict = JSON.parse(readFileSync(verdictPath, "utf8"));
@@ -370,12 +387,12 @@ async function executeIssue(issue, {tokensUsed}) {
       }
       verifierFeedback = JSON.stringify(verdict);
       if (verdict.verdict === "ESCALATE_HUMAN") {
-        command("gh", ["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
+        ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
         return {tokens: totalTokens, stop: true, pullRequest: null, scenarios: []};
       }
     }
     if (!approved) {
-      command("gh", ["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
+      ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
       return {tokens: totalTokens, stop: false, pullRequest: null, scenarios: []};
     }
 
@@ -389,25 +406,25 @@ async function executeIssue(issue, {tokensUsed}) {
     writeFileSync(join(runDir, `issue-${issue.number}-product-privacy-verifier.jsonl`), productReview.stdout, "utf8");
     totalTokens += tokenUsageFromJsonl(productReview.stdout);
     if (!productReview.ok || totalTokens > ISSUE_TOKEN_CAP || tokensUsed + totalTokens > NIGHTLY_TOKEN_CAP) {
-      command("gh", ["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
+      ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
       return {tokens: totalTokens, stop: true, pullRequest: null, scenarios: []};
     }
     const productVerifierVerdict = JSON.parse(readFileSync(productVerdictPath, "utf8"));
     if (productVerifierVerdict.verdict !== "APPROVE") {
       const blockLabel = productVerifierVerdict.verdict === "ESCALATE_HUMAN" ? "automation-blocked" : "nightly-failed";
-      command("gh", ["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", blockLabel]);
+      ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", blockLabel]);
       return {tokens: totalTokens, stop: productVerifierVerdict.verdict === "ESCALATE_HUMAN", pullRequest: null, scenarios: []};
     }
 
     const push = command("git", ["push", "-u", "origin", branchName], {cwd: worktree, timeout: 10 * 60 * 1000});
     if (!push.ok) throw new Error(push.stderr || "push failed");
-    const createdPullRequest = command("gh", [
+    const createdPullRequest = ghCommand([
       "pr", "create", "--repo", "Giftia/OpenButler", "--draft", "--base", "main", "--head", branchName,
       "--title", `${issue.title} (#${issue.number})`, "--body", `Closes #${issue.number}\n\nNightly run: ${runId}\n\nTwo independent verifiers are required before delegated merge.`
     ], {cwd: worktree});
     if (!createdPullRequest.ok) throw new Error(createdPullRequest.stderr || `pull request creation failed for #${issue.number}`);
     const prUrl = createdPullRequest.stdout.trim();
-    const queueTransition = command("gh", [
+    const queueTransition = ghCommand([
       "issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler",
       "--remove-label", "ready-for-agent",
       "--add-label", "review-pending",
@@ -415,14 +432,14 @@ async function executeIssue(issue, {tokensUsed}) {
     if (!queueTransition.ok) throw new Error(queueTransition.stderr || `failed to move #${issue.number} to human review`);
     log("issue_claimed_by_pull_request", {issue: issue.number, pull_request_url: prUrl});
     const pr = ghJson(["pr", "view", prUrl, "--repo", "Giftia/OpenButler", "--json", "number,url,headRefOid,title,commits"]);
-    const checks = command("gh", ["pr", "checks", String(pr.number), "--repo", "Giftia/OpenButler", "--watch", "--fail-fast"], {cwd: worktree, timeout: 45 * 60 * 1000});
+    const checks = commandWithRetry("gh", ["pr", "checks", String(pr.number), "--repo", "Giftia/OpenButler", "--watch", "--fail-fast"], {cwd: worktree, timeout: 45 * 60 * 1000});
     if (!checks.ok) {
-      command("gh", ["pr", "edit", String(pr.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
-      command("gh", ["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
+      ghCommand(["pr", "edit", String(pr.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
+      ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
       return {tokens: totalTokens, stop: false, pullRequest: {...pr, head_sha: pr.headRefOid, status: "ci_failed"}, scenarios: []};
     }
-    command("gh", ["pr", "ready", String(pr.number), "--repo", "Giftia/OpenButler"]);
-    command("gh", [
+    ghCommand(["pr", "ready", String(pr.number), "--repo", "Giftia/OpenButler"]);
+    ghCommand([
       "pr", "edit", String(pr.number), "--repo", "Giftia/OpenButler",
       "--remove-label", "review-pending",
       "--add-label", "acceptance-ready",
@@ -446,10 +463,34 @@ async function executeIssue(issue, {tokensUsed}) {
       },
       scenarios: [{id: `pr-${pr.number}`, pr_number: pr.number, title: issue.title, purpose: "验证本次修复", steps: ["打开对应产品入口", "执行 Issue 验收步骤"], expected: "行为符合 Issue done_when，且无隐私回归。", status: "pending"}],
     };
+  } catch (error) {
+    const dirty = command("git", ["status", "--porcelain=v1"], {cwd: worktree});
+    preserveWorktree = dirty.ok && Boolean(dirty.stdout.trim());
+    mkdirSync(quarantineRoot, {recursive: true});
+    writeFileSync(join(quarantineRoot, `issue-${issue.number}.json`), `${JSON.stringify({
+      issue: issue.number,
+      run_id: runId,
+      failed_at: new Date().toISOString(),
+      reason: String(error?.message ?? error),
+      recovery_available: preserveWorktree,
+    }, null, 2)}\n`, "utf8");
+    if (preserveWorktree) {
+      writeFileSync(join(runDir, "recovery-worktree.json"), `${JSON.stringify({
+        issue: issue.number,
+        branch: branchName,
+        worktree,
+        tokens_used: totalTokens,
+      }, null, 2)}\n`, "utf8");
+    }
+    ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
+    log("issue_quarantined", {issue: issue.number, recovery_available: preserveWorktree});
+    throw error;
   } finally {
-    command("gh", ["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--remove-label", "nightly-running"]);
-    command("git", ["worktree", "remove", "--force", worktree], {timeout: 120_000});
-    command("git", ["branch", "-D", branchName], {timeout: 120_000});
+    ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--remove-label", "nightly-running"]);
+    if (!preserveWorktree) {
+      command("git", ["worktree", "remove", "--force", worktree], {timeout: 120_000});
+      command("git", ["branch", "-D", branchName], {timeout: 120_000});
+    }
   }
 }
 

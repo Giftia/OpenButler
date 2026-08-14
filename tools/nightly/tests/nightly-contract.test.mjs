@@ -67,6 +67,34 @@ test("Windows scheduler supports four bounded delivery phases", () => {
   for (const time of ["20:00", "07:15", "08:20", "08:30"]) assert.match(source, new RegExp(time));
 });
 
+test("daytime Cloud scheduling is bounded and never auto-merges", () => {
+  const scheduler = read("tools/nightly/install-scheduled-tasks.ps1");
+  const controller = read("tools/nightly/daytime-cloud-controller.mjs");
+  const services = read("tools/nightly/daytime-cloud-services.mjs");
+  const morning = read("tools/nightly/morning-report.mjs");
+  const smoke = read("tools/nightly/daytime-cloud-smoke.mjs");
+  assert.match(scheduler, /OpenButler-Daytime-Cloud/);
+  assert.match(scheduler, /8 \* 60 \+ 30/);
+  assert.match(scheduler, /19 \* 60 \+ 30/);
+  assert.match(controller, /Issue specification changed after Cloud submission/);
+  assert.match(controller, /origin\/main changed after Cloud submission/);
+  assert.match(services, /cloud", "exec"/);
+  assert.match(services, /cloud", "diff"/);
+  assert.match(services, /normalizeUnifiedDiff/);
+  assert.match(services, /focused tests changed the verified Cloud diff/);
+  assert.match(services, /origin\/main changed during Cloud result verification/);
+  assert.match(services, /Issue specification changed during Cloud result verification/);
+  assert.match(services, /--force-with-lease/);
+  assert.match(services, /"--head", state\.branch/);
+  assert.match(services, /--draft/);
+  assert.doesNotMatch(controller, /pr", "merge"/);
+  assert.doesNotMatch(services, /pr", "merge"/);
+  assert.match(morning, /白天 Cloud 工作/);
+  assert.match(morning, /PR 已就绪/);
+  assert.match(smoke, /github_mutated: false/);
+  assert.match(smoke, /personal_data_read: false/);
+});
+
 test("high-risk work uses a second product and privacy verifier", () => {
   const controller = read("tools/nightly/nightly-controller.mjs");
   assert.match(controller, /product-privacy-verifier/);
@@ -108,6 +136,14 @@ test("nightly retries use unique branches and clean local branch state", () => {
   const controller = read("tools/nightly/nightly-controller.mjs");
   assert.match(controller, /runId\.replace\(\/\[\^0-9A-Za-z\]\/g, ""\)\.slice\(0, 22\)/);
   assert.match(controller, /\["branch", "-D", branchName\]/);
+});
+
+test("nightly failures preserve useful recovery state and leave the queue", () => {
+  const controller = read("tools/nightly/nightly-controller.mjs");
+  assert.match(controller, /recovery-worktree\.json/);
+  assert.match(controller, /preserveWorktree/);
+  assert.match(controller, /--add-label", "nightly-failed"/);
+  assert.match(controller, /commandWithRetry/);
 });
 
 test("real data smoke is isolated, bounded, and redacted", () => {

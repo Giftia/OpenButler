@@ -6,9 +6,39 @@ import {isFreshAcceptancePack, readJson, sanitizeAcceptanceValue} from "./nightl
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..", "..");
 const nightlyRoot = join(root, "data", "nightly");
+const daytimeCloudStatusPath = join(root, "data", "daytime-cloud", "latest-status.json");
 const previewDataDir = process.env.OPENBUTLER_PREVIEW_DATA_DIR
   || join(process.env.APPDATA || join(process.env.USERPROFILE || "", "AppData", "Roaming"), "OpenButler Preview", "data");
 const publishedPackPath = join(previewDataDir, "acceptance-pack.json");
+
+function daytimeCloudLines() {
+  const status = sanitizeAcceptanceValue(readJson(daytimeCloudStatusPath, null));
+  if (!status) return ["## 白天 Cloud 工作", "", "- 状态：无记录", ""];
+  const labels = {
+    submitting: "提交中",
+    submitted: "已提交",
+    eligible: "发现可执行 Issue（演练未提交）",
+    pending: "等待 Cloud 结果",
+    ready: "结果已就绪，等待本地验收",
+    "pr-ready": "PR 已就绪",
+    blocked: "已阻塞",
+    failed: "失败",
+    cancelled: "已取消",
+    "cleanup-required": "租约清理待重试",
+    "no-op": "无可执行 Issue",
+    "outside-window": "不在白天执行窗口",
+  };
+  const lines = [
+    "## 白天 Cloud 工作",
+    "",
+    `- 状态：${labels[status.status] ?? status.status ?? "unknown"}`,
+    `- Issue：${status.issue ? `#${status.issue}` : "无"}`,
+  ];
+  if (status.pr_number) lines.push(`- PR：#${status.pr_number}`);
+  if (status.reason) lines.push(`- 说明：${status.reason}`);
+  lines.push("");
+  return lines;
+}
 
 function lastRealDataEvent(runDir) {
   const eventsPath = join(runDir, "events.jsonl");
@@ -40,6 +70,7 @@ function publishFailureReport({runId = "none", runDir = null, state = null, reas
     "",
     `- ${safeState.reason ?? reason}`,
     "",
+    ...daytimeCloudLines(),
     "## 隐私检查",
     "",
     `- 来源数据已修改：${realData?.source_modified ? "是" : "否"}`,
@@ -102,6 +133,7 @@ const lines = [
   "",
   pack.summary ?? "没有可用摘要。",
   "",
+  ...daytimeCloudLines(),
   "## 待测场景",
   "",
 ];

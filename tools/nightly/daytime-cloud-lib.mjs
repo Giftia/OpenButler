@@ -1,0 +1,129 @@
+import {createHash} from "node:crypto";
+
+export const DAYTIME_START_MINUTES = 8 * 60 + 30;
+export const DAYTIME_END_MINUTES = 19 * 60 + 30;
+
+const forbiddenPathPatterns = [
+  /(^|\/)\.env(?:\.|$)/i,
+  /(^|\/)(?:data|runtime|storage|uploads|media|screenshots|logs)(?:\/|$)/i,
+  /^(?:minecontext|minecontext_data|minecontext_exports)(?:\/|$)/i,
+  /(^|\/)(?:secrets?|credentials?|cookies?)(?:\/|$)/i,
+  /\.(?:db|sqlite3?|pem|key|p12|pfx|crt|log)$/i,
+];
+
+const forbiddenDiffPatterns = [
+  /OPENBUTLER_CODEX_CLOUD_ENV_ID\s*[:=]\s*\S+/i,
+  /(?:api[_ -]?key|token|password|secret)\s*[:=]\s*["']?[^"'\s]{8,}/i,
+  /[A-Za-z]:\\Users\\[^\\\s]+\\/,
+  /(?:MineContext|screenshot|window_title|activity_title).*?(?:raw|path|content)/i,
+];
+
+export function withinDaytimeWindow(now = new Date()) {
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  return minutes >= DAYTIME_START_MINUTES && minutes < DAYTIME_END_MINUTES;
+}
+
+function normalizedLabels(issue) {
+  return (issue.labels ?? []).map((label) => label.name ?? label).map(String).sort();
+}
+
+export function issueSpecificationFingerprint(issue) {
+  const contract = {
+    number: Number(issue.number),
+    title: String(issue.title ?? "").trim(),
+    body: String(issue.body ?? "").replace(/\r\n/g, "\n").trim(),
+    labels: normalizedLabels(issue).filter((label) => !["cloud-running", "nightly-running"].includes(label)),
+  };
+  return createHash("sha256").update(JSON.stringify(contract)).digest("hex");
+}
+
+export function evaluateSpecificationFreshness(issue, timeline = []) {
+  const readyEvents = timeline.filter((event) => event.event === "labeled" && event.label?.name === "ready-for-agent");
+  const latestReadyAt = Math.max(...readyEvents.map((event) => Date.parse(event.created_at) || 0), 0);
+  const specificationTimes = [issue.createdAt, issue.created_at, issue.updatedAt, issue.updated_at]
+    .map((value) => Date.parse(value) || 0);
+  for (const event of timeline) {
+    if (event.event === "renamed") specificationTimes.push(Date.parse(event.created_at) || 0);
+  }
+  const latestSpecificationAt = Math.max(...specificationTimes, 0);
+  const reasons = [];
+  if (!latestReadyAt) reasons.push("ready-for-agent approval event is unavailable");
+  // GitHub updates the Issue timestamp when the ready label itself is applied.
+  // Allow only a small clock-resolution margin; later comments or edits require re-triage.
+  if (latestReadyAt && latestSpecificationAt > latestReadyAt + 2_000) reasons.push("specification changed after ready-for-agent approval");
+  return {fresh: reasons.length === 0, reasons, latestReadyAt, latestSpecificationAt};
+}
+
+export function parseCloudTaskId(output) {
+  const text = String(output ?? "");
+  return text.match(/\btask_[A-Za-z0-9_-]+\b/)?.[0]
+    ?? text.match(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i)?.[0]
+    ?? null;
+}
+
+export function parseCloudTaskStatus(output) {
+  const value = String(output ?? "").toLowerCase();
+  if (/\bcancel(?:led|ed|ing)?\b/.test(value)) return "cancelled";
+  if (/\b(?:failed|failure|error)\b/.test(value)) return "failed";
+  if (/\b(?:ready|completed|complete|succeeded|success)\b/.test(value)) return "ready";
+  if (/\b(?:pending|queued|running|in[_ -]?progress|processing)\b/.test(value)) return "pending";
+  return "unknown";
+}
+
+export function pathsFromUnifiedDiff(diff) {
+  const paths = new Set();
+  for (const match of String(diff ?? "").matchAll(/^diff --git a\/(.+?) b\/(.+)$/gm)) {
+    paths.add(match[1]);
+    paths.add(match[2]);
+  }
+  return [...paths].sort();
+}
+
+export function evaluateCloudDiff(diff) {
+  const paths = pathsFromUnifiedDiff(diff);
+  const reasons = [];
+  if (!String(diff ?? "").trim()) reasons.push("Cloud result has no diff");
+  if (!paths.length && String(diff ?? "").trim()) reasons.push("Cloud result is not a recognized unified diff");
+  for (const path of paths) {
+    if (forbiddenPathPatterns.some((pattern) => pattern.test(path))) reasons.push(`forbidden path: ${path}`);
+  }
+  if (forbiddenDiffPatterns.some((pattern) => pattern.test(String(diff ?? "")))) reasons.push("diff contains a privacy or secret boundary violation");
+  return {accepted: reasons.length === 0, reasons, paths};
+}
+
+export function normalizeUnifiedDiff(diff) {
+  return String(diff ?? "").replace(/\r\n/g, "\n").trimEnd();
+}
+
+export function buildCloudPrompt({issue, baseSha, runId}) {
+  return [
+    `[OpenButler daytime run ${runId}] Implement GitHub Issue #${issue.number}: ${issue.title}`,
+    "",
+    String(issue.body ?? "").trim(),
+    "",
+    `Base commit: ${baseSha}`,
+    "Before editing, require git rev-parse HEAD to equal that base commit. If it differs, make no changes and report a stale checkout.",
+    "Work only in the existing checkout. Produce one bounded diff for this Issue.",
+    "Read AGENTS.md, LOOP.md, loop-constraints.md, and repository tests before editing.",
+    "Do not push, merge, deploy, mutate GitHub, read personal data, screenshots, databases, credentials, or stable app data.",
+    "Do not weaken tests, privacy constraints, branch protection, or governance.",
+    "Run focused tests and report changed paths and test results. Never include environment identifiers or local paths.",
+  ].join("\n");
+}
+
+export function redactedCloudStatus(state) {
+  const safeReason = state.reason == null ? null : String(state.reason)
+    .replace(/forbidden path:\s*[^;]+/gi, "forbidden path: <redacted>")
+    .replace(/[A-Za-z]:\\Users\\[^\\\s]+\\[^\s]+/g, "<redacted-local-path>");
+  return {
+    schema_version: 1,
+    updated_at: state.updated_at,
+    run_id: state.run_id ?? null,
+    issue: state.issue ?? null,
+    base_sha: state.base_sha ?? null,
+    task_id: state.task_id ?? null,
+    status: state.status,
+    pr_number: state.pr_number ?? null,
+    reason: safeReason,
+  };
+}

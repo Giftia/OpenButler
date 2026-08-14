@@ -1,6 +1,6 @@
 # OpenButler Current State
 
-Updated: 2026-07-23
+Updated: 2026-08-14
 
 ## Current Stage
 
@@ -8,7 +8,7 @@ The only active product objective is `OB-GOAL-034: Secure Integrated Context Eng
 
 OpenButler has completed the L1 governance bootstrap and is recording delegated L2 through the current governance pull request. The original local Codex heartbeat remains paused. PR #18 and #19 are merged, and the Windows scheduler has a successful supervised dry-run readback.
 
-ChatGPT Web is an advisory public-GitHub reviewer. Codex Cloud is the intended daytime maker after a docs-only environment smoke. Windows Task Scheduler owns local execution, QA cleanup and the redacted morning report. GitHub is the shared queue and evidence source.
+ChatGPT Web is an advisory public-GitHub reviewer. The Codex Cloud environment and docs-only smoke are verified through PR #33. Issue #34 adds the missing unattended daytime dispatcher; it is not considered operational until the controller is merged and its Windows task has a successful runtime readback. Windows Task Scheduler owns local execution, QA cleanup and the redacted morning report. GitHub is the shared queue and evidence source.
 
 ## Repository Baseline
 
@@ -70,11 +70,11 @@ The on-demand L1 audit remains report-only. Delegated L2 uses isolated worktrees
 
 PR #18 and PR #19 were squash-merged as `52c7f32` and `48c2c65`. Windows Task Scheduler completed the supervised L1 dry-run `2026-07-23T15-15-37-644Z` with task result 0 and a redacted acceptance pack. It reported no product or GitHub mutation, no personal-data read, no database write, no screenshot copy and no external-model call. The user's pre-authorization activates delegated L2 through the current governance pull request.
 
-The local schedule is 20:00 execution, 07:15 cutoff, 08:20 cleanup and 08:30 report. Codex Cloud is authenticated but remains disabled as a maker until `OPENBUTLER_CODEX_CLOUD_ENV_ID` completes a docs-only smoke. ChatGPT Web remains advisory and is not a hard trigger.
+The local schedule is 20:00 execution, 07:15 cutoff, 08:20 cleanup and 08:30 report. The Cloud environment ID is configured and the docs-only smoke passed; unattended daytime execution still requires Issue #34 to merge and the 08:30-19:30 scheduler task to pass runtime readback. ChatGPT Web remains advisory and is not a hard trigger.
 
 ## Privacy Boundary
 
-- No real MineContext activity was read in this stage.
+- Nightly may read a bounded 48-hour aggregate preview from the local source under the delegated policy; source data remains read-only and reports remain redacted.
 - No screenshots were copied.
 - No microphone or camera data was captured.
 - No external model or webhook was called.

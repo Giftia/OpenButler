@@ -256,13 +256,27 @@ tasks:
     title: "完成 Codex Cloud docs-only 连接 smoke"
     goal_id: OB-GOAL-034
     priority: P0
-    status: blocked
-    blocked_by: [OB-AUTO-001]
+    status: done
     done_when:
       - "OPENBUTLER_CODEX_CLOUD_ENV_ID 已配置"
       - "Cloud 在隔离分支完成 docs-only 变更"
       - "CI 与 PR 回读通过"
       - "smoke PR 合并后才启用白天 maker"
+    evidence:
+      - "PR #33 merged as 309a6a1"
+      - "cloud-preflight authenticated/configured/maker_enabled true"
+
+  - id: OB-AUTO-005
+    title: "实现并验证无人值守白天 Codex Cloud dispatcher"
+    goal_id: OB-GOAL-034
+    priority: P0
+    status: in_progress
+    done_when:
+      - "08:30-19:30 每 30 分钟最多处理一个 Issue"
+      - "Cloud 和 Nightly 共享单 Issue 租约"
+      - "GitHub 瞬时失败会重试，失败 Issue 不阻塞队首"
+      - "Cloud 结果经 diff、隐私、base SHA 和测试校验后只创建 Draft PR"
+      - "Windows 任务安装后有成功运行回读"
 
 blocked:
   - id: OB-GOAL-035
