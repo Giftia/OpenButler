@@ -50,6 +50,30 @@ function issueApprovalStillCurrent(acceptance) {
   return approvalTimelineIsCurrent(timeline, acceptance.issue_approved_at);
 }
 
+function latestIssueEventAt(issueNumber) {
+  const timeline = ghJson(["api", `repos/Giftia/OpenButler/issues/${issueNumber}/timeline`, "--paginate"]);
+  return Math.max(...timeline.map((event) => Math.max(
+    Date.parse(event.created_at) || 0,
+    Date.parse(event.updated_at) || 0,
+  )), 0);
+}
+
+function refreshAndVerifyMergeAuthorization(acceptance) {
+  const refreshed = spawnSync(process.execPath, [join(here, "merge-authorization.mjs"), "refresh-issue"], {
+    cwd: root,
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 120_000,
+    env: {...process.env, OPENBUTLER_ISSUE_NUMBER: String(acceptance.issue_number)},
+  });
+  if (refreshed.status !== 0) return false;
+  const latestIssueAt = latestIssueEventAt(acceptance.issue_number);
+  const combined = ghJson(["api", `repos/Giftia/OpenButler/commits/${acceptance.head_sha}/status`]);
+  const authorization = (combined.statuses ?? []).find((status) => status.context === "Merge Authorization");
+  return authorization?.state === "success"
+    && (Date.parse(authorization.created_at) || 0) >= latestIssueAt;
+}
+
 function createRevertPullRequest(mergeSha, prNumber) {
   const branch = `codex/auto-revert-${prNumber}-${mergeSha.slice(0, 8)}`;
   const worktree = join(nightlyRoot, "revert-worktrees", branch.replaceAll("/", "-"));
@@ -131,6 +155,10 @@ for (const acceptance of pack.pull_requests ?? []) {
   // observed approval drift fails closed at the last possible boundary.
   if (!issueApprovalStillCurrent(acceptance)) {
     pack.auto_merge.blocked.push({pr: acceptance.number, reasons: ["Issue approval changed during final merge preflight"]});
+    continue;
+  }
+  if (!refreshAndVerifyMergeAuthorization(acceptance)) {
+    pack.auto_merge.blocked.push({pr: acceptance.number, reasons: ["Merge Authorization is missing, stale, or failed"]});
     continue;
   }
   const finalPullRequest = ghJson([
