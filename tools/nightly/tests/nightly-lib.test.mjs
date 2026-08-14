@@ -39,6 +39,17 @@ test("failed nightly work is quarantined until explicitly retriaged", () => {
   assert.match(result.reasons.join("; "), /nightly-failed/);
 });
 
+test("review-pending work cannot be reclaimed after its pull request closes", () => {
+  const issue = {
+    title: "bounded repair",
+    body: "",
+    labels: [{name: "ready-for-agent"}, {name: "review-pending"}],
+  };
+  const result = evaluateIssueEligibility(issue);
+  assert.equal(result.eligible, false);
+  assert.match(result.reasons.join("; "), /review-pending/);
+});
+
 test("transient GitHub failures retry but permanent failures fail immediately", () => {
   let calls = 0;
   const recovered = runWithRetry(() => {

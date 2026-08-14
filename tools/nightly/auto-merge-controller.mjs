@@ -17,6 +17,7 @@ const requiredChecks = new Set([
   "Desktop Contract",
   "Loop Governance",
   "Nightly Controller",
+  "Merge Authorization",
 ]);
 
 function gh(args, {allowFailure = false, timeout = 120_000} = {}) {

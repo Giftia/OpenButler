@@ -138,3 +138,17 @@ jobs:
           node-version: "20"
       - run: node --test tests
         working-directory: tools/nightly
+
+  merge-authorization:
+    name: Merge Authorization
+    runs-on: ubuntu-latest
+    permissions:
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify current Issue authorization
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPENBUTLER_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node tools/nightly/merge-authorization.mjs verify-pr

@@ -133,6 +133,7 @@ export function evaluateIssueEligibility(issue, {timeline = [], closedIssues = n
   if (!labels.has("ready-for-agent")) reasons.push("missing ready-for-agent");
   if (labels.has("automation-blocked")) reasons.push("automation-blocked");
   if (labels.has("nightly-failed")) reasons.push("nightly-failed requires retriage");
+  if (labels.has("review-pending")) reasons.push("review-pending requires explicit retriage");
   if ((labels.has("cloud-running") && ownedLease !== "cloud-running")
     || (labels.has("nightly-running") && ownedLease !== "nightly-running")) reasons.push("issue has an active execution lease");
   if (issue.state && String(issue.state).toUpperCase() !== "OPEN") reasons.push("issue is not open");

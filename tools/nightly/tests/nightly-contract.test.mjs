@@ -15,7 +15,7 @@ test("automatic merge is bound to dual verification and accepted head SHA", () =
   assert.match(source, /createRevertPullRequest/);
   assert.match(source, /issueApprovalStillCurrent/);
   assert.match(source, /issue_content_fingerprint/);
-  for (const check of ["Butler Core", "PC Activity", "Workstation Vision", "Context Engine", "Frontend Build", "Desktop Contract", "Loop Governance", "Nightly Controller"]) {
+  for (const check of ["Butler Core", "PC Activity", "Workstation Vision", "Context Engine", "Frontend Build", "Desktop Contract", "Loop Governance", "Nightly Controller", "Merge Authorization"]) {
     assert.match(source, new RegExp(check));
   }
 });
@@ -70,6 +70,17 @@ test("Windows scheduler supports four bounded delivery phases", () => {
   assert.match(source, /scheduled task verification failed/);
   assert.match(source, /SupervisedSha requires dry-run mode/);
   for (const time of ["20:00", "07:15", "08:20", "08:30"]) assert.match(source, new RegExp(time));
+});
+
+test("merge authorization is a server-side required check refreshed by Issue changes", () => {
+  const ci = read(".github/workflows/ci.yml");
+  const refresh = read(".github/workflows/merge-authorization.yml");
+  const authorization = read("tools/nightly/merge-authorization.mjs");
+  assert.match(ci, /name: Merge Authorization/);
+  assert.match(refresh, /types: \[labeled, unlabeled, edited, closed, reopened\]/);
+  assert.match(refresh, /statuses: write/);
+  assert.match(authorization, /context=Merge Authorization/);
+  assert.match(authorization, /changed after approval/);
 });
 
 test("supervised scheduler smoke is dry-run only and bound to exact HEAD", () => {
