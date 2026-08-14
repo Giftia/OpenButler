@@ -79,6 +79,15 @@ test("extracts claimed issue numbers from open nightly pull requests", () => {
   assert.deepEqual([...claimed].sort((a, b) => a - b), [42, 51, 52]);
 });
 
+test("claims direct implementation titles and Cloud or Nightly branches", () => {
+  const claimed = claimedIssueNumbers([
+    {title: "Implement #34: bounded fix", body: "", headRefName: "codex/cloud-34-run"},
+    {title: "Issue #35 follow-up", body: "", headRefName: "codex/nightly-35-run"},
+    {title: "Unrelated", body: "", headRefName: "codex/issue-36-recovery"},
+  ]);
+  assert.deepEqual([...claimed].sort((a, b) => a - b), [34, 35, 36]);
+});
+
 test("hard-stop work is never eligible for automation", () => {
   const issue = {
     title: "Upload screenshots to a remote service",

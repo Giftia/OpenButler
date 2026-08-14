@@ -117,6 +117,12 @@ export function claimedIssueNumbers(pullRequests = []) {
     for (const match of String(pullRequest.title ?? "").matchAll(/\(#(\d+)\)/g)) {
       claimed.add(Number(match[1]));
     }
+    for (const match of String(pullRequest.headRefName ?? "").matchAll(/(?:^|\/)codex\/(?:cloud|nightly|issue)-?(\d+)(?:-|$)/gi)) {
+      claimed.add(Number(match[1]));
+    }
+    for (const match of String(pullRequest.title ?? "").matchAll(/\b(?:implement|fix|resolve|issue)\s+#(\d+)\b/gi)) {
+      claimed.add(Number(match[1]));
+    }
   }
   return claimed;
 }

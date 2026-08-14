@@ -14,7 +14,7 @@ import {
   withinDaytimeWindow,
 } from "../daytime-cloud-lib.mjs";
 import {runDaytimeDispatcher} from "../daytime-cloud-controller.mjs";
-import {acquireOwnedLock, releaseOwnedLock} from "../daytime-cloud-services.mjs";
+import {acquireOwnedLock, releaseOwnedLock, requiredTestsForPaths} from "../daytime-cloud-services.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -280,6 +280,13 @@ test("Windows PowerShell 5 runner executes without unsupported Tee-Object parame
   });
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /ParameterBindingException|Tee-Object/);
+});
+
+test("backend test routing covers generic backend and Context Engine changes", () => {
+  const generic = requiredTestsForPaths(["backend/app/main.py"], "C:/repo").map((item) => item.name);
+  assert.deepEqual(generic, ["Butler Core", "PC Activity", "Workstation Vision"]);
+  const context = requiredTestsForPaths(["backend/app/modules/context_engine/service.py"], "C:/repo").map((item) => item.name);
+  assert.deepEqual(context, ["Context Engine"]);
 });
 
 test("failed lease cleanup remains active for deterministic restart retry", async () => {

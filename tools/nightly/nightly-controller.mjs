@@ -72,12 +72,7 @@ function commandWithRetry(commandName, commandArgs, options = {}) {
 }
 
 function ghCommand(commandArgs, options = {}) {
-  return commandWithRetry("gh", commandArgs, {
-    timeout: 60_000,
-    attempts: 5,
-    delays: [1_000, 3_000, 8_000, 15_000],
-    ...options,
-  });
+  return commandWithRetry("gh", commandArgs, {timeout: 60_000, attempts: 3, ...options});
 }
 
 function ghJson(commandArgs) {
@@ -113,6 +108,23 @@ function runFocusedTests(worktree) {
   }
   if (files.some((file) => file.startsWith("backend/app/modules/workstation_vision/"))) {
     run("Workstation Vision", "python", ["-m", "unittest", "discover", "-s", "backend/app/modules/workstation_vision/tests"], {env: pythonEnv});
+  }
+  if (files.some((file) => file.startsWith("backend/app/modules/context_engine/"))) {
+    run("Context Engine", "python", ["-m", "unittest", "discover", "-s", "backend/app/modules/context_engine/tests"], {env: pythonEnv});
+  }
+  const knownBackendPrefixes = [
+    "backend/app/modules/butler_core/",
+    "backend/app/modules/pc_activity_context/",
+    "backend/app/modules/workstation_vision/",
+    "backend/app/modules/context_engine/",
+  ];
+  if (files.some((file) => file.startsWith("backend/") && !knownBackendPrefixes.some((prefix) => file.startsWith(prefix)))) {
+    if (!checks.some((check) => check.name === "Butler Core")) run("Butler Core", "python", ["-m", "unittest", "discover", "-s", "backend/app/modules/butler_core/tests"], {env: pythonEnv});
+    if (!checks.some((check) => check.name === "PC Activity")) run("PC Activity", "python", ["-m", "unittest", "discover", "-s", "backend/app/modules/pc_activity_context/tests"], {env: pythonEnv});
+    if (!checks.some((check) => check.name === "Workstation Vision")) run("Workstation Vision", "python", ["-m", "unittest", "discover", "-s", "backend/app/modules/workstation_vision/tests"], {env: pythonEnv});
+    if (existsSync(join(worktree, "backend", "app", "modules", "context_engine", "tests")) && !checks.some((check) => check.name === "Context Engine")) {
+      run("Context Engine", "python", ["-m", "unittest", "discover", "-s", "backend/app/modules/context_engine/tests"], {env: pythonEnv});
+    }
   }
   if (files.some((file) => file.startsWith("frontend/"))) {
     installNpmDependencies("Frontend", join(worktree, "frontend"));

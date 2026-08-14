@@ -99,15 +99,10 @@ function commandWithRetry(executable, args, options = {}) {
 }
 
 function ghCommand(args, options = {}) {
-  return commandWithRetry("gh", args, {
-    timeout: 60_000,
-    attempts: 5,
-    delays: [1_000, 3_000, 8_000, 15_000],
-    ...options,
-  });
+  return commandWithRetry("gh", args, {timeout: 60_000, attempts: 3, ...options});
 }
 
-function requiredTestsForPaths(paths, root) {
+export function requiredTestsForPaths(paths, root) {
   const pythonEnv = {PYTHONPATH: join(root, "backend")};
   const tests = [];
   if (paths.some((path) => path.startsWith("backend/app/modules/butler_core/"))) {
@@ -118,6 +113,27 @@ function requiredTestsForPaths(paths, root) {
   }
   if (paths.some((path) => path.startsWith("backend/app/modules/workstation_vision/"))) {
     tests.push({name: "Workstation Vision", command: "python", args: ["-m", "unittest", "discover", "-s", "backend/app/modules/workstation_vision/tests"], env: pythonEnv});
+  }
+  if (paths.some((path) => path.startsWith("backend/app/modules/context_engine/"))) {
+    tests.push({name: "Context Engine", command: "python", args: ["-m", "unittest", "discover", "-s", "backend/app/modules/context_engine/tests"], env: pythonEnv});
+  }
+  const knownBackendPrefixes = [
+    "backend/app/modules/butler_core/",
+    "backend/app/modules/pc_activity_context/",
+    "backend/app/modules/workstation_vision/",
+    "backend/app/modules/context_engine/",
+  ];
+  if (paths.some((path) => path.startsWith("backend/") && !knownBackendPrefixes.some((prefix) => path.startsWith(prefix)))) {
+    for (const [name, testPath] of [
+      ["Butler Core", "backend/app/modules/butler_core/tests"],
+      ["PC Activity", "backend/app/modules/pc_activity_context/tests"],
+      ["Workstation Vision", "backend/app/modules/workstation_vision/tests"],
+    ]) {
+      if (!tests.some((test) => test.name === name)) tests.push({name, command: "python", args: ["-m", "unittest", "discover", "-s", testPath], env: pythonEnv});
+    }
+    if (existsSync(join(root, "backend", "app", "modules", "context_engine", "tests")) && !tests.some((test) => test.name === "Context Engine")) {
+      tests.push({name: "Context Engine", command: "python", args: ["-m", "unittest", "discover", "-s", "backend/app/modules/context_engine/tests"], env: pythonEnv});
+    }
   }
   if (paths.some((path) => path.startsWith("frontend/"))) tests.push({name: "Frontend Build", command: "npm.cmd", args: ["run", "build"], cwd: "frontend", install: true});
   if (paths.some((path) => path.startsWith("desktop/"))) tests.push({name: "Desktop Contract", command: "npm.cmd", args: ["run", "check"], cwd: "desktop", install: true});
