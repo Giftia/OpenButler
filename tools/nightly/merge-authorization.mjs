@@ -37,11 +37,12 @@ function authorizationForIssue(number) {
     return {authorized: false, reason: `Issue #${number} lacks a current approval from ${trustedApprover}`};
   }
   const latestReadyAt = Date.parse(latestReady.created_at) || 0;
+  const latestReadyIndex = timeline.lastIndexOf(latestReady);
   const workflowLabels = new Set(["cloud-running", "nightly-running", "review-pending", "acceptance-ready", "auto-merge-eligible"]);
   const harmlessEvents = new Set(["cross-referenced", "connected", "referenced", "mentioned", "subscribed", "unsubscribed"]);
-  const changedAfterApproval = timeline.some((event) => {
-    const at = Math.max(Date.parse(event.created_at) || 0, Date.parse(event.updated_at) || 0);
-    if (at <= latestReadyAt) return false;
+  const changedAfterApproval = timeline.some((event, index) => {
+    const editedAfterApproval = (Date.parse(event.updated_at) || 0) > latestReadyAt;
+    if (index <= latestReadyIndex && !editedAfterApproval) return false;
     if (["labeled", "unlabeled"].includes(event.event) && workflowLabels.has(event.label?.name)) return false;
     if (event.event === "commented" && String(event.body ?? "").startsWith("[OpenButler automation marker]")) return false;
     return !harmlessEvents.has(event.event);
@@ -85,7 +86,19 @@ function refreshIssue(number) {
   }
 }
 
+function refreshPullRequest(number) {
+  const result = authorizationForPullRequest(number);
+  gh([
+    "api", "--method", "POST", `repos/${repo}/statuses/${result.pullRequest.headRefOid}`,
+    "-f", `state=${result.authorized ? "success" : "failure"}`,
+    "-f", "context=Merge Authorization",
+    "-f", `description=${result.authorized ? `issue=${result.issueNumber};nonce=${result.nonce}` : result.reason.slice(0, 140)}`,
+  ]);
+  console.log(`PR #${number}: ${result.reason}`);
+}
+
 const [command] = process.argv.slice(2);
 if (command === "verify-pr") verifyPullRequest(Number(process.env.OPENBUTLER_PR_NUMBER));
 else if (command === "refresh-issue") refreshIssue(Number(process.env.OPENBUTLER_ISSUE_NUMBER));
+else if (command === "refresh-pr") refreshPullRequest(Number(process.env.OPENBUTLER_PR_NUMBER));
 else throw new Error(`Unknown command: ${command ?? "<missing>"}`);

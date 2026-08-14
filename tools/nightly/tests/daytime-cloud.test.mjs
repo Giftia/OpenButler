@@ -304,6 +304,15 @@ test("ready approval removal is always a revocation", () => {
   assert.equal(approvalTimelineIsCurrent(wrongActor, approvedAt), false);
 });
 
+test("same-second Issue activity after approval invalidates authorization by timeline order", () => {
+  const approvedAt = "2026-08-12T01:00:00Z";
+  const timeline = [
+    {event: "labeled", label: {name: "ready-for-agent"}, created_at: approvedAt},
+    {event: "commented", body: "spec changed", created_at: approvedAt},
+  ];
+  assert.equal(approvalTimelineIsCurrent(timeline, approvedAt), false);
+});
+
 test("the dispatcher records a Cloud recovery marker before reporting submission", async () => {
   const services = mockServices();
   const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services, runId: "run-marker"});

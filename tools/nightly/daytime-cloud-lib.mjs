@@ -131,11 +131,19 @@ export function trustedCloudTaskMarker({comments = [], timeline = [], actor}) {
 export function approvalTimelineIsCurrent(timeline = [], approvedAtValue) {
   const approvedAt = Date.parse(approvedAtValue);
   if (!Number.isFinite(approvedAt)) return false;
+  const matchingApprovalIndexes = timeline
+    .map((event, index) => ({event, index}))
+    .filter(({event}) => event.event === "labeled"
+      && event.label?.name === "ready-for-agent"
+      && Date.parse(event.created_at) === approvedAt)
+    .map(({index}) => index);
+  if (matchingApprovalIndexes.length !== 1) return false;
+  const approvalIndex = matchingApprovalIndexes[0];
   const workflowLabels = new Set(["nightly-running", "review-pending", "acceptance-ready", "auto-merge-eligible"]);
   const workflowEvents = new Set(["cross-referenced", "connected", "referenced", "mentioned", "subscribed", "unsubscribed"]);
-  return !timeline.some((event) => {
-    const at = Math.max(Date.parse(event.created_at) || 0, Date.parse(event.updated_at) || 0);
-    if (at <= approvedAt) return false;
+  return !timeline.some((event, index) => {
+    const editedAfterApproval = (Date.parse(event.updated_at) || 0) > approvedAt;
+    if (index <= approvalIndex && !editedAfterApproval) return false;
     if (event.event === "labeled" && event.label?.name === "ready-for-agent") return true;
     if (event.event === "unlabeled" && event.label?.name === "ready-for-agent") return true;
     if (event.event === "commented" && String(event.body ?? "").startsWith("[OpenButler automation marker]")) return false;

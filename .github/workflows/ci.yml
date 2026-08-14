@@ -141,6 +141,7 @@ jobs:
 
   merge-authorization:
     name: Merge Authorization
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       issues: read

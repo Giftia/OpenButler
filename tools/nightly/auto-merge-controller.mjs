@@ -37,6 +37,14 @@ function ghJson(args) {
   return JSON.parse(result.stdout || "null");
 }
 
+function pullRequestLinksAcceptanceIssue(pullRequest, acceptance) {
+  const text = `${pullRequest.title ?? ""}\n${pullRequest.body ?? ""}`;
+  const numbers = new Set();
+  for (const match of text.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/gi)) numbers.add(Number(match[1]));
+  for (const match of text.matchAll(/\(#(\d+)\)/g)) numbers.add(Number(match[1]));
+  return numbers.size === 1 && numbers.has(Number(acceptance.issue_number));
+}
+
 function issueApprovalStillCurrent(acceptance) {
   if (!acceptance.issue_number || !acceptance.issue_content_fingerprint || !acceptance.issue_approved_at) return false;
   const issue = ghJson(["issue", "view", String(acceptance.issue_number), "--repo", "Giftia/OpenButler", "--json", "number,title,body,state"]);
@@ -134,8 +142,12 @@ for (const acceptance of pack.pull_requests ?? []) {
   pack.auto_merge.attempted += 1;
   const pullRequest = ghJson([
     "pr", "view", String(acceptance.number), "--repo", "Giftia/OpenButler",
-    "--json", "number,state,isDraft,headRefOid,reviewDecision,statusCheckRollup,labels",
+    "--json", "number,title,body,state,isDraft,headRefOid,reviewDecision,statusCheckRollup,labels",
   ]);
+  if (!pullRequestLinksAcceptanceIssue(pullRequest, acceptance)) {
+    pack.auto_merge.blocked.push({pr: acceptance.number, reasons: ["PR no longer links exactly the accepted Issue"]});
+    continue;
+  }
   const labels = new Set((pullRequest.labels ?? []).map((label) => label.name));
   if (!labels.has("acceptance-ready") || !labels.has("auto-merge-eligible")) {
     pack.auto_merge.blocked.push({pr: acceptance.number, reasons: ["required merge labels missing"]});
@@ -168,8 +180,12 @@ for (const acceptance of pack.pull_requests ?? []) {
   }
   const finalPullRequest = ghJson([
     "pr", "view", String(acceptance.number), "--repo", "Giftia/OpenButler",
-    "--json", "number,state,isDraft,headRefOid,reviewDecision,statusCheckRollup,labels",
+    "--json", "number,title,body,state,isDraft,headRefOid,reviewDecision,statusCheckRollup,labels",
   ]);
+  if (!pullRequestLinksAcceptanceIssue(finalPullRequest, acceptance)) {
+    pack.auto_merge.blocked.push({pr: acceptance.number, reasons: ["PR Issue linkage changed during final merge preflight"]});
+    continue;
+  }
   const finalGate = canAutoMergePullRequest({
     pullRequest: finalPullRequest,
     acceptance,

@@ -18,6 +18,7 @@ test("automatic merge is bound to dual verification and accepted head SHA", () =
   assert.match(source, /refreshAndVerifyMergeAuthorization/);
   assert.match(source, /authorization\.description/);
   assert.match(source, /currentIssueAuthorizationNonce/);
+  assert.match(source, /pullRequestLinksAcceptanceIssue/);
   assert.match(source, /!issueApprovalStillCurrent\(acceptance\) \|\| !refreshAndVerifyMergeAuthorization/);
   for (const check of ["Butler Core", "PC Activity", "Workstation Vision", "Context Engine", "Frontend Build", "Desktop Contract", "Loop Governance", "Nightly Controller", "Merge Authorization"]) {
     assert.match(source, new RegExp(check));
@@ -82,10 +83,13 @@ test("merge authorization is a server-side required check refreshed by Issue cha
   const authorization = read("tools/nightly/merge-authorization.mjs");
   assert.match(ci, /name: Merge Authorization/);
   assert.match(refresh, /types: \[labeled, unlabeled, edited, closed, reopened\]/);
+  assert.match(refresh, /pull_request:/);
+  assert.match(refresh, /types: \[edited\]/);
   assert.match(refresh, /statuses: write/);
   assert.match(authorization, /context=Merge Authorization/);
   assert.match(authorization, /changed after approval/);
   assert.match(authorization, /nonce=/);
+  assert.match(authorization, /refresh-pr/);
 });
 
 test("supervised scheduler smoke is dry-run only and bound to exact HEAD", () => {
