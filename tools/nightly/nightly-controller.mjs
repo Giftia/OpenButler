@@ -236,7 +236,20 @@ try {
       closedIssues: closed,
       claimedIssues: claimed,
     });
-    const localQuarantine = existsSync(join(quarantineRoot, `issue-${issue.number}.json`));
+    const quarantinePath = join(quarantineRoot, `issue-${issue.number}.json`);
+    let localQuarantine = existsSync(quarantinePath);
+    if (localQuarantine) {
+      try {
+        const quarantine = JSON.parse(readFileSync(quarantinePath, "utf8"));
+        const labels = new Set((issue.labels ?? []).map((label) => label.name ?? label));
+        const retriaged = !labels.has("nightly-failed")
+          && Date.parse(issue.updatedAt ?? "") > Date.parse(quarantine.failed_at ?? "");
+        if (retriaged) {
+          rmSync(quarantinePath, {force: true});
+          localQuarantine = false;
+        }
+      } catch {}
+    }
     if (localQuarantine) evaluation.reasons.push("local failure quarantine requires retriage");
     evaluation.eligible = evaluation.reasons.length === 0;
     return {...issue, evaluation};
@@ -347,6 +360,21 @@ async function executeIssue(issue, {tokensUsed}) {
       "--add-label", "nightly-running",
     ]);
     if (!lease.ok) throw new Error(lease.stderr || `failed to acquire local lease for #${issue.number}`);
+    const claimedIssue = ghJson([
+      "issue", "view", String(issue.number), "--repo", "Giftia/OpenButler",
+      "--json", "number,title,body,labels,updatedAt,url",
+    ]);
+    const claimedLabels = new Set((claimedIssue.labels ?? []).map((label) => label.name ?? label));
+    const competingPullRequests = claimedIssueNumbers(ghJson([
+      "pr", "list", "--repo", "Giftia/OpenButler", "--state", "open", "--limit", "200",
+      "--json", "number,title,body,headRefName,url",
+    ]) ?? []);
+    if (!claimedLabels.has("nightly-running") || claimedLabels.has("cloud-running") || competingPullRequests.has(issue.number)) {
+      throw new Error(`execution lease changed while claiming #${issue.number}`);
+    }
+    if (claimedIssue.title !== issue.title || claimedIssue.body !== issue.body) {
+      throw new Error(`Issue specification changed while claiming #${issue.number}`);
+    }
     let verifierFeedback = "";
     let approved = false;
     let codeVerifierVerdict = null;
@@ -482,7 +510,9 @@ async function executeIssue(issue, {tokensUsed}) {
     };
   } catch (error) {
     const dirty = command("git", ["status", "--porcelain=v1"], {cwd: worktree});
-    preserveWorktree = dirty.ok && Boolean(dirty.stdout.trim());
+    const committed = command("git", ["rev-list", "--count", "origin/main..HEAD"], {cwd: worktree});
+    preserveWorktree = (dirty.ok && Boolean(dirty.stdout.trim()))
+      || (committed.ok && Number(committed.stdout.trim()) > 0);
     mkdirSync(quarantineRoot, {recursive: true});
     writeFileSync(join(quarantineRoot, `issue-${issue.number}.json`), `${JSON.stringify({
       issue: issue.number,
