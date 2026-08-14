@@ -272,6 +272,19 @@ export function createProductionServices() {
         return null;
       }
     },
+    recordTaskMarker: ({issue, taskId, runId}) => ghCommand([
+      "issue", "comment", String(issue), "--repo", repo,
+      "--body", `[OpenButler automation marker]\nCloud task: ${taskId}\nRun: ${runId}\nThis marker is used only for fail-closed crash recovery.`,
+    ]).ok,
+    reconcileOrphanCloudLease: (number) => {
+      const issue = ghJson(["issue", "view", String(number), "--repo", repo, "--json", "comments"]);
+      const marker = [...(issue.comments ?? [])].reverse().find((comment) => String(comment.body ?? "").startsWith("[OpenButler automation marker]"));
+      const taskId = String(marker?.body ?? "").match(/Cloud task:\s*(task_[A-Za-z0-9_-]+)/)?.[1] ?? null;
+      if (!taskId) return {terminal: false, reason: "Cloud task marker is unavailable"};
+      const statusResult = codexReadWithRetry(["cloud", "status", taskId], {timeout: 30_000});
+      const status = statusResult.ok ? parseCloudTaskStatus(statusResult.stdout) : "unavailable";
+      return {terminal: ["ready", "failed", "cancelled"].includes(status), status, taskId};
+    },
     taskStatus: (taskId) => {
       const result = codexReadWithRetry(["cloud", "status", taskId], {timeout: 30_000});
       return result.ok ? parseCloudTaskStatus(result.stdout) : "unavailable";

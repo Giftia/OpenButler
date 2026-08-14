@@ -190,6 +190,8 @@ test("Nightly revalidates the Issue before and after pull request creation", () 
   assert.match(controller, /verifyCurrentIssueContract\(\);[\s\S]*git", \["push"/);
   assert.match(controller, /const prUrl = createdPullRequest\.stdout\.trim\(\);[\s\S]*verifyCurrentIssueContract\(\)/);
   assert.match(controller, /"pr", "close", prUrl[\s\S]*"--delete-branch"/);
+  assert.match(controller, /if \(!readyPullRequest\.ok\) throw/);
+  assert.match(controller, /if \(!acceptanceLabels\.ok\) throw/);
 });
 
 test("real data smoke is isolated, bounded, and redacted", () => {

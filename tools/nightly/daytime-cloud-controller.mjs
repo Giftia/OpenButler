@@ -149,6 +149,10 @@ async function runDaytimeDispatcherUnlocked({
     const orphanCloudLeases = activeLeases.filter((leasedIssue) => (leasedIssue.labels ?? []).some((label) => (label.name ?? label) === "cloud-running"));
     if (mode === "execute" && orphanCloudLeases.length === activeLeases.length) {
       for (const orphan of orphanCloudLeases) {
+        const reconciliation = services.reconcileOrphanCloudLease?.(orphan.number) ?? {terminal: false};
+        if (!reconciliation.terminal) {
+          return {status: "cleanup-required", issue: orphan.number, reason: "orphan Cloud lease has no provably terminal remote task; automation remains blocked"};
+        }
         if (!services.quarantine(orphan.number) || !services.release(orphan.number)) {
           return {status: "cleanup-required", issue: orphan.number, reason: "orphan Cloud lease could not be quarantined safely"};
         }
@@ -229,6 +233,9 @@ async function runDaytimeDispatcherUnlocked({
   const submitted = services.submit({environmentId, prompt: buildCloudPrompt({issue, baseSha, runId})});
   if (!submitted.ok || !submitted.taskId) {
     return services.saveState({...state, status: "submission-uncertain", reason: "Cloud submission did not return a confirmed task ID; lease retained for recovery"});
+  }
+  if (!services.recordTaskMarker?.({issue: issue.number, taskId: submitted.taskId, runId})) {
+    return services.saveState({...state, task_id: submitted.taskId, status: "cleanup-required", reason: "Cloud task was created but its crash-recovery marker could not be recorded; lease retained"});
   }
   return services.saveState({...state, task_id: submitted.taskId, status: "submitted", reason: null});
 }

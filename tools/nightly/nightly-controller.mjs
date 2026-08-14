@@ -574,13 +574,15 @@ async function executeIssue(issue, {tokensUsed}) {
       "--add-label", "review-pending",
     ]);
     if (!queueTransition.ok) throw new Error(queueTransition.stderr || `failed to move #${issue.number} to human review`);
-    ghCommand(["pr", "ready", String(pr.number), "--repo", "Giftia/OpenButler"]);
-    ghCommand([
+    const readyPullRequest = ghCommand(["pr", "ready", String(pr.number), "--repo", "Giftia/OpenButler"]);
+    if (!readyPullRequest.ok) throw new Error(`failed to mark PR #${pr.number} ready for review`);
+    const acceptanceLabels = ghCommand([
       "pr", "edit", String(pr.number), "--repo", "Giftia/OpenButler",
       "--remove-label", "review-pending",
       "--add-label", "acceptance-ready",
       "--add-label", "auto-merge-eligible",
     ]);
+    if (!acceptanceLabels.ok) throw new Error(`failed to mark PR #${pr.number} acceptance-ready`);
     preserveWorktree = false;
     return {
       tokens: totalTokens,

@@ -49,7 +49,8 @@ function issueApprovalStillCurrent(acceptance) {
   const timeline = ghJson(["api", `repos/Giftia/OpenButler/issues/${acceptance.issue_number}/timeline`, "--paginate"]);
   return !timeline.some((event) => {
     const at = Math.max(Date.parse(event.created_at) || 0, Date.parse(event.updated_at) || 0);
-    if (at <= approvedAt + 2_000) return false;
+    if (at <= approvedAt) return false;
+    if (event.event === "commented" && String(event.body ?? "").startsWith("[OpenButler automation marker]")) return false;
     if (["labeled", "unlabeled"].includes(event.event) && workflowLabels.has(event.label?.name)) return false;
     return !workflowEvents.has(event.event);
   });

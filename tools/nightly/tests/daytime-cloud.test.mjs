@@ -96,6 +96,8 @@ function mockServices(options = {}) {
     closePullRequest: () => { calls.push(["closePullRequest"]); return true; },
     submit: () => { calls.push(["submit"]); return options.submitted ?? {ok: true, taskId: "task_123"}; },
     recoverTask: () => { calls.push(["recover"]); return options.recoveredTask ?? null; },
+    recordTaskMarker: () => { calls.push(["recordTaskMarker"]); return options.markerOk ?? true; },
+    reconcileOrphanCloudLease: () => options.orphanReconciliation ?? {terminal: true, status: "ready"},
     taskStatus: () => options.taskStatus ?? "pending",
     taskDiff: () => options.diff ?? safeDiff,
     openPullRequests: () => options.openPullRequests ?? [],
@@ -150,6 +152,14 @@ test("an orphan Cloud lease without local state is quarantined in execute mode",
   assert.equal(services.calls.some(([name]) => name === "release"), true);
 });
 
+test("an orphan Cloud lease with an unproven remote task remains blocked", async () => {
+  const orphan = {number: 99, labels: [{name: "cloud-running"}]};
+  const services = mockServices({issues: [], executionLeases: [orphan], orphanReconciliation: {terminal: false, status: "pending"}});
+  const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services});
+  assert.equal(result.status, "cleanup-required");
+  assert.equal(services.calls.some(([name]) => name === "release"), false);
+});
+
 test("unmet dependency, hard stop, and stale specification are refused", async () => {
   const dependency = readyIssue({body: "Depends on #12"});
   assert.equal((await runDaytimeDispatcher({now: daytime(), environmentId: "configured", services: mockServices({issue: dependency})})).status, "no-op");
@@ -159,10 +169,11 @@ test("unmet dependency, hard stop, and stale specification are refused", async (
   assert.equal((await runDaytimeDispatcher({now: daytime(), environmentId: "configured", services: mockServices({issue: stale})})).status, "no-op");
 });
 
-test("GitHub ready-label timestamp drift is tolerated but later updates are stale", () => {
+test("only the exact GitHub ready-label timestamp is accepted", () => {
   const readyAt = "2026-08-14T02:00:00.000Z";
   const timeline = [{event: "labeled", label: {name: "ready-for-agent"}, created_at: readyAt}];
-  assert.equal(evaluateSpecificationFreshness({createdAt: "2026-08-13T00:00:00Z", updatedAt: "2026-08-14T02:00:01.000Z"}, timeline).fresh, true);
+  assert.equal(evaluateSpecificationFreshness({createdAt: "2026-08-13T00:00:00Z", updatedAt: readyAt}, timeline).fresh, true);
+  assert.equal(evaluateSpecificationFreshness({createdAt: "2026-08-13T00:00:00Z", updatedAt: "2026-08-14T02:00:01.000Z"}, timeline).fresh, false);
   assert.equal(evaluateSpecificationFreshness({createdAt: "2026-08-13T00:00:00Z", updatedAt: "2026-08-14T02:00:03.000Z"}, timeline).fresh, false);
 });
 
@@ -202,6 +213,19 @@ test("editing pre-existing Issue activity after approval requires retriage", () 
   const result = evaluateSpecificationFreshness(issue, timeline);
   assert.equal(result.fresh, false);
   assert.match(result.reasons.join(" "), /activity changed/);
+});
+
+test("Issue activity one second after approval is never covered by a clock tolerance", () => {
+  const issue = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});
+  const timeline = [...readyTimeline, {event: "commented", body: "changed", created_at: "2026-08-12T01:00:01Z"}];
+  assert.equal(evaluateSpecificationFreshness(issue, timeline).fresh, false);
+});
+
+test("the dispatcher records a Cloud recovery marker before reporting submission", async () => {
+  const services = mockServices();
+  const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services, runId: "run-marker"});
+  assert.equal(result.status, "submitted");
+  assert.equal(services.calls.some(([name]) => name === "recordTaskMarker"), true);
 });
 
 test("implementation PR appearing during claim prevents Cloud submission", async () => {
