@@ -183,6 +183,17 @@ test("post-approval Issue activity during claim requires retriage", async () => 
   assert.equal(services.calls.some(([name]) => name === "submit"), false);
 });
 
+test("editing pre-existing Issue activity after approval requires retriage", () => {
+  const issue = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});
+  const timeline = [
+    {event: "commented", created_at: "2026-08-12T00:30:00Z", updated_at: "2026-08-12T01:10:00Z"},
+    ...readyTimeline,
+  ];
+  const result = evaluateSpecificationFreshness(issue, timeline);
+  assert.equal(result.fresh, false);
+  assert.match(result.reasons.join(" "), /activity changed/);
+});
+
 test("implementation PR appearing during claim prevents Cloud submission", async () => {
   const pr = {number: 9, title: "Fixes #34", body: "", headRefName: "other"};
   const services = mockServices({openPullRequests: [pr]});

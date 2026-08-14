@@ -78,6 +78,7 @@ test("daytime Cloud scheduling is bounded and never auto-merges", () => {
   assert.match(scheduler, /19 \* 60 \+ 30/);
   assert.match(controller, /Issue specification changed after Cloud submission/);
   assert.match(controller, /origin\/main changed after Cloud submission/);
+  assert.match(services, /const createdPullRequest = ghJson[\s\S]*verifyIssueContract\(\)[\s\S]*"pr", "close", createdUrl/);
   assert.match(services, /cloud", "exec"/);
   assert.match(services, /cloud", "diff"/);
   assert.match(services, /normalizeUnifiedDiff/);

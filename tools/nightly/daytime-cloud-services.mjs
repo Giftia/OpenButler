@@ -358,7 +358,15 @@ export function createProductionServices() {
           "--body", `Closes #${state.issue}\n\nCreated by the daytime Cloud dispatcher after exact-diff, privacy, base-SHA, and focused-test verification. This controller never auto-merges.`,
         ], {cwd: worktree});
         if (!created.ok) throw new Error("unable to create draft pull request");
-        return ghJson(["pr", "view", created.stdout.trim(), "--repo", repo, "--json", "number,url"]);
+        const createdUrl = created.stdout.trim();
+        const createdPullRequest = ghJson(["pr", "view", createdUrl, "--repo", repo, "--json", "number,url"]);
+        try {
+          verifyIssueContract();
+        } catch (error) {
+          ghCommand(["pr", "close", createdUrl, "--repo", repo, "--delete-branch"]);
+          throw error;
+        }
+        return createdPullRequest;
       } finally {
         command("git", ["worktree", "remove", "--force", worktree], {timeout: 120_000});
       }

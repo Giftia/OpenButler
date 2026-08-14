@@ -57,7 +57,7 @@ export function evaluateSpecificationFreshness(issue, timeline = []) {
   if (latestReadyAt && latestSpecificationAt > latestReadyAt + 2_000) reasons.push("specification changed after ready-for-agent approval");
   const allowedExecutionEvents = new Set(["cloud-running", "nightly-running"]);
   const postApprovalChanges = timeline.filter((event) => {
-    const at = Date.parse(event.created_at) || 0;
+    const at = Math.max(Date.parse(event.created_at) || 0, Date.parse(event.updated_at) || 0);
     if (!latestReadyAt || at <= latestReadyAt + 2_000) return false;
     if (["labeled", "unlabeled"].includes(event.event) && allowedExecutionEvents.has(event.label?.name)) return false;
     return !["subscribed", "unsubscribed"].includes(event.event);
