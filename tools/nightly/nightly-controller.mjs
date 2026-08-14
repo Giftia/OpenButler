@@ -18,7 +18,7 @@ import {
   tokenUsageFromJsonl,
 } from "./nightly-lib.mjs";
 import {acquireOwnedLock, releaseOwnedLock} from "./daytime-cloud-services.mjs";
-import {evaluateSpecificationFreshness, issueSpecificationFingerprint} from "./daytime-cloud-lib.mjs";
+import {evaluateSpecificationFreshness, issueContentFingerprint, issueSpecificationFingerprint} from "./daytime-cloud-lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..");
@@ -267,6 +267,7 @@ try {
     });
     const freshness = evaluateSpecificationFreshness(issue, timeline);
     evaluation.reasons.push(...freshness.reasons);
+    evaluation.approvedAt = freshness.latestReadyAt ? new Date(freshness.latestReadyAt).toISOString() : null;
     const quarantinePath = join(quarantineRoot, `issue-${issue.number}.json`);
     let localQuarantine = existsSync(quarantinePath);
     if (localQuarantine) {
@@ -557,21 +558,22 @@ async function executeIssue(issue, {tokensUsed}) {
       ghCommand(["pr", "close", prUrl, "--repo", "Giftia/OpenButler", "--delete-branch"]);
       throw error;
     }
+    log("issue_claimed_by_pull_request", {issue: issue.number, pull_request_url: prUrl});
+    const pr = ghJson(["pr", "view", prUrl, "--repo", "Giftia/OpenButler", "--json", "number,url,headRefOid,title,commits"]);
+    const checks = commandWithRetry("gh", ["pr", "checks", String(pr.number), "--repo", "Giftia/OpenButler", "--watch", "--fail-fast"], {cwd: worktree, timeout: 45 * 60 * 1000});
+    if (!checks.ok) {
+      ghCommand(["pr", "edit", String(pr.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
+      ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--remove-label", "ready-for-agent", "--add-label", "nightly-failed"]);
+      preserveWorktree = false;
+      return {tokens: totalTokens, stop: false, pullRequest: {...pr, head_sha: pr.headRefOid, status: "ci_failed"}, scenarios: []};
+    }
+    verifyCurrentIssueContract();
     const queueTransition = ghCommand([
       "issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler",
       "--remove-label", "ready-for-agent",
       "--add-label", "review-pending",
     ]);
     if (!queueTransition.ok) throw new Error(queueTransition.stderr || `failed to move #${issue.number} to human review`);
-    log("issue_claimed_by_pull_request", {issue: issue.number, pull_request_url: prUrl});
-    const pr = ghJson(["pr", "view", prUrl, "--repo", "Giftia/OpenButler", "--json", "number,url,headRefOid,title,commits"]);
-    const checks = commandWithRetry("gh", ["pr", "checks", String(pr.number), "--repo", "Giftia/OpenButler", "--watch", "--fail-fast"], {cwd: worktree, timeout: 45 * 60 * 1000});
-    if (!checks.ok) {
-      ghCommand(["pr", "edit", String(pr.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
-      ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
-      preserveWorktree = false;
-      return {tokens: totalTokens, stop: false, pullRequest: {...pr, head_sha: pr.headRefOid, status: "ci_failed"}, scenarios: []};
-    }
     ghCommand(["pr", "ready", String(pr.number), "--repo", "Giftia/OpenButler"]);
     ghCommand([
       "pr", "edit", String(pr.number), "--repo", "Giftia/OpenButler",
@@ -595,6 +597,9 @@ async function executeIssue(issue, {tokensUsed}) {
         product_privacy_verifier: productVerifierVerdict.verdict,
         nightly_status: "pending",
         execution_surface: "local",
+        issue_number: issue.number,
+        issue_content_fingerprint: issueContentFingerprint(issue),
+        issue_approved_at: issue.evaluation?.approvedAt ?? null,
       },
       scenarios: [{id: `pr-${pr.number}`, pr_number: pr.number, title: issue.title, purpose: "验证本次修复", steps: ["打开对应产品入口", "执行 Issue 验收步骤"], expected: "行为符合 Issue done_when，且无隐私回归。", status: "pending"}],
     };

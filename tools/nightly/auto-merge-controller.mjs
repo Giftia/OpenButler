@@ -2,7 +2,8 @@ import {execFileSync, spawnSync} from "node:child_process";
 import {existsSync, mkdirSync, readFileSync, writeFileSync} from "node:fs";
 import {dirname, join, resolve} from "node:path";
 import {fileURLToPath} from "node:url";
-import {canAutoMergePullRequest, isFreshAcceptancePack, readJson, sanitizeAcceptanceValue} from "./nightly-lib.mjs";
+import {canAutoMergePullRequest, isFreshAcceptancePack, parseDependencies, readJson, sanitizeAcceptanceValue} from "./nightly-lib.mjs";
+import {issueContentFingerprint} from "./daytime-cloud-lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..", "..");
@@ -31,6 +32,27 @@ function gh(args, {allowFailure = false, timeout = 120_000} = {}) {
 function ghJson(args) {
   const result = gh(args);
   return JSON.parse(result.stdout || "null");
+}
+
+function issueApprovalStillCurrent(acceptance) {
+  if (!acceptance.issue_number || !acceptance.issue_content_fingerprint || !acceptance.issue_approved_at) return false;
+  const issue = ghJson(["issue", "view", String(acceptance.issue_number), "--repo", "Giftia/OpenButler", "--json", "number,title,body,state"]);
+  if (issue.state !== "OPEN" || issueContentFingerprint(issue) !== acceptance.issue_content_fingerprint) return false;
+  const dependencies = parseDependencies(issue.body);
+  if (dependencies.length) {
+    const closed = new Set((ghJson(["issue", "list", "--repo", "Giftia/OpenButler", "--state", "closed", "--limit", "200", "--json", "number"]) ?? []).map((item) => item.number));
+    if (dependencies.some((number) => !closed.has(number))) return false;
+  }
+  const approvedAt = Date.parse(acceptance.issue_approved_at);
+  const workflowLabels = new Set(["ready-for-agent", "nightly-running", "review-pending", "acceptance-ready", "auto-merge-eligible"]);
+  const workflowEvents = new Set(["cross-referenced", "connected", "referenced", "mentioned", "subscribed", "unsubscribed"]);
+  const timeline = ghJson(["api", `repos/Giftia/OpenButler/issues/${acceptance.issue_number}/timeline`, "--paginate"]);
+  return !timeline.some((event) => {
+    const at = Math.max(Date.parse(event.created_at) || 0, Date.parse(event.updated_at) || 0);
+    if (at <= approvedAt + 2_000) return false;
+    if (["labeled", "unlabeled"].includes(event.event) && workflowLabels.has(event.label?.name)) return false;
+    return !workflowEvents.has(event.event);
+  });
 }
 
 function createRevertPullRequest(mergeSha, prNumber) {
@@ -93,6 +115,10 @@ for (const acceptance of pack.pull_requests ?? []) {
   const labels = new Set((pullRequest.labels ?? []).map((label) => label.name));
   if (!labels.has("acceptance-ready") || !labels.has("auto-merge-eligible")) {
     pack.auto_merge.blocked.push({pr: acceptance.number, reasons: ["required merge labels missing"]});
+    continue;
+  }
+  if (!issueApprovalStillCurrent(acceptance)) {
+    pack.auto_merge.blocked.push({pr: acceptance.number, reasons: ["Issue approval is stale or cannot be verified"]});
     continue;
   }
   const gate = canAutoMergePullRequest({

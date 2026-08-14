@@ -122,6 +122,19 @@ async function runDaytimeDispatcherUnlocked({
 
     try {
       const pr = services.materialize({state, diff, paths: evaluatedDiff.paths});
+      const issueAfterPullRequest = services.issue(state.issue);
+      const afterPullRequestEligibility = evaluateIssueEligibility(issueAfterPullRequest, {
+        closedIssues: services.closedIssues(),
+        claimedIssues: new Set(),
+        ownedLease: "cloud-running",
+      });
+      const afterPullRequestFreshness = evaluateSpecificationFreshness(issueAfterPullRequest, services.timeline(state.issue));
+      if (!afterPullRequestEligibility.eligible
+        || !afterPullRequestFreshness.fresh
+        || issueSpecificationFingerprint(issueAfterPullRequest) !== state.specification_fingerprint) {
+        services.closePullRequest?.(pr.number);
+        return terminalFailure(services, state, "Issue changed after Cloud pull request creation", "failed");
+      }
       if (!services.transitionToReview(state.issue)) {
         return terminalFailure(services, state, "pull request exists but Issue label transition failed", "failed");
       }
@@ -133,9 +146,18 @@ async function runDaytimeDispatcherUnlocked({
 
   const activeLeases = services.executionLeases?.() ?? [];
   if (activeLeases.length) {
-    const result = {status: "blocked", issue: null, reason: "another Cloud or Nightly execution lease is active"};
-    services.recordStatus?.({...result, run_id: runId});
-    return result;
+    const orphanCloudLeases = activeLeases.filter((leasedIssue) => (leasedIssue.labels ?? []).some((label) => (label.name ?? label) === "cloud-running"));
+    if (mode === "execute" && orphanCloudLeases.length === activeLeases.length) {
+      for (const orphan of orphanCloudLeases) {
+        if (!services.quarantine(orphan.number) || !services.release(orphan.number)) {
+          return {status: "cleanup-required", issue: orphan.number, reason: "orphan Cloud lease could not be quarantined safely"};
+        }
+      }
+    } else {
+      const result = {status: "blocked", issue: null, reason: "another Cloud or Nightly execution lease is active"};
+      services.recordStatus?.({...result, run_id: runId});
+      return result;
+    }
   }
   const queue = services.queue();
   const claimed = claimedIssueNumbers(queue.pullRequests);

@@ -13,6 +13,8 @@ test("automatic merge is bound to dual verification and accepted head SHA", () =
   assert.match(source, /acceptance\.head_sha/);
   assert.match(source, /canAutoMergePullRequest/);
   assert.match(source, /createRevertPullRequest/);
+  assert.match(source, /issueApprovalStillCurrent/);
+  assert.match(source, /issue_content_fingerprint/);
   for (const check of ["Butler Core", "PC Activity", "Workstation Vision", "Frontend Build", "Desktop Contract", "Loop Governance"]) {
     assert.match(source, new RegExp(check));
   }

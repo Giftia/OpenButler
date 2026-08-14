@@ -39,6 +39,14 @@ export function issueSpecificationFingerprint(issue) {
   return createHash("sha256").update(JSON.stringify(contract)).digest("hex");
 }
 
+export function issueContentFingerprint(issue) {
+  return createHash("sha256").update(JSON.stringify({
+    number: Number(issue.number),
+    title: String(issue.title ?? "").trim(),
+    body: String(issue.body ?? "").replace(/\r\n/g, "\n").trim(),
+  })).digest("hex");
+}
+
 export function evaluateSpecificationFreshness(issue, timeline = []) {
   const readyEvents = timeline.filter((event) => event.event === "labeled" && event.label?.name === "ready-for-agent");
   const latestReadyAt = Math.max(...readyEvents.map((event) => Date.parse(event.created_at) || 0), 0);
@@ -60,7 +68,7 @@ export function evaluateSpecificationFreshness(issue, timeline = []) {
     const at = Math.max(Date.parse(event.created_at) || 0, Date.parse(event.updated_at) || 0);
     if (!latestReadyAt || at <= latestReadyAt + 2_000) return false;
     if (["labeled", "unlabeled"].includes(event.event) && allowedExecutionEvents.has(event.label?.name)) return false;
-    return !["subscribed", "unsubscribed"].includes(event.event);
+    return !["subscribed", "unsubscribed", "cross-referenced", "connected", "referenced", "mentioned"].includes(event.event);
   });
   if (postApprovalChanges.length) reasons.push("Issue activity changed after ready-for-agent approval");
   return {fresh: reasons.length === 0, reasons, latestReadyAt, latestSpecificationAt};

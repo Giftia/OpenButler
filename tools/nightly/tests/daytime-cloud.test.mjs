@@ -93,6 +93,7 @@ function mockServices(options = {}) {
     restoreLease: () => { calls.push(["restoreLease"]); if (options.restoreLeaseOk === false) return false; withLease(); return true; },
     quarantine: () => { calls.push(["quarantine"]); return options.quarantineOk ?? true; },
     transitionToReview: () => { calls.push(["transition"]); withoutLease(); return options.transitionOk ?? true; },
+    closePullRequest: () => { calls.push(["closePullRequest"]); return true; },
     submit: () => { calls.push(["submit"]); return options.submitted ?? {ok: true, taskId: "task_123"}; },
     recoverTask: () => { calls.push(["recover"]); return options.recoveredTask ?? null; },
     taskStatus: () => options.taskStatus ?? "pending",
@@ -138,6 +139,15 @@ test("a global execution lease blocks selection of a different Issue", async () 
   assert.equal(result.status, "blocked");
   assert.match(result.reason, /execution lease is active/);
   assert.equal(services.calls.some(([name]) => name === "claim"), false);
+});
+
+test("an orphan Cloud lease without local state is quarantined in execute mode", async () => {
+  const orphan = {number: 99, labels: [{name: "cloud-running"}]};
+  const services = mockServices({issues: [], executionLeasesSequence: [[orphan]]});
+  const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services});
+  assert.equal(result.status, "no-op");
+  assert.equal(services.calls.some(([name]) => name === "quarantine"), true);
+  assert.equal(services.calls.some(([name]) => name === "release"), true);
 });
 
 test("unmet dependency, hard stop, and stale specification are refused", async () => {

@@ -255,6 +255,7 @@ export function createProductionServices() {
     restoreLease: (number) => ghCommand(["issue", "edit", String(number), "--repo", repo, "--add-label", "cloud-running"]).ok,
     quarantine: (number) => ghCommand(["issue", "edit", String(number), "--repo", repo, "--remove-label", "ready-for-agent", "--add-label", "nightly-failed"]).ok,
     transitionToReview: (number) => ghCommand(["issue", "edit", String(number), "--repo", repo, "--remove-label", "ready-for-agent", "--remove-label", "cloud-running", "--add-label", "review-pending"]).ok,
+    closePullRequest: (number) => ghCommand(["pr", "close", String(number), "--repo", repo, "--delete-branch"]).ok,
     submit: ({environmentId, prompt}) => {
       const result = codexRun(["cloud", "exec", "--env", environmentId, "--attempts", "1", "--branch", "main", prompt], {timeout: 120_000});
       return {ok: result.ok, taskId: result.ok ? parseCloudTaskId(`${result.stdout}\n${result.stderr}`) : null};
