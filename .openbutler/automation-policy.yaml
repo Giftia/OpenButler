@@ -83,4 +83,11 @@ nightly:
   token_cap: 750000
   stop_starting_at_tokens: 600000
   issue_token_cap: 160000
+  local_issue_token_cap_enforcement: jsonl_usage_accounting
+  cloud_budget:
+    token_telemetry: unavailable_in_supported_cli
+    attempts: 1
+    wall_time_hours: 14
+    max_changed_files: 5
+    max_verified_diff_bytes: 262144
   max_fix_attempts: 3

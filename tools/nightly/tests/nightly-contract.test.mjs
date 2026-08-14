@@ -157,7 +157,7 @@ test("nightly failures preserve useful recovery state and leave the queue", () =
   assert.match(controller, /preserveWorktree/);
   assert.match(controller, /--add-label", "nightly-failed"/);
   assert.match(controller, /if \(!quarantined\.ok\) releaseExecutionLease = false/);
-  assert.match(controller, /if \(releaseExecutionLease\) ghCommand/);
+  assert.match(controller, /if \(leaseAcquired && releaseExecutionLease\) ghCommand/);
   assert.match(controller, /commandWithRetry/);
 });
 
@@ -166,7 +166,10 @@ test("Cloud and Nightly dispatchers share a fail-closed execution gate", () => {
   const daytime = read("tools/nightly/daytime-cloud-controller.mjs");
   assert.match(controller, /daytimeStatePath/);
   assert.match(controller, /--label", "cloud-running"/);
+  assert.match(controller, /executionClaimLockPath/);
+  assert.match(controller, /an unresolved Nightly execution lease is active/);
   assert.match(daytime, /executionLeases/);
+  assert.match(daytime, /acquireExecutionClaimLock/);
   assert.match(daytime, /another Cloud or Nightly execution lease is active/);
 });
 

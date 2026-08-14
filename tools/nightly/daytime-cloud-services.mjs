@@ -3,7 +3,7 @@ import {existsSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, write
 import {randomUUID} from "node:crypto";
 import {dirname, join, resolve} from "node:path";
 import {fileURLToPath} from "node:url";
-import {issueSpecificationFingerprint, normalizeUnifiedDiff, parseCloudTaskId, parseCloudTaskStatus, redactedCloudStatus} from "./daytime-cloud-lib.mjs";
+import {evaluateSpecificationFreshness, issueSpecificationFingerprint, normalizeUnifiedDiff, parseCloudTaskId, parseCloudTaskStatus, redactedCloudStatus} from "./daytime-cloud-lib.mjs";
 import {claimedIssueNumbers, evaluateIssueEligibility, resolveCodexCommand, runWithRetry} from "./nightly-lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -12,6 +12,7 @@ const runtimeRoot = join(repoRoot, "data", "daytime-cloud");
 const activePath = join(runtimeRoot, "active-run.json");
 const latestStatusPath = join(runtimeRoot, "latest-status.json");
 const lockPath = join(runtimeRoot, "controller.lock");
+const executionClaimLockPath = join(repoRoot, "data", "automation", "execution-claim.lock");
 const repo = "Giftia/OpenButler";
 
 function processIsAlive(pid) {
@@ -184,6 +185,7 @@ export function createProductionServices() {
     return next;
   };
   let lockToken = null;
+  let executionClaimLockToken = null;
 
   return {
     acquireLock: () => {
@@ -195,6 +197,16 @@ export function createProductionServices() {
     releaseLock: () => {
       if (lockToken) releaseOwnedLock(lockPath, lockToken);
       lockToken = null;
+    },
+    acquireExecutionClaimLock: () => {
+      mkdirSync(dirname(executionClaimLockPath), {recursive: true});
+      const result = acquireOwnedLock(executionClaimLockPath);
+      executionClaimLockToken = result.token;
+      return result.acquired;
+    },
+    releaseExecutionClaimLock: () => {
+      if (executionClaimLockToken) releaseOwnedLock(executionClaimLockPath, executionClaimLockToken);
+      executionClaimLockToken = null;
     },
     recordStatus: (status) => {
       mkdirSync(runtimeRoot, {recursive: true});
@@ -265,6 +277,10 @@ export function createProductionServices() {
       try {
         const applied = codexRun(["cloud", "apply", state.task_id, "--attempt", "1"], {cwd: worktree, timeout: 10 * 60_000});
         if (!applied.ok) throw new Error("unable to apply Cloud result");
+        const expectedPaths = new Set(paths);
+        const preTestStatus = command("git", ["status", "--porcelain=v1", "--untracked-files=all"], {cwd: worktree});
+        const preTestUnexpected = preTestStatus.stdout.split(/\r?\n/).filter(Boolean).map((line) => line.slice(3)).filter((path) => !expectedPaths.has(path));
+        if (!preTestStatus.ok || preTestUnexpected.length) throw new Error("Cloud apply created paths outside the verified diff before tests");
         if (!command("git", ["add", "-N", "--", ...paths], {cwd: worktree}).ok) throw new Error("unable to prepare exact Cloud diff verification");
         const exact = command("git", ["diff", "--no-ext-diff", "--binary"], {cwd: worktree});
         if (!exact.ok || normalizeUnifiedDiff(diffBody(exact.stdout)) !== normalizeUnifiedDiff(diff)) {
@@ -304,6 +320,8 @@ export function createProductionServices() {
           ownedLease: "cloud-running",
         });
         if (!currentEligibility.eligible) throw new Error(`Issue became ineligible during Cloud result verification: ${currentEligibility.reasons.join(", ")}`);
+        const currentFreshness = evaluateSpecificationFreshness(currentIssue, ghJson(["api", `repos/${repo}/issues/${state.issue}/timeline`, "--paginate"]));
+        if (!currentFreshness.fresh) throw new Error(`Issue requires retriage during Cloud result verification: ${currentFreshness.reasons.join(", ")}`);
         if (issueSpecificationFingerprint(currentIssue) !== state.specification_fingerprint) throw new Error("Issue specification changed during Cloud result verification");
         const competing = currentPullRequests
           .filter((pr) => claimedIssueNumbers([pr]).has(state.issue) && pr.headRefName !== state.branch);

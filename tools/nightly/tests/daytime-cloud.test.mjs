@@ -6,6 +6,8 @@ import {tmpdir} from "node:os";
 import {dirname, join, resolve} from "node:path";
 import {fileURLToPath} from "node:url";
 import {
+  CLOUD_DIFF_BYTE_CAP,
+  CLOUD_FILE_CAP,
   evaluateCloudDiff,
   evaluateSpecificationFreshness,
   issueSpecificationFingerprint,
@@ -58,6 +60,8 @@ function mockServices(options = {}) {
   let issue = options.issue ?? readyIssue();
   let state = options.state ?? null;
   const calls = [];
+  let leaseRead = 0;
+  let timelineRead = 0;
   const withLease = () => {
     const labels = (issue.labels ?? []).filter((label) => (label.name ?? label) !== "cloud-running");
     issue = {...issue, labels: [...labels, {name: "cloud-running"}]};
@@ -80,8 +84,10 @@ function mockServices(options = {}) {
     }),
     issue: () => options.currentIssue ?? issue,
     closedIssues: () => new Set(options.currentClosedIssues ?? options.closedIssues ?? []),
-    executionLeases: () => options.executionLeases ?? [],
-    timeline: () => options.timeline ?? readyTimeline,
+    executionLeases: () => (options.executionLeasesSequence?.[leaseRead++] ?? options.executionLeases ?? []),
+    timeline: () => (options.timelineSequence?.[timelineRead++] ?? options.timeline ?? readyTimeline),
+    acquireExecutionClaimLock: () => { calls.push(["claimLock"]); return options.claimLockOk ?? true; },
+    releaseExecutionClaimLock: () => { calls.push(["releaseClaimLock"]); },
     claim: () => { calls.push(["claim"]); if (options.claimOk === false) return false; withLease(); return true; },
     release: () => { calls.push(["release"]); if (options.releaseOk === false) return false; withoutLease(); return true; },
     restoreLease: () => { calls.push(["restoreLease"]); if (options.restoreLeaseOk === false) return false; withLease(); return true; },
@@ -158,6 +164,23 @@ test("eligible execute submission acquires one lease and persists task metadata"
   assert.equal(result.base_sha, "abc");
   assert.equal(result.task_id, "task_123");
   assert.deepEqual(services.calls.filter(([name]) => ["claim", "submit"].includes(name)), [["claim"], ["submit"]]);
+});
+
+test("a competing Nightly lease appearing during the atomic claim blocks Cloud submission", async () => {
+  const competing = [{number: 99, labels: [{name: "nightly-running"}]}];
+  const services = mockServices({executionLeasesSequence: [[], [], competing]});
+  const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services, runId: "run-race"});
+  assert.match(result.reason, /competing execution lease/);
+  assert.equal(services.calls.some(([name]) => name === "submit"), false);
+  assert.equal(services.calls.some(([name]) => name === "releaseClaimLock"), true);
+});
+
+test("post-approval Issue activity during claim requires retriage", async () => {
+  const changedTimeline = [...readyTimeline, {event: "commented", created_at: "2026-08-12T01:10:00Z"}];
+  const services = mockServices({timelineSequence: [readyTimeline, readyTimeline, changedTimeline]});
+  const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services, runId: "run-freshness"});
+  assert.match(result.reason, /Issue became ineligible|activity changed|retriage/);
+  assert.equal(services.calls.some(([name]) => name === "submit"), false);
 });
 
 test("implementation PR appearing during claim prevents Cloud submission", async () => {
@@ -406,5 +429,8 @@ test("Cloud CLI output parsers and diff guard fail closed", () => {
   assert.equal(parseCloudTaskStatus("Status: COMPLETED"), "ready");
   assert.equal(parseCloudTaskStatus("something new"), "unknown");
   assert.equal(evaluateCloudDiff(safeDiff).accepted, true);
+  assert.equal(evaluateCloudDiff("x".repeat(CLOUD_DIFF_BYTE_CAP + 1)).accepted, false);
+  const tooManyFiles = Array.from({length: CLOUD_FILE_CAP + 1}, (_, index) => `diff --git a/file-${index}.txt b/file-${index}.txt\n--- /dev/null\n+++ b/file-${index}.txt\n@@ -0,0 +1 @@\n+x\n`).join("");
+  assert.equal(evaluateCloudDiff(tooManyFiles).accepted, false);
   assert.equal(evaluateCloudDiff("not a diff").accepted, false);
 });

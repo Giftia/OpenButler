@@ -158,34 +158,49 @@ async function runDaytimeDispatcherUnlocked({
     return result;
   }
 
-  state = services.saveState({
-    schema_version: 1,
-    run_id: runId,
-    issue: issue.number,
-    base_sha: baseSha,
-    task_id: null,
-    branch: `codex/cloud-${issue.number}-${runId.replace(/[^0-9A-Za-z]/g, "").slice(0, 20)}`,
-    specification_fingerprint: issueSpecificationFingerprint(issue),
-    claimed_at: now.toISOString(),
-    status: "claiming",
-    reason: null,
-  });
-  if (!services.claim(issue.number)) {
-    return services.completeState({...state, status: "failed", reason: "unable to acquire cloud-running lease"});
-  }
-  const claimedIssue = services.issue(issue.number);
-  const labels = new Set((claimedIssue.labels ?? []).map((label) => label.name ?? label));
-  const postClaimEvaluation = evaluateIssueEligibility(claimedIssue, {
-    closedIssues: services.closedIssues(),
-    claimedIssues: claimedIssueNumbers(services.openPullRequests()),
-    ownedLease: "cloud-running",
-  });
-  if (!postClaimEvaluation.eligible) return terminalFailure(services, state, `Issue became ineligible while claiming: ${postClaimEvaluation.reasons.join(", ")}`);
-  if (issueSpecificationFingerprint(claimedIssue) !== state.specification_fingerprint) {
-    return terminalFailure(services, state, "Issue specification changed while claiming");
-  }
-  if (services.baseSha() !== state.base_sha) {
-    return terminalFailure(services, state, "origin/main changed while claiming");
+  if (!services.acquireExecutionClaimLock?.()) return {status: "blocked", issue: null, reason: "another execution surface is claiming work"};
+  try {
+    if ((services.executionLeases?.() ?? []).length) return {status: "blocked", issue: null, reason: "another Cloud or Nightly execution lease is active"};
+    const issueDuringClaim = services.issue(issue.number);
+    const freshnessDuringClaim = evaluateSpecificationFreshness(issueDuringClaim, services.timeline(issue.number));
+    if (!freshnessDuringClaim.fresh || issueSpecificationFingerprint(issueDuringClaim) !== issueSpecificationFingerprint(issue)) {
+      return {status: "blocked", issue: issue.number, reason: "Issue requires retriage before Cloud submission"};
+    }
+    state = services.saveState({
+      schema_version: 1,
+      run_id: runId,
+      issue: issue.number,
+      base_sha: baseSha,
+      task_id: null,
+      branch: `codex/cloud-${issue.number}-${runId.replace(/[^0-9A-Za-z]/g, "").slice(0, 20)}`,
+      specification_fingerprint: issueSpecificationFingerprint(issue),
+      claimed_at: now.toISOString(),
+      status: "claiming",
+      reason: null,
+    });
+    if (!services.claim(issue.number)) {
+      return services.completeState({...state, status: "failed", reason: "unable to acquire cloud-running lease"});
+    }
+    const claimedIssue = services.issue(issue.number);
+    const postClaimEvaluation = evaluateIssueEligibility(claimedIssue, {
+      closedIssues: services.closedIssues(),
+      claimedIssues: claimedIssueNumbers(services.openPullRequests()),
+      ownedLease: "cloud-running",
+    });
+    const postClaimFreshness = evaluateSpecificationFreshness(claimedIssue, services.timeline(issue.number));
+    if (!postClaimEvaluation.eligible || !postClaimFreshness.fresh) {
+      return terminalFailure(services, state, `Issue became ineligible while claiming: ${[...postClaimEvaluation.reasons, ...postClaimFreshness.reasons].join(", ")}`);
+    }
+    if (issueSpecificationFingerprint(claimedIssue) !== state.specification_fingerprint) {
+      return terminalFailure(services, state, "Issue specification changed while claiming");
+    }
+    if (services.baseSha() !== state.base_sha) {
+      return terminalFailure(services, state, "origin/main changed while claiming");
+    }
+    const competingLeases = (services.executionLeases?.() ?? []).filter((leasedIssue) => Number(leasedIssue.number) !== Number(issue.number));
+    if (competingLeases.length) return terminalFailure(services, state, "a competing execution lease appeared while claiming");
+  } finally {
+    services.releaseExecutionClaimLock?.();
   }
 
   state = services.saveState({...state, status: "submitting"});

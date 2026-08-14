@@ -34,6 +34,7 @@ const cutoffFlag = join(repoRoot, "data", "nightly", "control", "stop-new-issues
 const eventsPath = join(runDir, "events.jsonl");
 const quarantineRoot = join(repoRoot, "data", "nightly", "quarantine");
 const daytimeStatePath = join(repoRoot, "data", "daytime-cloud", "active-run.json");
+const executionClaimLockPath = join(repoRoot, "data", "automation", "execution-claim.lock");
 const codexCommand = resolveCodexCommand();
 mkdirSync(runDir, {recursive: true});
 
@@ -223,6 +224,11 @@ try {
     "--label", "cloud-running", "--limit", "10", "--json", "number",
   ]) ?? [];
   if (cloudLeases.length) fail("a Cloud execution lease is active", 0);
+  const orphanNightlyLeases = ghJson([
+    "issue", "list", "--repo", "Giftia/OpenButler", "--state", "open",
+    "--label", "nightly-running", "--limit", "10", "--json", "number",
+  ]) ?? [];
+  if (orphanNightlyLeases.length) fail("an unresolved Nightly execution lease is active", 0);
   const issues = ghJson([
     "issue", "list", "--repo", "Giftia/OpenButler", "--state", "open",
     "--label", "ready-for-agent", "--limit", "100",
@@ -359,12 +365,27 @@ async function executeIssue(issue, {tokensUsed}) {
   let totalTokens = 0;
   let preserveWorktree = false;
   let releaseExecutionLease = true;
+  let leaseAcquired = false;
   try {
+    const executionClaimLock = acquireOwnedLock(executionClaimLockPath);
+    if (!executionClaimLock.acquired) throw new Error("another execution surface is claiming work");
+    try {
+      if (existsSync(daytimeStatePath)) throw new Error("an unresolved daytime Cloud run appeared while claiming");
+      const competingCloudLeases = ghJson([
+        "issue", "list", "--repo", "Giftia/OpenButler", "--state", "open",
+        "--label", "cloud-running", "--limit", "10", "--json", "number",
+      ]) ?? [];
+      const orphanNightlyLeases = ghJson([
+        "issue", "list", "--repo", "Giftia/OpenButler", "--state", "open",
+        "--label", "nightly-running", "--limit", "10", "--json", "number",
+      ]) ?? [];
+      if (competingCloudLeases.length || orphanNightlyLeases.length) throw new Error("another execution lease is active while claiming");
     const lease = ghCommand([
       "issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler",
       "--add-label", "nightly-running",
     ]);
     if (!lease.ok) throw new Error(lease.stderr || `failed to acquire local lease for #${issue.number}`);
+    leaseAcquired = true;
     const claimedIssue = ghJson([
       "issue", "view", String(issue.number), "--repo", "Giftia/OpenButler",
       "--json", "number,title,body,labels,updatedAt,state,url",
@@ -387,6 +408,9 @@ async function executeIssue(issue, {tokensUsed}) {
     }
     if (claimedIssue.title !== issue.title || claimedIssue.body !== issue.body) {
       throw new Error(`Issue specification changed while claiming #${issue.number}`);
+    }
+    } finally {
+      releaseOwnedLock(executionClaimLockPath, executionClaimLock.token);
     }
     let verifierFeedback = "";
     let approved = false;
@@ -520,6 +544,7 @@ async function executeIssue(issue, {tokensUsed}) {
       scenarios: [{id: `pr-${pr.number}`, pr_number: pr.number, title: issue.title, purpose: "验证本次修复", steps: ["打开对应产品入口", "执行 Issue 验收步骤"], expected: "行为符合 Issue done_when，且无隐私回归。", status: "pending"}],
     };
   } catch (error) {
+    if (!leaseAcquired) throw error;
     const dirty = command("git", ["status", "--porcelain=v1"], {cwd: worktree});
     const committed = command("git", ["rev-list", "--count", "origin/main..HEAD"], {cwd: worktree});
     preserveWorktree = shouldPreserveRecovery({
@@ -547,7 +572,7 @@ async function executeIssue(issue, {tokensUsed}) {
     log("issue_quarantined", {issue: issue.number, recovery_available: preserveWorktree});
     throw error;
   } finally {
-    if (releaseExecutionLease) ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--remove-label", "nightly-running"]);
+    if (leaseAcquired && releaseExecutionLease) ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--remove-label", "nightly-running"]);
     if (!preserveWorktree) {
       command("git", ["worktree", "remove", "--force", worktree], {timeout: 120_000});
       command("git", ["branch", "-D", branchName], {timeout: 120_000});
