@@ -50,12 +50,16 @@ function issueApprovalStillCurrent(acceptance) {
   return approvalTimelineIsCurrent(timeline, acceptance.issue_approved_at);
 }
 
-function latestIssueEventAt(issueNumber) {
+function currentIssueAuthorizationNonce(issueNumber) {
   const timeline = ghJson(["api", `repos/Giftia/OpenButler/issues/${issueNumber}/timeline`, "--paginate"]);
-  return Math.max(...timeline.map((event) => Math.max(
-    Date.parse(event.created_at) || 0,
-    Date.parse(event.updated_at) || 0,
-  )), 0);
+  const latestReady = timeline.filter((event) => event.event === "labeled" && event.label?.name === "ready-for-agent").at(-1);
+  const latestEvent = timeline.at(-1);
+  if (!latestReady || !latestEvent) return null;
+  const latestEventId = latestEvent.id
+    ?? latestEvent.source?.issue?.id
+    ?? latestEvent.commit_id
+    ?? `${latestEvent.event}:${latestEvent.created_at}:${latestEvent.updated_at ?? ""}`;
+  return `${latestReady.id ?? latestReady.node_id}:${latestEventId}`;
 }
 
 function refreshAndVerifyMergeAuthorization(acceptance) {
@@ -67,11 +71,12 @@ function refreshAndVerifyMergeAuthorization(acceptance) {
     env: {...process.env, OPENBUTLER_ISSUE_NUMBER: String(acceptance.issue_number)},
   });
   if (refreshed.status !== 0) return false;
-  const latestIssueAt = latestIssueEventAt(acceptance.issue_number);
+  if (!issueApprovalStillCurrent(acceptance)) return false;
+  const currentNonce = currentIssueAuthorizationNonce(acceptance.issue_number);
   const combined = ghJson(["api", `repos/Giftia/OpenButler/commits/${acceptance.head_sha}/status`]);
   const authorization = (combined.statuses ?? []).find((status) => status.context === "Merge Authorization");
   return authorization?.state === "success"
-    && (Date.parse(authorization.created_at) || 0) >= latestIssueAt;
+    && authorization.description === `issue=${acceptance.issue_number};nonce=${currentNonce}`;
 }
 
 function createRevertPullRequest(mergeSha, prNumber) {
@@ -173,6 +178,10 @@ for (const acceptance of pack.pull_requests ?? []) {
   });
   if (!finalGate.eligible) {
     pack.auto_merge.blocked.push({pr: acceptance.number, reasons: ["PR state changed during final merge preflight", ...finalGate.reasons]});
+    continue;
+  }
+  if (!issueApprovalStillCurrent(acceptance) || !refreshAndVerifyMergeAuthorization(acceptance)) {
+    pack.auto_merge.blocked.push({pr: acceptance.number, reasons: ["Issue authorization changed during final merge preflight"]});
     continue;
   }
   gh([

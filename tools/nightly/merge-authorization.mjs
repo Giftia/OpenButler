@@ -47,7 +47,13 @@ function authorizationForIssue(number) {
     return !harmlessEvents.has(event.event);
   });
   if (changedAfterApproval) return {authorized: false, reason: `Issue #${number} changed after approval`};
-  return {authorized: true, reason: `Issue #${number} authorization is current`};
+  const latestEvent = timeline.at(-1);
+  const latestEventId = latestEvent?.id
+    ?? latestEvent?.source?.issue?.id
+    ?? latestEvent?.commit_id
+    ?? `${latestEvent?.event}:${latestEvent?.created_at}:${latestEvent?.updated_at ?? ""}`;
+  const nonce = `${latestReady.id ?? latestReady.node_id}:${latestEventId}`;
+  return {authorized: true, reason: `Issue #${number} authorization is current`, nonce};
 }
 
 function authorizationForPullRequest(number) {
@@ -73,7 +79,7 @@ function refreshIssue(number) {
       "api", "--method", "POST", `repos/${repo}/statuses/${pullRequest.headRefOid}`,
       "-f", `state=${result.authorized ? "success" : "failure"}`,
       "-f", "context=Merge Authorization",
-      "-f", `description=${result.reason.slice(0, 140)}`,
+      "-f", `description=${result.authorized ? `issue=${number};nonce=${result.nonce}` : result.reason.slice(0, 140)}`,
     ]);
     console.log(`PR #${pullRequest.number}: ${result.reason}`);
   }
