@@ -147,6 +147,21 @@ export function evaluateIssueEligibility(issue, {timeline = [], closedIssues = n
   return {eligible: reasons.length === 0, reasons, highRisk, hardStop, dependencies};
 }
 
+export function shouldPreserveRecovery({dirty = false, aheadCount = 0} = {}) {
+  return Boolean(dirty) || Number(aheadCount) > 0;
+}
+
+export function shouldClearLocalQuarantine({issue, quarantine, timeline = []} = {}) {
+  const labels = new Set((issue?.labels ?? []).map((label) => label.name ?? label));
+  if (labels.has("nightly-failed")) return false;
+  const failedAt = Date.parse(quarantine?.failed_at ?? "");
+  if (!Number.isFinite(failedAt)) return false;
+  const latestReadyAt = Math.max(...timeline
+    .filter((event) => event.event === "labeled" && event.label?.name === "ready-for-agent")
+    .map((event) => Date.parse(event.created_at) || 0), 0);
+  return latestReadyAt > failedAt;
+}
+
 export function isTransientCommandFailure(result) {
   const message = `${result?.stderr ?? ""}\n${result?.stdout ?? ""}\n${result?.errorCode ?? ""}`;
   return /(?:unexpected\s+EOF|\bEOF\b|HTTP\s+(?:408|429|5\d\d)\b|Bad Gateway|ECONNRESET|ETIMEDOUT|socket hang up|connection.*(?:reset|closed)|TLS handshake timeout)/i.test(message);

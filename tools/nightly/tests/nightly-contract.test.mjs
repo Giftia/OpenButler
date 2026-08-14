@@ -150,7 +150,7 @@ test("nightly failures preserve useful recovery state and leave the queue", () =
   const controller = read("tools/nightly/nightly-controller.mjs");
   assert.match(controller, /recovery-worktree\.json/);
   assert.match(controller, /rev-list", "--count", "origin\/main\.\.HEAD/);
-  assert.match(controller, /Date\.parse\(issue\.updatedAt/);
+  assert.match(controller, /shouldClearLocalQuarantine/);
   assert.match(controller, /rmSync\(quarantinePath/);
   assert.match(controller, /preserveWorktree/);
   assert.match(controller, /--add-label", "nightly-failed"/);

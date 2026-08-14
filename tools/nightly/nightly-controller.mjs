@@ -13,8 +13,11 @@ import {
   resolveCodexCommand,
   runWithRetry,
   sanitizeAcceptanceValue,
+  shouldClearLocalQuarantine,
+  shouldPreserveRecovery,
   tokenUsageFromJsonl,
 } from "./nightly-lib.mjs";
+import {acquireOwnedLock, releaseOwnedLock} from "./daytime-cloud-services.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..");
@@ -200,18 +203,9 @@ const level = parseCurrentLevel(stateMarkdown);
 if (/loop-pause-all:\s*true/i.test(stateMarkdown)) fail("loop-pause-all is active", 0);
 if (mode === "execute" && level !== "L2") fail(`execute requires canonical L2 active; current level is ${level}`);
 
-const existingLock = existsSync(lockPath) ? JSON.parse(readFileSync(lockPath, "utf8")) : null;
-if (existingLock && existingLock.pid !== process.pid) {
-  try {
-    process.kill(existingLock.pid, 0);
-    fail(`another nightly run is active: ${existingLock.run_id}`);
-  } catch {
-    rmSync(lockPath, {force: true});
-  }
-}
-writeFileSync(lockPath, `${JSON.stringify({run_id: runId, pid: process.pid, mode, started_at: now.toISOString()}, null, 2)}\n`, "utf8");
-
-const cleanup = () => rmSync(lockPath, {force: true});
+const controllerLock = acquireOwnedLock(lockPath);
+if (!controllerLock.acquired) fail("another nightly run is active");
+const cleanup = () => releaseOwnedLock(lockPath, controllerLock.token);
 process.on("exit", cleanup);
 process.on("SIGINT", () => { cleanup(); process.exit(130); });
 
@@ -241,9 +235,8 @@ try {
     if (localQuarantine) {
       try {
         const quarantine = JSON.parse(readFileSync(quarantinePath, "utf8"));
-        const labels = new Set((issue.labels ?? []).map((label) => label.name ?? label));
-        const retriaged = !labels.has("nightly-failed")
-          && Date.parse(issue.updatedAt ?? "") > Date.parse(quarantine.failed_at ?? "");
+        const timeline = ghJson(["api", `repos/Giftia/OpenButler/issues/${issue.number}/timeline`, "--paginate"]);
+        const retriaged = shouldClearLocalQuarantine({issue, quarantine, timeline});
         if (retriaged) {
           rmSync(quarantinePath, {force: true});
           localQuarantine = false;
@@ -369,7 +362,12 @@ async function executeIssue(issue, {tokensUsed}) {
       "pr", "list", "--repo", "Giftia/OpenButler", "--state", "open", "--limit", "200",
       "--json", "number,title,body,headRefName,url",
     ]) ?? []);
-    if (!claimedLabels.has("nightly-running") || claimedLabels.has("cloud-running") || competingPullRequests.has(issue.number)) {
+    if (!claimedLabels.has("nightly-running")
+      || !claimedLabels.has("ready-for-agent")
+      || claimedLabels.has("cloud-running")
+      || claimedLabels.has("automation-blocked")
+      || claimedLabels.has("nightly-failed")
+      || competingPullRequests.has(issue.number)) {
       throw new Error(`execution lease changed while claiming #${issue.number}`);
     }
     if (claimedIssue.title !== issue.title || claimedIssue.body !== issue.body) {
@@ -408,6 +406,7 @@ async function executeIssue(issue, {tokensUsed}) {
         : ["commit", "--amend", "--no-edit"];
       const committed = command("git", commitArgs, {cwd: worktree});
       if (!committed.ok) throw new Error(committed.stderr || "commit failed");
+      preserveWorktree = true;
       const checks = runFocusedTests(worktree);
       log("issue_tests_passed", {issue: issue.number, attempt, checks});
 
@@ -481,6 +480,7 @@ async function executeIssue(issue, {tokensUsed}) {
     if (!checks.ok) {
       ghCommand(["pr", "edit", String(pr.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
       ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
+      preserveWorktree = false;
       return {tokens: totalTokens, stop: false, pullRequest: {...pr, head_sha: pr.headRefOid, status: "ci_failed"}, scenarios: []};
     }
     ghCommand(["pr", "ready", String(pr.number), "--repo", "Giftia/OpenButler"]);
@@ -490,6 +490,7 @@ async function executeIssue(issue, {tokensUsed}) {
       "--add-label", "acceptance-ready",
       "--add-label", "auto-merge-eligible",
     ]);
+    preserveWorktree = false;
     return {
       tokens: totalTokens,
       stop: false,
@@ -511,8 +512,10 @@ async function executeIssue(issue, {tokensUsed}) {
   } catch (error) {
     const dirty = command("git", ["status", "--porcelain=v1"], {cwd: worktree});
     const committed = command("git", ["rev-list", "--count", "origin/main..HEAD"], {cwd: worktree});
-    preserveWorktree = (dirty.ok && Boolean(dirty.stdout.trim()))
-      || (committed.ok && Number(committed.stdout.trim()) > 0);
+    preserveWorktree = shouldPreserveRecovery({
+      dirty: dirty.ok && Boolean(dirty.stdout.trim()),
+      aheadCount: committed.ok ? Number(committed.stdout.trim()) : 0,
+    });
     mkdirSync(quarantineRoot, {recursive: true});
     writeFileSync(join(quarantineRoot, `issue-${issue.number}.json`), `${JSON.stringify({
       issue: issue.number,

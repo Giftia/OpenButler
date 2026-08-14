@@ -12,6 +12,8 @@ import {
   mayStartIssue,
   parseCurrentLevel,
   sanitizeAcceptanceValue,
+  shouldClearLocalQuarantine,
+  shouldPreserveRecovery,
   tokenUsageFromJsonl,
 } from "../nightly-lib.mjs";
 
@@ -86,6 +88,21 @@ test("claims direct implementation titles and Cloud or Nightly branches", () => 
     {title: "Unrelated", body: "", headRefName: "codex/issue-36-recovery"},
   ]);
   assert.deepEqual([...claimed].sort((a, b) => a - b), [34, 35, 36]);
+});
+
+test("recovery preservation covers dirty and committed worktrees", () => {
+  assert.equal(shouldPreserveRecovery({dirty: false, aheadCount: 0}), false);
+  assert.equal(shouldPreserveRecovery({dirty: true, aheadCount: 0}), true);
+  assert.equal(shouldPreserveRecovery({dirty: false, aheadCount: 1}), true);
+});
+
+test("local quarantine clears only after an explicit ready reapproval", () => {
+  const quarantine = {failed_at: "2026-08-14T10:00:00Z"};
+  const issue = {labels: [{name: "ready-for-agent"}]};
+  assert.equal(shouldClearLocalQuarantine({issue, quarantine, timeline: []}), false);
+  assert.equal(shouldClearLocalQuarantine({issue: {...issue, labels: [...issue.labels, {name: "nightly-failed"}]}, quarantine, timeline: [{event: "labeled", label: {name: "ready-for-agent"}, created_at: "2026-08-14T11:00:00Z"}]}), false);
+  assert.equal(shouldClearLocalQuarantine({issue, quarantine, timeline: [{event: "labeled", label: {name: "ready-for-agent"}, created_at: "2026-08-14T09:00:00Z"}]}), false);
+  assert.equal(shouldClearLocalQuarantine({issue, quarantine, timeline: [{event: "labeled", label: {name: "ready-for-agent"}, created_at: "2026-08-14T11:00:00Z"}]}), true);
 });
 
 test("hard-stop work is never eligible for automation", () => {
