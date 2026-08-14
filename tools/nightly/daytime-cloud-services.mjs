@@ -4,7 +4,7 @@ import {randomUUID} from "node:crypto";
 import {dirname, join, resolve} from "node:path";
 import {fileURLToPath} from "node:url";
 import {issueSpecificationFingerprint, normalizeUnifiedDiff, parseCloudTaskId, parseCloudTaskStatus, redactedCloudStatus} from "./daytime-cloud-lib.mjs";
-import {claimedIssueNumbers, resolveCodexCommand, runWithRetry} from "./nightly-lib.mjs";
+import {claimedIssueNumbers, evaluateIssueEligibility, resolveCodexCommand, runWithRetry} from "./nightly-lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..");
@@ -223,9 +223,12 @@ export function createProductionServices() {
     }),
     issue: (number) => ghJson(["issue", "view", String(number), "--repo", repo, "--json", "number,title,body,labels,createdAt,updatedAt,state,url"]),
     closedIssues: () => new Set(ghJson(["issue", "list", "--repo", repo, "--state", "closed", "--limit", "200", "--json", "number"]).map((item) => item.number)),
+    executionLeases: () => ghJson(["issue", "list", "--repo", repo, "--state", "open", "--limit", "200", "--json", "number,labels"])
+      .filter((issue) => (issue.labels ?? []).some((label) => ["cloud-running", "nightly-running"].includes(label.name ?? label))),
     timeline: (number) => ghJson(["api", `repos/${repo}/issues/${number}/timeline`, "--paginate"]),
     claim: (number) => ghCommand(["issue", "edit", String(number), "--repo", repo, "--add-label", "cloud-running"]).ok,
     release: (number) => ghCommand(["issue", "edit", String(number), "--repo", repo, "--remove-label", "cloud-running"]).ok,
+    restoreLease: (number) => ghCommand(["issue", "edit", String(number), "--repo", repo, "--add-label", "cloud-running"]).ok,
     quarantine: (number) => ghCommand(["issue", "edit", String(number), "--repo", repo, "--remove-label", "ready-for-agent", "--add-label", "nightly-failed"]).ok,
     transitionToReview: (number) => ghCommand(["issue", "edit", String(number), "--repo", repo, "--remove-label", "ready-for-agent", "--remove-label", "cloud-running", "--add-label", "review-pending"]).ok,
     submit: ({environmentId, prompt}) => {
@@ -293,11 +296,16 @@ export function createProductionServices() {
           if (!current.ok || current.stdout.trim() !== state.base_sha) throw new Error("origin/main changed during Cloud result verification");
         };
         refreshBase();
-        const currentIssue = ghJson(["issue", "view", String(state.issue), "--repo", repo, "--json", "number,title,body,labels,createdAt,updatedAt,url"]);
-        const labels = new Set((currentIssue.labels ?? []).map((label) => label.name ?? label));
-        if (!labels.has("cloud-running") || labels.has("nightly-running")) throw new Error("execution lease changed during Cloud result verification");
+        const currentIssue = ghJson(["issue", "view", String(state.issue), "--repo", repo, "--json", "number,title,body,labels,createdAt,updatedAt,state,url"]);
+        const currentPullRequests = ghJson(["pr", "list", "--repo", repo, "--state", "open", "--limit", "200", "--json", "number,title,body,headRefName,url"]);
+        const currentEligibility = evaluateIssueEligibility(currentIssue, {
+          closedIssues: new Set(ghJson(["issue", "list", "--repo", repo, "--state", "closed", "--limit", "200", "--json", "number"]).map((item) => item.number)),
+          claimedIssues: claimedIssueNumbers(currentPullRequests.filter((pr) => pr.headRefName !== state.branch)),
+          ownedLease: "cloud-running",
+        });
+        if (!currentEligibility.eligible) throw new Error(`Issue became ineligible during Cloud result verification: ${currentEligibility.reasons.join(", ")}`);
         if (issueSpecificationFingerprint(currentIssue) !== state.specification_fingerprint) throw new Error("Issue specification changed during Cloud result verification");
-        const competing = ghJson(["pr", "list", "--repo", repo, "--state", "open", "--limit", "200", "--json", "number,title,body,headRefName,url"])
+        const competing = currentPullRequests
           .filter((pr) => claimedIssueNumbers([pr]).has(state.issue) && pr.headRefName !== state.branch);
         if (competing.length) throw new Error("an implementation pull request appeared during Cloud result verification");
 

@@ -72,7 +72,8 @@ async function runDaytimeDispatcherUnlocked({
     }
     if (labels.has("nightly-running")) return terminalFailure(services, state, "competing local lease detected");
     if (!labels.has("cloud-running")) {
-      return services.completeState({...state, status: "failed", reason: "Cloud lease disappeared before completion"});
+      services.restoreLease?.(state.issue);
+      return services.saveState({...state, status: "cleanup-required", reason: "Cloud lease disappeared while a remote task may still exist; local state is retained and automation is blocked pending reconciliation"});
     }
 
     const taskStatus = services.taskStatus(state.task_id);
@@ -99,6 +100,13 @@ async function runDaytimeDispatcherUnlocked({
     const currentBase = services.baseSha();
     if (currentBase !== state.base_sha) return terminalFailure(services, state, "origin/main changed after Cloud submission");
     const pullRequests = services.openPullRequests();
+    const claimedIssues = claimedIssueNumbers(pullRequests.filter((pr) => pr.headRefName !== state.branch));
+    const currentEligibility = evaluateIssueEligibility(issue, {
+      closedIssues: services.closedIssues(),
+      claimedIssues,
+      ownedLease: "cloud-running",
+    });
+    if (!currentEligibility.eligible) return terminalFailure(services, state, `Issue became ineligible after Cloud submission: ${currentEligibility.reasons.join(", ")}`);
     const competing = pullRequests.filter((pr) => claimedIssueNumbers([pr]).has(state.issue) && pr.headRefName !== state.branch);
     if (competing.length) return terminalFailure(services, state, "an implementation pull request appeared after Cloud submission");
 
@@ -123,6 +131,12 @@ async function runDaytimeDispatcherUnlocked({
     }
   }
 
+  const activeLeases = services.executionLeases?.() ?? [];
+  if (activeLeases.length) {
+    const result = {status: "blocked", issue: null, reason: "another Cloud or Nightly execution lease is active"};
+    services.recordStatus?.({...result, run_id: runId});
+    return result;
+  }
   const queue = services.queue();
   const claimed = claimedIssueNumbers(queue.pullRequests);
   const candidates = [];

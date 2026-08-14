@@ -80,9 +80,11 @@ function mockServices(options = {}) {
     }),
     issue: () => options.currentIssue ?? issue,
     closedIssues: () => new Set(options.currentClosedIssues ?? options.closedIssues ?? []),
+    executionLeases: () => options.executionLeases ?? [],
     timeline: () => options.timeline ?? readyTimeline,
     claim: () => { calls.push(["claim"]); if (options.claimOk === false) return false; withLease(); return true; },
     release: () => { calls.push(["release"]); if (options.releaseOk === false) return false; withoutLease(); return true; },
+    restoreLease: () => { calls.push(["restoreLease"]); if (options.restoreLeaseOk === false) return false; withLease(); return true; },
     quarantine: () => { calls.push(["quarantine"]); return options.quarantineOk ?? true; },
     transitionToReview: () => { calls.push(["transition"]); withoutLease(); return options.transitionOk ?? true; },
     submit: () => { calls.push(["submit"]); return options.submitted ?? {ok: true, taskId: "task_123"}; },
@@ -122,6 +124,14 @@ test("competing lease and open implementation PR are not eligible", async () => 
   }
   const pr = {number: 9, title: "Fixes #34", body: "", headRefName: "other"};
   assert.equal((await runDaytimeDispatcher({now: daytime(), environmentId: "configured", services: mockServices({pullRequests: [pr]})})).status, "no-op");
+});
+
+test("a global execution lease blocks selection of a different Issue", async () => {
+  const services = mockServices({executionLeases: [{number: 99, labels: [{name: "cloud-running"}]}]});
+  const result = await runDaytimeDispatcher({now: daytime(), environmentId: "configured", services});
+  assert.equal(result.status, "blocked");
+  assert.match(result.reason, /execution lease is active/);
+  assert.equal(services.calls.some(([name]) => name === "claim"), false);
 });
 
 test("unmet dependency, hard stop, and stale specification are refused", async () => {
@@ -184,6 +194,15 @@ test("pending, failed, and cancelled task states preserve or clean the lease", a
   }
 });
 
+test("a disappeared Cloud lease is restored and unresolved state is retained", async () => {
+  const issue = readyIssue();
+  const services = mockServices({issue, state: activeState(issue)});
+  const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services});
+  assert.equal(result.status, "cleanup-required");
+  assert.equal(services.calls.some(([name]) => name === "restoreLease"), true);
+  assert.equal(services.calls.some(([name]) => name === "complete"), false);
+});
+
 test("stale pending Cloud task retains its Issue lease when cancellation is unavailable", async () => {
   const issue = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});
   const state = activeState(issue, {claimed_at: "2026-08-11T10:00:00.000Z"});
@@ -221,6 +240,20 @@ test("ready result becomes PR-ready only after materialization and label transit
   assert.equal(result.status, "pr-ready");
   assert.equal(result.pr_number, 77);
   assert.deepEqual(services.calls.filter(([name]) => ["materialize", "transition"].includes(name)), [["materialize"], ["transition"]]);
+});
+
+test("ready Cloud result is rejected when the Issue closes or a dependency reopens", async () => {
+  const leased = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});
+  const closedServices = mockServices({issue: leased, currentIssue: {...leased, state: "CLOSED"}, state: activeState(leased), taskStatus: "ready"});
+  const closedResult = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services: closedServices});
+  assert.match(closedResult.reason, /issue is not open/);
+  assert.equal(closedServices.calls.some(([name]) => name === "materialize"), false);
+
+  const dependent = {...leased, body: "Depends on #12"};
+  const dependencyServices = mockServices({issue: dependent, state: activeState(dependent), taskStatus: "ready", currentClosedIssues: []});
+  const dependencyResult = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services: dependencyServices});
+  assert.match(dependencyResult.reason, /unresolved dependencies/);
+  assert.equal(dependencyServices.calls.some(([name]) => name === "materialize"), false);
 });
 
 test("diff privacy and forbidden path violations fail and release the lease", async () => {

@@ -156,7 +156,18 @@ test("nightly failures preserve useful recovery state and leave the queue", () =
   assert.match(controller, /rmSync\(quarantinePath/);
   assert.match(controller, /preserveWorktree/);
   assert.match(controller, /--add-label", "nightly-failed"/);
+  assert.match(controller, /if \(!quarantined\.ok\) releaseExecutionLease = false/);
+  assert.match(controller, /if \(releaseExecutionLease\) ghCommand/);
   assert.match(controller, /commandWithRetry/);
+});
+
+test("Cloud and Nightly dispatchers share a fail-closed execution gate", () => {
+  const controller = read("tools/nightly/nightly-controller.mjs");
+  const daytime = read("tools/nightly/daytime-cloud-controller.mjs");
+  assert.match(controller, /daytimeStatePath/);
+  assert.match(controller, /--label", "cloud-running"/);
+  assert.match(daytime, /executionLeases/);
+  assert.match(daytime, /another Cloud or Nightly execution lease is active/);
 });
 
 test("real data smoke is isolated, bounded, and redacted", () => {

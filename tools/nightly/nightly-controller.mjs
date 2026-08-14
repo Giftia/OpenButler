@@ -33,6 +33,7 @@ const lockPath = join(repoRoot, "data", "nightly", "active-run.json");
 const cutoffFlag = join(repoRoot, "data", "nightly", "control", "stop-new-issues.flag");
 const eventsPath = join(runDir, "events.jsonl");
 const quarantineRoot = join(repoRoot, "data", "nightly", "quarantine");
+const daytimeStatePath = join(repoRoot, "data", "daytime-cloud", "active-run.json");
 const codexCommand = resolveCodexCommand();
 mkdirSync(runDir, {recursive: true});
 
@@ -212,6 +213,16 @@ process.on("SIGINT", () => { cleanup(); process.exit(130); });
 try {
   const status = command("git", ["status", "--porcelain=v1"]);
   if (!status.ok || status.stdout.trim()) fail("working tree is not clean");
+  if (existsSync(daytimeStatePath)) {
+    let daytimeState = null;
+    try { daytimeState = JSON.parse(readFileSync(daytimeStatePath, "utf8")); } catch {}
+    if (daytimeState) fail("an unresolved daytime Cloud run is active", 0);
+  }
+  const cloudLeases = ghJson([
+    "issue", "list", "--repo", "Giftia/OpenButler", "--state", "open",
+    "--label", "cloud-running", "--limit", "10", "--json", "number",
+  ]) ?? [];
+  if (cloudLeases.length) fail("a Cloud execution lease is active", 0);
   const issues = ghJson([
     "issue", "list", "--repo", "Giftia/OpenButler", "--state", "open",
     "--label", "ready-for-agent", "--limit", "100",
@@ -347,6 +358,7 @@ async function executeIssue(issue, {tokensUsed}) {
 
   let totalTokens = 0;
   let preserveWorktree = false;
+  let releaseExecutionLease = true;
   try {
     const lease = ghCommand([
       "issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler",
@@ -530,11 +542,12 @@ async function executeIssue(issue, {tokensUsed}) {
         tokens_used: totalTokens,
       }, null, 2)}\n`, "utf8");
     }
-    ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--remove-label", "ready-for-agent", "--add-label", "nightly-failed"]);
+    const quarantined = ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--remove-label", "ready-for-agent", "--add-label", "nightly-failed"]);
+    if (!quarantined.ok) releaseExecutionLease = false;
     log("issue_quarantined", {issue: issue.number, recovery_available: preserveWorktree});
     throw error;
   } finally {
-    ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--remove-label", "nightly-running"]);
+    if (releaseExecutionLease) ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--remove-label", "nightly-running"]);
     if (!preserveWorktree) {
       command("git", ["worktree", "remove", "--force", worktree], {timeout: 120_000});
       command("git", ["branch", "-D", branchName], {timeout: 120_000});
@@ -553,7 +566,12 @@ async function executeIssue(issue, {tokensUsed}) {
     if (preserveWorktree) {
       writeFileSync(join(runDir, "recovery-worktree.json"), `${JSON.stringify({issue: issue.number, branch: branchName, worktree, tokens_used: totalTokens}, null, 2)}\n`, "utf8");
     }
-    ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--remove-label", "ready-for-agent", "--add-label", label]);
+    const quarantined = ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--remove-label", "ready-for-agent", "--add-label", label]);
+    if (!quarantined.ok) {
+      releaseExecutionLease = false;
+      preserveWorktree = true;
+      stop = true;
+    }
     log("issue_quarantined", {issue: issue.number, recovery_available: preserveWorktree});
     return {tokens: totalTokens, stop, pullRequest: null, scenarios: []};
   }
