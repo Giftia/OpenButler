@@ -1,5 +1,6 @@
 import {spawnSync} from "node:child_process";
-import {closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync} from "node:fs";
+import {existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync} from "node:fs";
+import {randomUUID} from "node:crypto";
 import {dirname, join, resolve} from "node:path";
 import {fileURLToPath} from "node:url";
 import {issueSpecificationFingerprint, normalizeUnifiedDiff, parseCloudTaskId, parseCloudTaskStatus, redactedCloudStatus} from "./daytime-cloud-lib.mjs";
@@ -12,6 +13,65 @@ const activePath = join(runtimeRoot, "active-run.json");
 const latestStatusPath = join(runtimeRoot, "latest-status.json");
 const lockPath = join(runtimeRoot, "controller.lock");
 const repo = "Giftia/OpenButler";
+
+function processIsAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function acquireOwnedLock(path, {pid = process.pid, token = `${pid}-${randomUUID()}`, isAlive = processIsAlive} = {}) {
+  const create = () => {
+    mkdirSync(path);
+    writeFileSync(join(path, "owner.json"), `${JSON.stringify({pid, token})}\n`, "utf8");
+    return {acquired: true, token};
+  };
+  try {
+    return create();
+  } catch (error) {
+    if (error?.code !== "EEXIST") return {acquired: false, token: null};
+  }
+
+  let owner = null;
+  try {
+    owner = JSON.parse(readFileSync(join(path, "owner.json"), "utf8"));
+  } catch {}
+  if (owner?.pid && isAlive(Number(owner.pid))) return {acquired: false, token: null};
+
+  const stalePath = `${path}.stale-${randomUUID()}`;
+  try {
+    renameSync(path, stalePath);
+  } catch {
+    return {acquired: false, token: null};
+  }
+  rmSync(stalePath, {recursive: true, force: true});
+  try {
+    return create();
+  } catch {
+    return {acquired: false, token: null};
+  }
+}
+
+export function releaseOwnedLock(path, token) {
+  let owner;
+  try {
+    owner = JSON.parse(readFileSync(join(path, "owner.json"), "utf8"));
+  } catch {
+    return false;
+  }
+  if (!token || owner.token !== token) return false;
+  const releasedPath = `${path}.released-${randomUUID()}`;
+  try {
+    renameSync(path, releasedPath);
+  } catch {
+    return false;
+  }
+  rmSync(releasedPath, {recursive: true, force: true});
+  return true;
+}
 
 function command(executable, args, options = {}) {
   const result = spawnSync(executable, args, {
@@ -34,12 +94,17 @@ function command(executable, args, options = {}) {
 function commandWithRetry(executable, args, options = {}) {
   return runWithRetry(
     () => command(executable, args, options),
-    {attempts: options.attempts ?? 3},
+    {attempts: options.attempts ?? 3, delays: options.delays},
   );
 }
 
 function ghCommand(args, options = {}) {
-  return commandWithRetry("gh", args, {timeout: 60_000, ...options});
+  return commandWithRetry("gh", args, {
+    timeout: 60_000,
+    attempts: 5,
+    delays: [1_000, 3_000, 8_000, 15_000],
+    ...options,
+  });
 }
 
 function requiredTestsForPaths(paths, root) {
@@ -88,36 +153,18 @@ export function createProductionServices() {
     writeFileSync(latestStatusPath, `${JSON.stringify(redactedCloudStatus(next), null, 2)}\n`, "utf8");
     return next;
   };
-  let lockDescriptor = null;
+  let lockToken = null;
 
   return {
     acquireLock: () => {
       mkdirSync(runtimeRoot, {recursive: true});
-      try {
-        lockDescriptor = openSync(lockPath, "wx");
-        writeFileSync(lockDescriptor, String(process.pid), "utf8");
-        return true;
-      } catch {
-        try {
-          const pid = Number(readFileSync(lockPath, "utf8"));
-          process.kill(pid, 0);
-          return false;
-        } catch {
-          rmSync(lockPath, {force: true});
-          try {
-            lockDescriptor = openSync(lockPath, "wx");
-            writeFileSync(lockDescriptor, String(process.pid), "utf8");
-            return true;
-          } catch {
-            return false;
-          }
-        }
-      }
+      const result = acquireOwnedLock(lockPath);
+      lockToken = result.token;
+      return result.acquired;
     },
     releaseLock: () => {
-      if (lockDescriptor !== null) closeSync(lockDescriptor);
-      lockDescriptor = null;
-      rmSync(lockPath, {force: true});
+      if (lockToken) releaseOwnedLock(lockPath, lockToken);
+      lockToken = null;
     },
     recordStatus: (status) => {
       mkdirSync(runtimeRoot, {recursive: true});
@@ -214,7 +261,7 @@ export function createProductionServices() {
           if (!current.ok || current.stdout.trim() !== state.base_sha) throw new Error("origin/main changed during Cloud result verification");
         };
         refreshBase();
-        const currentIssue = ghJson(["issue", "view", String(state.issue), "--repo", repo, "--json", "number,title,body,labels,createdAt,lastEditedAt,updatedAt,url"]);
+        const currentIssue = ghJson(["issue", "view", String(state.issue), "--repo", repo, "--json", "number,title,body,labels,createdAt,updatedAt,url"]);
         const labels = new Set((currentIssue.labels ?? []).map((label) => label.name ?? label));
         if (!labels.has("cloud-running") || labels.has("nightly-running")) throw new Error("execution lease changed during Cloud result verification");
         if (issueSpecificationFingerprint(currentIssue) !== state.specification_fingerprint) throw new Error("Issue specification changed during Cloud result verification");

@@ -1,6 +1,7 @@
 param(
   [ValidateSet("dry-run", "execute")]
-  [string]$Mode = "dry-run"
+  [string]$Mode = "dry-run",
+  [string]$Now = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,9 +13,14 @@ $logPath = Join-Path $logRoot "daytime-cloud-$stamp.log"
 
 Push-Location $repoRoot
 try {
-  & node (Join-Path $PSScriptRoot "daytime-cloud-controller.mjs") "--mode=$Mode" *>&1 |
-    Tee-Object -FilePath $logPath -Encoding UTF8
-  exit $LASTEXITCODE
+  $arguments = @((Join-Path $PSScriptRoot "daytime-cloud-controller.mjs"), "--mode=$Mode")
+  if ($Mode -eq "dry-run" -and $Now) { $arguments += "--now=$Now" }
+  & node @arguments *>&1 | ForEach-Object {
+    $_ | Out-File -FilePath $logPath -Append -Encoding utf8
+    Write-Output $_
+  }
+  $exitCode = $LASTEXITCODE
+  exit $exitCode
 }
 finally {
   Pop-Location

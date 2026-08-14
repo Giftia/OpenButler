@@ -67,12 +67,17 @@ function command(commandName, commandArgs, options = {}) {
 function commandWithRetry(commandName, commandArgs, options = {}) {
   return runWithRetry(
     () => command(commandName, commandArgs, options),
-    {attempts: options.attempts ?? 3},
+    {attempts: options.attempts ?? 3, delays: options.delays},
   );
 }
 
 function ghCommand(commandArgs, options = {}) {
-  return commandWithRetry("gh", commandArgs, {timeout: 60_000, ...options});
+  return commandWithRetry("gh", commandArgs, {
+    timeout: 60_000,
+    attempts: 5,
+    delays: [1_000, 3_000, 8_000, 15_000],
+    ...options,
+  });
 }
 
 function ghJson(commandArgs) {

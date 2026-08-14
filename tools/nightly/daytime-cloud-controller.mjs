@@ -37,10 +37,19 @@ async function runDaytimeDispatcherUnlocked({
     return result;
   }
 
-  if (state?.status === "submitting" && !state.task_id) {
+  if (["submitting", "submission-uncertain"].includes(state?.status) && !state.task_id) {
     const recovered = services.recoverTask({runId: state.run_id, environmentId});
-    if (!recovered) return terminalFailure(services, state, "Cloud submission could not be recovered after restart", "failed");
+    if (!recovered) {
+      const claimedAt = Date.parse(state.claimed_at ?? "");
+      const ageHours = Number.isFinite(claimedAt) ? (now.getTime() - claimedAt) / 3_600_000 : 0;
+      const status = ageHours >= EXECUTION_LEASE_HOURS ? "cleanup-required" : "submission-uncertain";
+      return services.saveState({...state, status, reason: "Cloud submission outcome is uncertain; lease retained to prevent duplicate execution"});
+    }
     state = services.saveState({...state, task_id: recovered, status: "pending"});
+  }
+
+  if (state?.status === "cleanup-required" && !state.task_id) {
+    return services.saveState({...state, reason: "Cloud submission outcome remains uncertain; manual reconciliation is required and the lease is retained"});
   }
 
   if (state) {
@@ -58,10 +67,17 @@ async function runDaytimeDispatcherUnlocked({
     if (taskStatus === "pending") {
       const claimedAt = Date.parse(state.claimed_at ?? "");
       const ageHours = Number.isFinite(claimedAt) ? (now.getTime() - claimedAt) / 3_600_000 : 0;
-      if (ageHours >= EXECUTION_LEASE_HOURS) return terminalFailure(services, state, "Cloud execution lease expired", "failed");
+      if (ageHours >= EXECUTION_LEASE_HOURS) {
+        return services.saveState({...state, status: "cleanup-required", reason: "Cloud task exceeded its execution lease; remote cancellation is unavailable, so the Issue lease is retained"});
+      }
       return services.saveState({...state, status: "pending", reason: null});
     }
     if (["unknown", "unavailable"].includes(taskStatus)) {
+      const claimedAt = Date.parse(state.claimed_at ?? "");
+      const ageHours = Number.isFinite(claimedAt) ? (now.getTime() - claimedAt) / 3_600_000 : 0;
+      if (ageHours >= EXECUTION_LEASE_HOURS) {
+        return services.saveState({...state, status: "cleanup-required", reason: "Cloud task status stayed unavailable beyond its lease; Issue lease retained for manual reconciliation"});
+      }
       return services.saveState({...state, status: "pending", reason: "Cloud task status is unavailable; lease retained"});
     }
     if (["failed", "cancelled"].includes(taskStatus)) {
@@ -148,7 +164,9 @@ async function runDaytimeDispatcherUnlocked({
 
   state = services.saveState({...state, status: "submitting"});
   const submitted = services.submit({environmentId, prompt: buildCloudPrompt({issue, baseSha, runId})});
-  if (!submitted.ok || !submitted.taskId) return terminalFailure(services, state, "Cloud task submission failed", "failed");
+  if (!submitted.ok || !submitted.taskId) {
+    return services.saveState({...state, status: "submission-uncertain", reason: "Cloud submission did not return a confirmed task ID; lease retained for recovery"});
+  }
   return services.saveState({...state, task_id: submitted.taskId, status: "submitted", reason: null});
 }
 

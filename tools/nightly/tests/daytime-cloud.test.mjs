@@ -1,5 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {spawnSync} from "node:child_process";
+import {existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync} from "node:fs";
+import {tmpdir} from "node:os";
+import {dirname, join, resolve} from "node:path";
+import {fileURLToPath} from "node:url";
 import {
   evaluateCloudDiff,
   evaluateSpecificationFreshness,
@@ -9,6 +14,9 @@ import {
   withinDaytimeWindow,
 } from "../daytime-cloud-lib.mjs";
 import {runDaytimeDispatcher} from "../daytime-cloud-controller.mjs";
+import {acquireOwnedLock, releaseOwnedLock} from "../daytime-cloud-services.mjs";
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 const daytime = () => new Date(2026, 7, 12, 10, 0, 0);
 const readyIssue = (overrides = {}) => ({
@@ -160,14 +168,14 @@ test("pending, failed, and cancelled task states preserve or clean the lease", a
   }
 });
 
-test("stale pending Cloud lease expires and is cleaned", async () => {
+test("stale pending Cloud task retains its Issue lease when cancellation is unavailable", async () => {
   const issue = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});
   const state = activeState(issue, {claimed_at: "2026-08-11T10:00:00.000Z"});
   const services = mockServices({issue, state, taskStatus: "pending"});
   const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services});
-  assert.equal(result.status, "failed");
-  assert.match(result.reason, /lease expired/);
-  assert.equal(services.calls.some(([name]) => name === "release"), true);
+  assert.equal(result.status, "cleanup-required");
+  assert.match(result.reason, /cancellation is unavailable/);
+  assert.equal(services.calls.some(([name]) => name === "release"), false);
 });
 
 test("unavailable or unknown Cloud status retains the lease", async () => {
@@ -179,6 +187,15 @@ test("unavailable or unknown Cloud status retains the lease", async () => {
     assert.match(result.reason, /lease retained/);
     assert.equal(services.calls.some(([name]) => name === "release"), false);
   }
+});
+
+test("stale unavailable Cloud status requires reconciliation without releasing the lease", async () => {
+  const issue = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});
+  const state = activeState(issue, {claimed_at: "2026-08-11T10:00:00.000Z"});
+  const services = mockServices({issue, state, taskStatus: "unavailable"});
+  const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services});
+  assert.equal(result.status, "cleanup-required");
+  assert.equal(services.calls.some(([name]) => name === "release"), false);
 });
 
 test("ready result becomes PR-ready only after materialization and label transition", async () => {
@@ -221,12 +238,48 @@ test("restart recovery resumes a persisted submission without duplicate submit",
   assert.equal(services.calls.some(([name]) => name === "submit"), false);
 });
 
-test("unrecoverable submission cleans its lease deterministically", async () => {
+test("unconfirmed submission retains its lease until remote recovery is conclusive", async () => {
   const issue = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});
   const services = mockServices({issue, state: activeState(issue, {status: "submitting", task_id: null})});
   const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services});
-  assert.equal(result.status, "failed");
-  assert.equal(services.calls.some(([name]) => name === "release"), true);
+  assert.equal(result.status, "submission-uncertain");
+  assert.equal(services.calls.some(([name]) => name === "release"), false);
+});
+
+test("ambiguous initial submission keeps the Cloud lease and does not duplicate submit", async () => {
+  const services = mockServices({submitted: {ok: false, taskId: null}});
+  const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services, runId: "run-ambiguous"});
+  assert.equal(result.status, "submission-uncertain");
+  assert.equal(services.calls.filter(([name]) => name === "submit").length, 1);
+  assert.equal(services.calls.some(([name]) => name === "release"), false);
+});
+
+test("owned lock cannot be removed by a non-owner and safely replaces a stale lock", () => {
+  const root = mkdtempSync(join(tmpdir(), "openbutler-cloud-lock-"));
+  const lock = join(root, "controller.lock");
+  try {
+    mkdirSync(lock);
+    writeFileSync(join(lock, "owner.json"), JSON.stringify({pid: 999999, token: "stale"}), "utf8");
+    const acquired = acquireOwnedLock(lock, {pid: 1234, token: "owner-a", isAlive: () => false});
+    assert.equal(acquired.acquired, true);
+    assert.equal(releaseOwnedLock(lock, "owner-b"), false);
+    assert.equal(existsSync(lock), true);
+    assert.equal(releaseOwnedLock(lock, "owner-a"), true);
+    assert.equal(existsSync(lock), false);
+  } finally {
+    rmSync(root, {recursive: true, force: true});
+  }
+});
+
+test("Windows PowerShell 5 runner executes without unsupported Tee-Object parameters", {skip: process.platform !== "win32"}, () => {
+  const script = resolve(here, "..", "run-daytime-cloud.ps1");
+  const result = spawnSync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, "-Mode", "dry-run", "-Now", "2026-08-14T20:00:00+08:00"], {
+    cwd: resolve(here, "..", "..", ".."),
+    encoding: "utf8",
+    timeout: 30_000,
+  });
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /ParameterBindingException|Tee-Object/);
 });
 
 test("failed lease cleanup remains active for deterministic restart retry", async () => {
