@@ -68,7 +68,18 @@ test("Windows scheduler supports four bounded delivery phases", () => {
   assert.match(source, /\[string\]\$Mode = "dry-run"/);
   assert.match(source, /Get-ScheduledTaskInfo/);
   assert.match(source, /scheduled task verification failed/);
+  assert.match(source, /SupervisedSha requires dry-run mode/);
   for (const time of ["20:00", "07:15", "08:20", "08:30"]) assert.match(source, new RegExp(time));
+});
+
+test("supervised scheduler smoke is dry-run only and bound to exact HEAD", () => {
+  const controller = read("tools/nightly/nightly-controller.mjs");
+  const runner = read("tools/nightly/run-nightly.ps1");
+  assert.match(controller, /mode === "dry-run"/);
+  assert.match(controller, /\^\[0-9a-f\]\{40\}\$/i);
+  assert.match(controller, /head\.stdout\.trim\(\)\.toLowerCase\(\) === supervisedSha\.toLowerCase\(\)/);
+  assert.match(controller, /supervised SHA is allowed only for a dry-run at the exact current HEAD/);
+  assert.match(runner, /--supervised-sha=\$SupervisedSha/);
 });
 
 test("daytime Cloud scheduling is bounded and never auto-merges", () => {

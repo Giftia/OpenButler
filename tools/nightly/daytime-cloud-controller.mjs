@@ -153,6 +153,9 @@ async function runDaytimeDispatcherUnlocked({
       }
       return services.completeState({...state, status: "pr-ready", pr_number: pr.number, reason: null});
     } catch (error) {
+      if (error?.code === "CLOUD_CLEANUP_REQUIRED") {
+        return services.saveState({...state, status: "cleanup-required", reason: String(error.message), pr_number: error.prNumber ?? null});
+      }
       return terminalFailure(services, state, String(error?.message ?? error), "failed");
     }
   }
@@ -164,16 +167,16 @@ async function runDaytimeDispatcherUnlocked({
       for (const orphan of orphanCloudLeases) {
         const reconciliation = services.reconcileOrphanCloudLease?.(orphan.number) ?? {terminal: false};
         if (!reconciliation.terminal) {
-          const result = {status: "cleanup-required", issue: orphan.number, reason: "orphan Cloud lease has no provably terminal remote task; automation remains blocked"};
+          const result = {status: "cleanup-required", issue: orphan.number, startup_recoveries: orphanRecoveries, reason: "orphan Cloud lease has no provably terminal remote task; automation remains blocked"};
           services.recordStatus?.({...result, run_id: runId});
           return result;
         }
         if (!services.quarantine(orphan.number) || !services.release(orphan.number)) {
-          const result = {status: "cleanup-required", issue: orphan.number, reason: "orphan Cloud lease could not be quarantined safely"};
+          const result = {status: "cleanup-required", issue: orphan.number, startup_recoveries: orphanRecoveries, reason: "orphan Cloud lease could not be quarantined safely"};
           services.recordStatus?.({...result, run_id: runId});
           return result;
         }
-        orphanRecoveries.push(orphan.number);
+        orphanRecoveries.push({issue: orphan.number, status: "quarantined-and-released"});
       }
     } else {
       const result = {status: "blocked", issue: null, reason: "another Cloud or Nightly execution lease is active"};
@@ -194,8 +197,9 @@ async function runDaytimeDispatcherUnlocked({
       status: "no-op",
       issue: null,
       reason: orphanRecoveries.length
-        ? `terminal orphan Cloud leases quarantined and released: ${orphanRecoveries.map((number) => `#${number}`).join(", ")}`
+        ? `terminal orphan Cloud leases quarantined and released: ${orphanRecoveries.map((item) => `#${item.issue}`).join(", ")}`
         : null,
+      startup_recoveries: orphanRecoveries,
     };
     services.recordStatus?.({...result, run_id: runId});
     return result;
@@ -224,6 +228,7 @@ async function runDaytimeDispatcherUnlocked({
       task_id: null,
       branch: `codex/cloud-${issue.number}-${runId.replace(/[^0-9A-Za-z]/g, "").slice(0, 20)}`,
       specification_fingerprint: issueSpecificationFingerprint(issue),
+      startup_recoveries: orphanRecoveries,
       claimed_at: null,
       status: "claiming",
       reason: null,

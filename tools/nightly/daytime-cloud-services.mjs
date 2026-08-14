@@ -176,6 +176,13 @@ function diffBody(value) {
   return start >= 0 ? text.slice(start) : text;
 }
 
+function cleanupRequiredError(message, prNumber = null) {
+  const error = new Error(message);
+  error.code = "CLOUD_CLEANUP_REQUIRED";
+  error.prNumber = prNumber;
+  return error;
+}
+
 export function createProductionServices() {
   const codex = resolveCodexCommand();
   const codexRun = (args, options = {}) => command(codex.command, [...codex.argsPrefix, ...args], options);
@@ -404,12 +411,12 @@ export function createProductionServices() {
           const openForBranch = ghJson(["pr", "list", "--repo", repo, "--state", "open", "--head", state.branch, "--json", "number,url"]);
           for (const pullRequest of openForBranch) {
             const closed = ghCommand(["pr", "close", String(pullRequest.number), "--repo", repo, "--delete-branch"]);
-            if (!closed.ok) throw new Error(`${String(error?.message ?? error)}; rollback could not close PR #${pullRequest.number}`);
+            if (!closed.ok) throw cleanupRequiredError(`${String(error?.message ?? error)}; rollback could not close PR #${pullRequest.number}`, pullRequest.number);
           }
           const deleted = commandWithRetry("git", ["-c", "core.hooksPath=NUL", "push", "--no-verify", "origin", "--delete", state.branch], {cwd: worktree, timeout: 10 * 60_000});
           const remote = command("git", ["ls-remote", "--heads", "origin", state.branch], {cwd: worktree});
           if ((!deleted.ok && remote.stdout.trim()) || !remote.ok || remote.stdout.trim()) {
-            throw new Error(`${String(error?.message ?? error)}; rollback could not prove remote branch deletion`);
+            throw cleanupRequiredError(`${String(error?.message ?? error)}; rollback could not prove remote branch deletion`);
           }
           throw error;
         }

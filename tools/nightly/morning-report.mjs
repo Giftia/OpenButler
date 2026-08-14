@@ -35,6 +35,9 @@ function daytimeCloudLines() {
     `- Issue：${status.issue ? `#${status.issue}` : "无"}`,
   ];
   if (status.pr_number) lines.push(`- PR：#${status.pr_number}`);
+  for (const recovery of status.startup_recoveries ?? []) {
+    lines.push(`- 启动恢复：Issue #${recovery.issue}（${recovery.status}）`);
+  }
   if (status.reason) lines.push(`- 说明：${status.reason}`);
   lines.push("");
   return lines;

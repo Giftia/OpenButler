@@ -28,6 +28,7 @@ const args = new Map(process.argv.slice(2).map((arg) => {
   return [key, value];
 }));
 const mode = args.get("mode") ?? "dry-run";
+const supervisedSha = args.get("supervised-sha") ?? null;
 const now = new Date();
 const runId = (args.get("run-id") ?? now.toISOString()).replace(/[:.]/g, "-");
 const runDir = join(repoRoot, "data", "nightly", runId);
@@ -199,7 +200,11 @@ const head = command("git", ["rev-parse", "HEAD"]);
 const canonicalHead = command("git", ["rev-parse", "origin/main"]);
 if (!branch.ok || !head.ok || !canonicalHead.ok) fail("unable to verify canonical checkout");
 const canonicalCheckout = evaluateCanonicalCheckout({branch: branch.stdout, head: head.stdout, originMain: canonicalHead.stdout});
-if (!canonicalCheckout.eligible) fail(`nightly controller requires canonical main: ${canonicalCheckout.reasons.join(", ")}`);
+const supervisedDryRun = mode === "dry-run"
+  && /^[0-9a-f]{40}$/i.test(supervisedSha ?? "")
+  && head.stdout.trim().toLowerCase() === supervisedSha.toLowerCase();
+if (!canonicalCheckout.eligible && !supervisedDryRun) fail(`nightly controller requires canonical main: ${canonicalCheckout.reasons.join(", ")}`);
+if (supervisedSha && !supervisedDryRun) fail("supervised SHA is allowed only for a dry-run at the exact current HEAD");
 const canonicalState = command("git", ["show", "origin/main:STATE.md"]);
 if (!canonicalState.ok) fail("unable to read canonical STATE.md");
 const stateMarkdown = canonicalState.stdout;

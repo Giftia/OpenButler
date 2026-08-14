@@ -1,6 +1,7 @@
 param(
   [ValidateSet("dry-run", "execute")]
-  [string]$Mode = "dry-run"
+  [string]$Mode = "dry-run",
+  [string]$SupervisedSha = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,7 +18,9 @@ if ($Mode -eq "execute") {
 
 Push-Location $repoRoot
 try {
-  & node (Join-Path $PSScriptRoot "nightly-controller.mjs") "--mode=$Mode" *>&1 |
+  $controllerArgs = @((Join-Path $PSScriptRoot "nightly-controller.mjs"), "--mode=$Mode")
+  if ($SupervisedSha) { $controllerArgs += "--supervised-sha=$SupervisedSha" }
+  & node @controllerArgs *>&1 |
     Tee-Object -FilePath $logPath
   exit $LASTEXITCODE
 }

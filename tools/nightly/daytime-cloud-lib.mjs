@@ -17,6 +17,8 @@ const forbiddenPathPatterns = [
   /^AGENTS\.md$/i,
   /^(?:LOOP|STATE|loop-budget|loop-constraints|loop-run-log)\.md$/i,
   /^tools\/(?:nightly|loop)\//i,
+  /^desktop\/scripts\//i,
+  /^frontend\/(?:vite\.config\.[^/]+|tsconfig[^/]*\.json)$/i,
   /^docs\/(?:privacy|architecture\/decisions)\//i,
   /(^|\/)(?:package-lock\.json|package\.json|requirements[^/]*\.txt|pyproject\.toml|poetry\.lock)$/i,
   /(^|\/)(?:tests?|__tests__)(?:\/|$)/i,
@@ -215,6 +217,9 @@ export function redactedCloudStatus(state) {
     task_id: state.task_id ?? null,
     status: state.status,
     pr_number: state.pr_number ?? null,
+    startup_recoveries: Array.isArray(state.startup_recoveries)
+      ? state.startup_recoveries.map((item) => ({issue: Number(item.issue), status: String(item.status)}))
+      : [],
     reason: safeReason,
   };
 }

@@ -76,6 +76,7 @@ function mockServices(options = {}) {
     get state() { return state; },
     loadState: () => state,
     saveState: (next) => { calls.push(["save", next.status]); state = {...next}; return state; },
+    recordStatus: (next) => { calls.push(["recordStatus", next.status, next.startup_recoveries ?? []]); return next; },
     completeState: (next) => { calls.push(["complete", next.status]); state = null; return {...next}; },
     preflight: () => options.authenticated ?? true,
     baseSha: () => options.currentBase ?? "abc",
@@ -104,7 +105,15 @@ function mockServices(options = {}) {
     taskStatus: () => options.taskStatus ?? "pending",
     taskDiff: () => options.diff ?? safeDiff,
     openPullRequests: () => options.openPullRequests ?? [],
-    materialize: () => { calls.push(["materialize"]); if (options.materializeError) throw new Error(options.materializeError); return {number: 77, headRefOid: "def"}; },
+    materialize: () => {
+      calls.push(["materialize"]);
+      if (options.materializeError) {
+        const error = new Error(options.materializeError);
+        error.code = options.materializeErrorCode;
+        throw error;
+      }
+      return {number: 77, headRefOid: "def"};
+    },
     waitForChecks: () => { calls.push(["waitForChecks"]); return options.checksOk ?? true; },
   };
 }
@@ -154,6 +163,7 @@ test("an orphan Cloud lease without local state is quarantined in execute mode",
   assert.equal(result.status, "no-op");
   assert.equal(services.calls.some(([name]) => name === "quarantine"), true);
   assert.equal(services.calls.some(([name]) => name === "release"), true);
+  assert.equal(services.calls.some(([name, status, recoveries]) => name === "recordStatus" && status === "no-op" && recoveries[0]?.issue === 99), true);
 });
 
 test("an orphan Cloud lease with an unproven remote task remains blocked", async () => {
@@ -447,6 +457,9 @@ test("Cloud diffs cannot modify their own control plane or tests", () => {
     "docs/privacy/PRIVACY_BOUNDARIES.md",
     "frontend/package.json",
     "backend/requirements.txt",
+    "desktop/scripts/check-desktop-contract.mjs",
+    "frontend/vite.config.ts",
+    "frontend/tsconfig.json",
     "tools/nightly/daytime-cloud-controller.mjs",
     "frontend/src/App.test.tsx",
     "backend/app/modules/context_engine/tests/test_privacy.py",
@@ -479,6 +492,21 @@ test("failed Cloud quarantine retains the execution lease", async () => {
   const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services});
   assert.equal(result.status, "cleanup-required");
   assert.equal(services.calls.some(([name]) => name === "release"), false);
+});
+
+test("materialization cleanup errors retain the execution lease", async () => {
+  const issue = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});
+  const services = mockServices({
+    issue,
+    state: activeState(issue),
+    taskStatus: "ready",
+    materializeError: "rollback could not prove remote branch deletion",
+    materializeErrorCode: "CLOUD_CLEANUP_REQUIRED",
+  });
+  const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services});
+  assert.equal(result.status, "cleanup-required");
+  assert.equal(services.calls.some(([name]) => name === "release"), false);
+  assert.equal(services.calls.some(([name]) => name === "quarantine"), false);
 });
 
 test("stale base SHA and changed Issue specification block ready results", async () => {
