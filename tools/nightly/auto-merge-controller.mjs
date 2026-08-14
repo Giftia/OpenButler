@@ -3,7 +3,7 @@ import {existsSync, mkdirSync, readFileSync, writeFileSync} from "node:fs";
 import {dirname, join, resolve} from "node:path";
 import {fileURLToPath} from "node:url";
 import {canAutoMergePullRequest, isFreshAcceptancePack, parseDependencies, readJson, sanitizeAcceptanceValue} from "./nightly-lib.mjs";
-import {issueContentFingerprint} from "./daytime-cloud-lib.mjs";
+import {approvalTimelineIsCurrent, issueContentFingerprint} from "./daytime-cloud-lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..", "..");
@@ -43,17 +43,8 @@ function issueApprovalStillCurrent(acceptance) {
     const closed = new Set((ghJson(["issue", "list", "--repo", "Giftia/OpenButler", "--state", "closed", "--limit", "200", "--json", "number"]) ?? []).map((item) => item.number));
     if (dependencies.some((number) => !closed.has(number))) return false;
   }
-  const approvedAt = Date.parse(acceptance.issue_approved_at);
-  const workflowLabels = new Set(["ready-for-agent", "nightly-running", "review-pending", "acceptance-ready", "auto-merge-eligible"]);
-  const workflowEvents = new Set(["cross-referenced", "connected", "referenced", "mentioned", "subscribed", "unsubscribed"]);
   const timeline = ghJson(["api", `repos/Giftia/OpenButler/issues/${acceptance.issue_number}/timeline`, "--paginate"]);
-  return !timeline.some((event) => {
-    const at = Math.max(Date.parse(event.created_at) || 0, Date.parse(event.updated_at) || 0);
-    if (at <= approvedAt) return false;
-    if (event.event === "commented" && String(event.body ?? "").startsWith("[OpenButler automation marker]")) return false;
-    if (["labeled", "unlabeled"].includes(event.event) && workflowLabels.has(event.label?.name)) return false;
-    return !workflowEvents.has(event.event);
-  });
+  return approvalTimelineIsCurrent(timeline, acceptance.issue_approved_at);
 }
 
 function createRevertPullRequest(mergeSha, prNumber) {

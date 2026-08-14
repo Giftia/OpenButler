@@ -64,15 +64,62 @@ export function evaluateSpecificationFreshness(issue, timeline = []) {
   // Allow only a small clock-resolution margin; later comments or edits require re-triage.
   if (latestReadyAt && latestSpecificationAt > latestReadyAt) reasons.push("specification changed after ready-for-agent approval");
   const allowedExecutionEvents = new Set(["cloud-running", "nightly-running"]);
+  let latestExplainedUpdateAt = latestReadyAt;
   const postApprovalChanges = timeline.filter((event) => {
     const at = Math.max(Date.parse(event.created_at) || 0, Date.parse(event.updated_at) || 0);
     if (!latestReadyAt || at <= latestReadyAt) return false;
-    if (event.event === "commented" && String(event.body ?? "").startsWith("[OpenButler automation marker]")) return false;
-    if (["labeled", "unlabeled"].includes(event.event) && allowedExecutionEvents.has(event.label?.name)) return false;
-    return !["subscribed", "unsubscribed", "cross-referenced", "connected", "referenced", "mentioned"].includes(event.event);
+    if (event.event === "commented" && String(event.body ?? "").startsWith("[OpenButler automation marker]")) {
+      latestExplainedUpdateAt = Math.max(latestExplainedUpdateAt, at);
+      return false;
+    }
+    if (["labeled", "unlabeled"].includes(event.event) && allowedExecutionEvents.has(event.label?.name)) {
+      latestExplainedUpdateAt = Math.max(latestExplainedUpdateAt, at);
+      return false;
+    }
+    if (["subscribed", "unsubscribed", "cross-referenced", "connected", "referenced", "mentioned"].includes(event.event)) {
+      latestExplainedUpdateAt = Math.max(latestExplainedUpdateAt, at);
+      return false;
+    }
+    return true;
   });
   if (postApprovalChanges.length) reasons.push("Issue activity changed after ready-for-agent approval");
+  const issueUpdatedAt = Math.max(Date.parse(issue.updatedAt) || 0, Date.parse(issue.updated_at) || 0);
+  if (hasExecutionLease && issueUpdatedAt > latestExplainedUpdateAt) reasons.push("Issue updatedAt is not explained by an approved workflow event");
   return {fresh: reasons.length === 0, reasons, latestReadyAt, latestSpecificationAt};
+}
+
+export function trustedCloudTaskMarker({comments = [], timeline = [], actor}) {
+  if (!actor) return null;
+  const leaseAt = Math.max(...timeline
+    .filter((event) => event.event === "labeled" && event.label?.name === "cloud-running")
+    .map((event) => Date.parse(event.created_at) || 0), 0);
+  if (!leaseAt) return null;
+  return [...comments]
+    .filter((comment) => {
+      const createdAt = Date.parse(comment.createdAt ?? comment.created_at) || 0;
+      return createdAt >= leaseAt
+        && comment.author?.login === actor
+        && String(comment.body ?? "").startsWith("[OpenButler automation marker]");
+    })
+    .sort((left, right) => (
+      (Date.parse(right.createdAt ?? right.created_at) || 0)
+      - (Date.parse(left.createdAt ?? left.created_at) || 0)
+    ))[0] ?? null;
+}
+
+export function approvalTimelineIsCurrent(timeline = [], approvedAtValue) {
+  const approvedAt = Date.parse(approvedAtValue);
+  if (!Number.isFinite(approvedAt)) return false;
+  const workflowLabels = new Set(["nightly-running", "review-pending", "acceptance-ready", "auto-merge-eligible"]);
+  const workflowEvents = new Set(["cross-referenced", "connected", "referenced", "mentioned", "subscribed", "unsubscribed"]);
+  return !timeline.some((event) => {
+    const at = Math.max(Date.parse(event.created_at) || 0, Date.parse(event.updated_at) || 0);
+    if (at <= approvedAt) return false;
+    if (event.event === "labeled" && event.label?.name === "ready-for-agent") return true;
+    if (event.event === "commented" && String(event.body ?? "").startsWith("[OpenButler automation marker]")) return false;
+    if (["labeled", "unlabeled"].includes(event.event) && workflowLabels.has(event.label?.name)) return false;
+    return !workflowEvents.has(event.event);
+  });
 }
 
 export function parseCloudTaskId(output) {

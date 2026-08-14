@@ -3,7 +3,7 @@ import {existsSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, write
 import {randomUUID} from "node:crypto";
 import {dirname, join, resolve} from "node:path";
 import {fileURLToPath} from "node:url";
-import {evaluateSpecificationFreshness, issueSpecificationFingerprint, normalizeUnifiedDiff, parseCloudTaskId, parseCloudTaskStatus, redactedCloudStatus} from "./daytime-cloud-lib.mjs";
+import {evaluateSpecificationFreshness, issueSpecificationFingerprint, normalizeUnifiedDiff, parseCloudTaskId, parseCloudTaskStatus, redactedCloudStatus, trustedCloudTaskMarker} from "./daytime-cloud-lib.mjs";
 import {claimedIssueNumbers, evaluateIssueEligibility, resolveCodexCommand, runWithRetry} from "./nightly-lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -278,9 +278,11 @@ export function createProductionServices() {
     ]).ok,
     reconcileOrphanCloudLease: (number) => {
       const issue = ghJson(["issue", "view", String(number), "--repo", repo, "--json", "comments"]);
-      const marker = [...(issue.comments ?? [])].reverse().find((comment) => String(comment.body ?? "").startsWith("[OpenButler automation marker]"));
+      const actor = ghJson(["api", "user"])?.login ?? null;
+      const timeline = ghJson(["api", `repos/${repo}/issues/${number}/timeline`, "--paginate"]);
+      const marker = trustedCloudTaskMarker({comments: issue.comments, timeline, actor});
       const taskId = String(marker?.body ?? "").match(/Cloud task:\s*(task_[A-Za-z0-9_-]+)/)?.[1] ?? null;
-      if (!taskId) return {terminal: false, reason: "Cloud task marker is unavailable"};
+      if (!taskId) return {terminal: false, reason: "current Cloud lease has no trusted task marker"};
       const statusResult = codexReadWithRetry(["cloud", "status", taskId], {timeout: 30_000});
       const status = statusResult.ok ? parseCloudTaskStatus(statusResult.stdout) : "unavailable";
       return {terminal: ["ready", "failed", "cancelled"].includes(status), status, taskId};

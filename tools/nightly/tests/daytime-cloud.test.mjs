@@ -8,11 +8,13 @@ import {fileURLToPath} from "node:url";
 import {
   CLOUD_DIFF_BYTE_CAP,
   CLOUD_FILE_CAP,
+  approvalTimelineIsCurrent,
   evaluateCloudDiff,
   evaluateSpecificationFreshness,
   issueSpecificationFingerprint,
   parseCloudTaskId,
   parseCloudTaskStatus,
+  trustedCloudTaskMarker,
   withinDaytimeWindow,
 } from "../daytime-cloud-lib.mjs";
 import {runDaytimeDispatcher} from "../daytime-cloud-controller.mjs";
@@ -219,6 +221,40 @@ test("Issue activity one second after approval is never covered by a clock toler
   const issue = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});
   const timeline = [...readyTimeline, {event: "commented", body: "changed", created_at: "2026-08-12T01:00:01Z"}];
   assert.equal(evaluateSpecificationFreshness(issue, timeline).fresh, false);
+});
+
+test("an Issue edit restored to the approved body still requires fresh approval", () => {
+  const issue = readyIssue({
+    labels: [{name: "ready-for-agent"}, {name: "cloud-running"}],
+    updatedAt: "2026-08-12T01:05:00Z",
+  });
+  assert.equal(evaluateSpecificationFreshness(issue, readyTimeline).fresh, false);
+});
+
+test("orphan recovery trusts only the current lease epoch and authenticated actor", () => {
+  const timeline = [
+    {event: "labeled", label: {name: "cloud-running"}, created_at: "2026-08-12T01:00:00Z"},
+    {event: "unlabeled", label: {name: "cloud-running"}, created_at: "2026-08-12T02:00:00Z"},
+    {event: "labeled", label: {name: "cloud-running"}, created_at: "2026-08-12T03:00:00Z"},
+  ];
+  const comments = [
+    {createdAt: "2026-08-12T01:01:00Z", author: {login: "Giftia"}, body: "[OpenButler automation marker] Cloud task: task_old"},
+    {createdAt: "2026-08-12T03:01:00Z", author: {login: "other"}, body: "[OpenButler automation marker] Cloud task: task_untrusted"},
+    {createdAt: "2026-08-12T03:02:00Z", author: {login: "Giftia"}, body: "[OpenButler automation marker] Cloud task: task_current"},
+  ];
+  assert.match(trustedCloudTaskMarker({comments, timeline, actor: "Giftia"})?.body ?? "", /task_current/);
+  assert.equal(trustedCloudTaskMarker({comments: comments.slice(0, 2), timeline, actor: "Giftia"}), null);
+  assert.equal(trustedCloudTaskMarker({comments, timeline, actor: null}), null);
+});
+
+test("a later ready-for-agent approval invalidates older merge evidence", () => {
+  const timeline = [
+    {event: "labeled", label: {name: "ready-for-agent"}, created_at: "2026-08-12T01:00:00Z"},
+    {event: "labeled", label: {name: "nightly-running"}, created_at: "2026-08-12T01:01:00Z"},
+  ];
+  assert.equal(approvalTimelineIsCurrent(timeline, "2026-08-12T01:00:00Z"), true);
+  timeline.push({event: "labeled", label: {name: "ready-for-agent"}, created_at: "2026-08-12T02:00:00Z"});
+  assert.equal(approvalTimelineIsCurrent(timeline, "2026-08-12T01:00:00Z"), false);
 });
 
 test("the dispatcher records a Cloud recovery marker before reporting submission", async () => {
