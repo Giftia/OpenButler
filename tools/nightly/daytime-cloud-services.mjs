@@ -311,21 +311,23 @@ export function createProductionServices() {
           const current = command("git", ["rev-parse", "origin/main"], {cwd: worktree});
           if (!current.ok || current.stdout.trim() !== state.base_sha) throw new Error("origin/main changed during Cloud result verification");
         };
+        const verifyIssueContract = () => {
+          const currentIssue = ghJson(["issue", "view", String(state.issue), "--repo", repo, "--json", "number,title,body,labels,createdAt,updatedAt,state,url"]);
+          const currentPullRequests = ghJson(["pr", "list", "--repo", repo, "--state", "open", "--limit", "200", "--json", "number,title,body,headRefName,url"]);
+          const currentEligibility = evaluateIssueEligibility(currentIssue, {
+            closedIssues: new Set(ghJson(["issue", "list", "--repo", repo, "--state", "closed", "--limit", "200", "--json", "number"]).map((item) => item.number)),
+            claimedIssues: claimedIssueNumbers(currentPullRequests.filter((pr) => pr.headRefName !== state.branch)),
+            ownedLease: "cloud-running",
+          });
+          if (!currentEligibility.eligible) throw new Error(`Issue became ineligible during Cloud result verification: ${currentEligibility.reasons.join(", ")}`);
+          const currentFreshness = evaluateSpecificationFreshness(currentIssue, ghJson(["api", `repos/${repo}/issues/${state.issue}/timeline`, "--paginate"]));
+          if (!currentFreshness.fresh) throw new Error(`Issue requires retriage during Cloud result verification: ${currentFreshness.reasons.join(", ")}`);
+          if (issueSpecificationFingerprint(currentIssue) !== state.specification_fingerprint) throw new Error("Issue specification changed during Cloud result verification");
+          const competing = currentPullRequests.filter((pr) => claimedIssueNumbers([pr]).has(state.issue) && pr.headRefName !== state.branch);
+          if (competing.length) throw new Error("an implementation pull request appeared during Cloud result verification");
+        };
         refreshBase();
-        const currentIssue = ghJson(["issue", "view", String(state.issue), "--repo", repo, "--json", "number,title,body,labels,createdAt,updatedAt,state,url"]);
-        const currentPullRequests = ghJson(["pr", "list", "--repo", repo, "--state", "open", "--limit", "200", "--json", "number,title,body,headRefName,url"]);
-        const currentEligibility = evaluateIssueEligibility(currentIssue, {
-          closedIssues: new Set(ghJson(["issue", "list", "--repo", repo, "--state", "closed", "--limit", "200", "--json", "number"]).map((item) => item.number)),
-          claimedIssues: claimedIssueNumbers(currentPullRequests.filter((pr) => pr.headRefName !== state.branch)),
-          ownedLease: "cloud-running",
-        });
-        if (!currentEligibility.eligible) throw new Error(`Issue became ineligible during Cloud result verification: ${currentEligibility.reasons.join(", ")}`);
-        const currentFreshness = evaluateSpecificationFreshness(currentIssue, ghJson(["api", `repos/${repo}/issues/${state.issue}/timeline`, "--paginate"]));
-        if (!currentFreshness.fresh) throw new Error(`Issue requires retriage during Cloud result verification: ${currentFreshness.reasons.join(", ")}`);
-        if (issueSpecificationFingerprint(currentIssue) !== state.specification_fingerprint) throw new Error("Issue specification changed during Cloud result verification");
-        const competing = currentPullRequests
-          .filter((pr) => claimedIssueNumbers([pr]).has(state.issue) && pr.headRefName !== state.branch);
-        if (competing.length) throw new Error("an implementation pull request appeared during Cloud result verification");
+        verifyIssueContract();
 
         if (!command("git", ["add", "--", ...paths], {cwd: worktree}).ok) throw new Error("unable to stage verified paths");
         if (!command("git", ["commit", "-m", `feat: implement Issue #${state.issue} with Codex Cloud`], {cwd: worktree}).ok) throw new Error("unable to commit verified Cloud diff");
@@ -334,6 +336,7 @@ export function createProductionServices() {
           throw new Error("unable to push or safely update Cloud result branch");
         }
         refreshBase();
+        verifyIssueContract();
 
         const existing = ghJson(["pr", "list", "--repo", repo, "--state", "open", "--head", state.branch, "--json", "number,url"])[0];
         if (existing) return existing;

@@ -178,6 +178,8 @@ test("Cloud and Nightly dispatchers share a fail-closed execution gate", () => {
 test("a quarantined Nightly failure returns control to the serial queue", () => {
   const controller = read("tools/nightly/nightly-controller.mjs");
   assert.match(controller, /return \{tokens: totalTokens, stop: !quarantined\.ok, pullRequest: null, scenarios: \[\]\}/);
+  assert.match(controller, /issue_failed_before_isolation/);
+  assert.match(controller, /continue;/);
 });
 
 test("real data smoke is isolated, bounded, and redacted", () => {

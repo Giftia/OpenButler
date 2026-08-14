@@ -331,7 +331,16 @@ try {
         break;
       }
       log("issue_selected", {issue: issue.number, high_risk: issue.evaluation.highRisk});
-      const issueResult = await executeIssue(issue, {tokensUsed});
+      let issueResult;
+      try {
+        issueResult = await executeIssue(issue, {tokensUsed});
+      } catch (error) {
+        const reason = String(error?.message ?? error);
+        pack.blockers.push(`Issue #${issue.number} failed before it could be isolated: ${reason}`);
+        pack.rejected_candidates.push({issue_number: issue.number, reasons: [reason]});
+        log("issue_failed_before_isolation", {issue: issue.number, reason});
+        continue;
+      }
       tokensUsed += issueResult.tokens;
       if (issueResult.pullRequest) pack.pull_requests.push(issueResult.pullRequest);
       pack.scenarios.push(...issueResult.scenarios);

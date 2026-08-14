@@ -226,14 +226,15 @@ test("a disappeared Cloud lease is restored and unresolved state is retained", a
   assert.equal(services.calls.some(([name]) => name === "complete"), false);
 });
 
-test("stale pending Cloud task retains its Issue lease when cancellation is unavailable", async () => {
+test("stale pending Cloud task is abandoned and quarantined after 14 hours", async () => {
   const issue = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});
   const state = activeState(issue, {claimed_at: "2026-08-11T10:00:00.000Z"});
   const services = mockServices({issue, state, taskStatus: "pending"});
   const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services});
-  assert.equal(result.status, "cleanup-required");
-  assert.match(result.reason, /cancellation is unavailable/);
-  assert.equal(services.calls.some(([name]) => name === "release"), false);
+  assert.equal(result.status, "failed");
+  assert.match(result.reason, /14-hour execution lease/);
+  assert.equal(services.calls.some(([name]) => name === "quarantine"), true);
+  assert.equal(services.calls.some(([name]) => name === "release"), true);
 });
 
 test("stale ready Cloud task is never materialized after the 14-hour lease", async () => {
@@ -241,9 +242,18 @@ test("stale ready Cloud task is never materialized after the 14-hour lease", asy
   const state = activeState(issue, {claimed_at: "2026-08-11T10:00:00.000Z"});
   const services = mockServices({issue, state, taskStatus: "ready"});
   const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services});
-  assert.equal(result.status, "cleanup-required");
+  assert.equal(result.status, "failed");
   assert.match(result.reason, /14-hour execution lease/);
   assert.equal(services.calls.some(([name]) => name === "materialize"), false);
+});
+
+test("an unconfirmed Cloud submission is abandoned after 14 hours", async () => {
+  const issue = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});
+  const state = activeState(issue, {status: "cleanup-required", task_id: null, claimed_at: "2026-08-11T10:00:00.000Z"});
+  const services = mockServices({issue, state});
+  const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services});
+  assert.equal(result.status, "failed");
+  assert.equal(services.calls.some(([name]) => name === "release"), true);
 });
 
 test("unavailable or unknown Cloud status retains the lease", async () => {
@@ -257,13 +267,13 @@ test("unavailable or unknown Cloud status retains the lease", async () => {
   }
 });
 
-test("stale unavailable Cloud status requires reconciliation without releasing the lease", async () => {
+test("stale unavailable Cloud status is abandoned and quarantined", async () => {
   const issue = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});
   const state = activeState(issue, {claimed_at: "2026-08-11T10:00:00.000Z"});
   const services = mockServices({issue, state, taskStatus: "unavailable"});
   const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services});
-  assert.equal(result.status, "cleanup-required");
-  assert.equal(services.calls.some(([name]) => name === "release"), false);
+  assert.equal(result.status, "failed");
+  assert.equal(services.calls.some(([name]) => name === "release"), true);
 });
 
 test("ready result becomes PR-ready only after materialization and label transition", async () => {

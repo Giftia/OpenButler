@@ -61,6 +61,11 @@ async function runDaytimeDispatcherUnlocked({
   }
 
   if (state?.status === "cleanup-required" && !state.task_id) {
+    const claimedAt = Date.parse(state.claimed_at ?? "");
+    const ageHours = Number.isFinite(claimedAt) ? (now.getTime() - claimedAt) / 3_600_000 : 0;
+    if (ageHours >= EXECUTION_LEASE_HOURS) {
+      return terminalFailure(services, state, "Unconfirmed Cloud submission exceeded 14 hours; the unknown result is abandoned and the Issue is quarantined", "failed");
+    }
     return services.saveState({...state, reason: "Cloud submission outcome remains uncertain; manual reconciliation is required and the lease is retained"});
   }
 
@@ -80,7 +85,7 @@ async function runDaytimeDispatcherUnlocked({
     const claimedAt = Date.parse(state.claimed_at ?? "");
     const ageHours = Number.isFinite(claimedAt) ? (now.getTime() - claimedAt) / 3_600_000 : 0;
     if (ageHours >= EXECUTION_LEASE_HOURS && !["failed", "cancelled"].includes(taskStatus)) {
-      return services.saveState({...state, status: "cleanup-required", reason: "Cloud task exceeded its 14-hour execution lease; result will not be materialized and remote cancellation is unavailable"});
+      return terminalFailure(services, state, "Cloud task exceeded its 14-hour execution lease; its isolated result is abandoned and the Issue is quarantined", "failed");
     }
     if (taskStatus === "pending") {
       return services.saveState({...state, status: "pending", reason: null});
