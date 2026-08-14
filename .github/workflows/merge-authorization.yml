@@ -3,7 +3,7 @@ name: Refresh Merge Authorization
 on:
   issues:
     types: [labeled, unlabeled, edited, closed, reopened]
-  pull_request:
+  pull_request_target:
     types: [edited]
 
 permissions:
@@ -17,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - name: Refresh affected pull-request authorization status
         env:
           GH_TOKEN: ${{ github.token }}
