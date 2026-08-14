@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {spawnSync} from "node:child_process";
+import {spawn, spawnSync} from "node:child_process";
 import {existsSync, mkdtempSync, rmSync, writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {dirname, join, resolve} from "node:path";
@@ -238,14 +238,14 @@ test("restart recovery resumes a persisted submission without duplicate submit",
   assert.equal(services.calls.some(([name]) => name === "submit"), false);
 });
 
-test("restart recovery resumes a claimed Issue before any Cloud submission", async () => {
+test("restart recovery quarantines an unprovable claimed Issue without Cloud submission", async () => {
   const issue = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});
   const state = activeState(issue, {status: "claiming", task_id: null});
   const services = mockServices({issue, state});
   const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services});
-  assert.equal(result.status, "submitted");
-  assert.equal(result.task_id, "task_123");
-  assert.equal(services.calls.filter(([name]) => name === "submit").length, 1);
+  assert.equal(result.status, "cleanup-required");
+  assert.match(result.reason, /ownership cannot be proven/);
+  assert.equal(services.calls.filter(([name]) => name === "submit").length, 0);
   assert.equal(services.calls.some(([name]) => name === "release"), false);
 });
 
@@ -285,6 +285,25 @@ test("owned lock cannot be removed by a non-owner and safely replaces a stale lo
     assert.equal(existsSync(lock), true);
     assert.equal(releaseOwnedLock(lock, "owner-a"), true);
     assert.equal(existsSync(lock), false);
+  } finally {
+    rmSync(root, {recursive: true, force: true});
+  }
+});
+
+test("only one process acquires a stale lock during concurrent takeover", {timeout: 15_000}, async () => {
+  const root = mkdtempSync(join(tmpdir(), "openbutler-cloud-lock-race-"));
+  const lock = join(root, "controller.lock");
+  writeFileSync(lock, JSON.stringify({pid: 999999, token: "stale"}), "utf8");
+  const moduleUrl = new URL("../daytime-cloud-services.mjs", import.meta.url).href;
+  const program = `import {acquireOwnedLock,releaseOwnedLock} from ${JSON.stringify(moduleUrl)}; const lock=process.argv[1]; const result=acquireOwnedLock(lock); if(result.acquired){console.log('acquired'); setTimeout(()=>{releaseOwnedLock(lock,result.token)},2000)}`;
+  try {
+    const results = await Promise.all(Array.from({length: 24}, () => new Promise((resolveChild) => {
+      const child = spawn(process.execPath, ["--input-type=module", "-e", program, lock], {stdio: ["ignore", "pipe", "pipe"]});
+      let stdout = "";
+      child.stdout.on("data", (chunk) => { stdout += chunk; });
+      child.on("close", () => resolveChild(stdout));
+    })));
+    assert.equal(results.filter((output) => output.includes("acquired")).length, 1);
   } finally {
     rmSync(root, {recursive: true, force: true});
   }

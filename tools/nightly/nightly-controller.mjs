@@ -135,7 +135,7 @@ function runFocusedTests(worktree) {
     run("Desktop Contract", "npm.cmd", ["run", "check"], {cwd: join(worktree, "desktop")});
   }
   if (files.some((file) => file.startsWith("tools/nightly/"))) {
-    run("Nightly Controller", "node", ["--test", "tests/nightly-lib.test.mjs"], {cwd: join(worktree, "tools", "nightly")});
+    run("Nightly Controller", "node", ["--test", "tests"], {cwd: join(worktree, "tools", "nightly")});
   }
   if (!checks.length) {
     installNpmDependencies("Loop Governance", join(worktree, "tools", "loop"));

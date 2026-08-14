@@ -24,21 +24,19 @@ function processIsAlive(pid) {
 }
 
 export function acquireOwnedLock(path, {pid = process.pid, token = `${pid}-${randomUUID()}`, isAlive = processIsAlive} = {}) {
-  const create = () => {
+  const create = (target, ownerToken) => {
     const candidate = `${path}.candidate-${randomUUID()}`;
     try {
-      writeFileSync(candidate, `${JSON.stringify({pid, token})}\n`, {encoding: "utf8", flag: "wx"});
-      linkSync(candidate, path);
-      return {acquired: true, token};
+      writeFileSync(candidate, `${JSON.stringify({pid, token: ownerToken})}\n`, {encoding: "utf8", flag: "wx"});
+      linkSync(candidate, target);
+      return true;
+    } catch {
+      return false;
     } finally {
       rmSync(candidate, {force: true});
     }
   };
-  try {
-    return create();
-  } catch (error) {
-    if (error?.code !== "EEXIST") return {acquired: false, token: null};
-  }
+  if (create(path, token)) return {acquired: true, token};
 
   let owner = null;
   try {
@@ -46,17 +44,28 @@ export function acquireOwnedLock(path, {pid = process.pid, token = `${pid}-${ran
   } catch {}
   if (owner?.pid && isAlive(Number(owner.pid))) return {acquired: false, token: null};
 
-  const stalePath = `${path}.stale-${randomUUID()}`;
+  // Only one contender may inspect and replace a stale owner. A stale reclaim
+  // lock is deliberately fail-closed and requires operator cleanup.
+  const reclaimPath = `${path}.reclaim`;
+  const reclaimToken = `reclaim-${token}`;
+  if (!create(reclaimPath, reclaimToken)) return {acquired: false, token: null};
   try {
-    renameSync(path, stalePath);
-  } catch {
-    return {acquired: false, token: null};
-  }
-  rmSync(stalePath, {recursive: true, force: true});
-  try {
-    return create();
-  } catch {
-    return {acquired: false, token: null};
+    try {
+      owner = JSON.parse(readFileSync(path, "utf8"));
+    } catch {
+      owner = null;
+    }
+    if (owner?.pid && isAlive(Number(owner.pid))) return {acquired: false, token: null};
+    const stalePath = `${path}.stale-${randomUUID()}`;
+    try {
+      renameSync(path, stalePath);
+      rmSync(stalePath, {force: true});
+    } catch (error) {
+      if (error?.code !== "ENOENT") return {acquired: false, token: null};
+    }
+    return create(path, token) ? {acquired: true, token} : {acquired: false, token: null};
+  } finally {
+    releaseOwnedLock(reclaimPath, reclaimToken);
   }
 }
 
