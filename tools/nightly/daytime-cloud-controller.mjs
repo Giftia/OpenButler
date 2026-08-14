@@ -37,6 +37,28 @@ async function runDaytimeDispatcherUnlocked({
     return result;
   }
 
+  if (state?.status === "claiming" && !state.task_id) {
+    const issue = services.issue(state.issue);
+    const labels = new Set((issue.labels ?? []).map((label) => label.name ?? label));
+    if (!labels.has("cloud-running")) {
+      return services.completeState({...state, status: "failed", reason: "Cloud lease was not acquired before restart"});
+    }
+    if (labels.has("nightly-running")) return terminalFailure(services, state, "competing local lease detected while resuming claim");
+    if (issueSpecificationFingerprint(issue) !== state.specification_fingerprint) {
+      return terminalFailure(services, state, "Issue specification changed while resuming claim");
+    }
+    if (claimedIssueNumbers(services.openPullRequests()).has(state.issue)) {
+      return terminalFailure(services, state, "an implementation pull request appeared while resuming claim");
+    }
+    if (services.baseSha() !== state.base_sha) return terminalFailure(services, state, "origin/main changed while resuming claim");
+    state = services.saveState({...state, status: "submitting"});
+    const submitted = services.submit({environmentId, prompt: buildCloudPrompt({issue, baseSha: state.base_sha, runId: state.run_id})});
+    if (!submitted.ok || !submitted.taskId) {
+      return services.saveState({...state, status: "submission-uncertain", reason: "Cloud submission did not return a confirmed task ID; lease retained for recovery"});
+    }
+    return services.saveState({...state, task_id: submitted.taskId, status: "submitted", reason: null});
+  }
+
   if (["submitting", "submission-uncertain"].includes(state?.status) && !state.task_id) {
     const recovered = services.recoverTask({runId: state.run_id, environmentId});
     if (!recovered) {

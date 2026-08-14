@@ -1,5 +1,5 @@
 import {spawnSync} from "node:child_process";
-import {existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync} from "node:fs";
+import {existsSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync} from "node:fs";
 import {randomUUID} from "node:crypto";
 import {dirname, join, resolve} from "node:path";
 import {fileURLToPath} from "node:url";
@@ -25,9 +25,14 @@ function processIsAlive(pid) {
 
 export function acquireOwnedLock(path, {pid = process.pid, token = `${pid}-${randomUUID()}`, isAlive = processIsAlive} = {}) {
   const create = () => {
-    mkdirSync(path);
-    writeFileSync(join(path, "owner.json"), `${JSON.stringify({pid, token})}\n`, "utf8");
-    return {acquired: true, token};
+    const candidate = `${path}.candidate-${randomUUID()}`;
+    try {
+      writeFileSync(candidate, `${JSON.stringify({pid, token})}\n`, {encoding: "utf8", flag: "wx"});
+      linkSync(candidate, path);
+      return {acquired: true, token};
+    } finally {
+      rmSync(candidate, {force: true});
+    }
   };
   try {
     return create();
@@ -37,7 +42,7 @@ export function acquireOwnedLock(path, {pid = process.pid, token = `${pid}-${ran
 
   let owner = null;
   try {
-    owner = JSON.parse(readFileSync(join(path, "owner.json"), "utf8"));
+    owner = JSON.parse(readFileSync(path, "utf8"));
   } catch {}
   if (owner?.pid && isAlive(Number(owner.pid))) return {acquired: false, token: null};
 
@@ -58,7 +63,7 @@ export function acquireOwnedLock(path, {pid = process.pid, token = `${pid}-${ran
 export function releaseOwnedLock(path, token) {
   let owner;
   try {
-    owner = JSON.parse(readFileSync(join(path, "owner.json"), "utf8"));
+    owner = JSON.parse(readFileSync(path, "utf8"));
   } catch {
     return false;
   }
@@ -69,7 +74,7 @@ export function releaseOwnedLock(path, token) {
   } catch {
     return false;
   }
-  rmSync(releasedPath, {recursive: true, force: true});
+  rmSync(releasedPath, {force: true});
   return true;
 }
 

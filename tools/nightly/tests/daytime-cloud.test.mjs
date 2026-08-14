@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {spawnSync} from "node:child_process";
-import {existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync} from "node:fs";
+import {existsSync, mkdtempSync, rmSync, writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {dirname, join, resolve} from "node:path";
 import {fileURLToPath} from "node:url";
@@ -238,6 +238,26 @@ test("restart recovery resumes a persisted submission without duplicate submit",
   assert.equal(services.calls.some(([name]) => name === "submit"), false);
 });
 
+test("restart recovery resumes a claimed Issue before any Cloud submission", async () => {
+  const issue = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});
+  const state = activeState(issue, {status: "claiming", task_id: null});
+  const services = mockServices({issue, state});
+  const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services});
+  assert.equal(result.status, "submitted");
+  assert.equal(result.task_id, "task_123");
+  assert.equal(services.calls.filter(([name]) => name === "submit").length, 1);
+  assert.equal(services.calls.some(([name]) => name === "release"), false);
+});
+
+test("restart recovery closes an unacquired claiming state without querying a null task", async () => {
+  const issue = readyIssue();
+  const state = activeState(issue, {status: "claiming", task_id: null});
+  const services = mockServices({issue, state});
+  const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services});
+  assert.equal(result.status, "failed");
+  assert.equal(services.calls.some(([name]) => name === "submit"), false);
+});
+
 test("unconfirmed submission retains its lease until remote recovery is conclusive", async () => {
   const issue = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});
   const services = mockServices({issue, state: activeState(issue, {status: "submitting", task_id: null})});
@@ -258,8 +278,7 @@ test("owned lock cannot be removed by a non-owner and safely replaces a stale lo
   const root = mkdtempSync(join(tmpdir(), "openbutler-cloud-lock-"));
   const lock = join(root, "controller.lock");
   try {
-    mkdirSync(lock);
-    writeFileSync(join(lock, "owner.json"), JSON.stringify({pid: 999999, token: "stale"}), "utf8");
+    writeFileSync(lock, JSON.stringify({pid: 999999, token: "stale"}), "utf8");
     const acquired = acquireOwnedLock(lock, {pid: 1234, token: "owner-a", isAlive: () => false});
     assert.equal(acquired.acquired, true);
     assert.equal(releaseOwnedLock(lock, "owner-b"), false);
