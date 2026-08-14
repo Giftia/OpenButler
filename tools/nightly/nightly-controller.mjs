@@ -612,7 +612,6 @@ async function executeIssue(issue, {tokensUsed}) {
     verifyCurrentIssueContract();
     const queueTransition = ghCommand([
       "issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler",
-      "--remove-label", "ready-for-agent",
       "--add-label", "review-pending",
     ]);
     if (!queueTransition.ok) throw new Error(queueTransition.stderr || `failed to move #${issue.number} to human review`);

@@ -154,10 +154,15 @@ test("fresh issue worktrees install npm dependencies before focused checks", () 
 
 test("an issue moves from its execution lease to review as soon as its pull request exists", () => {
   const controller = read("tools/nightly/nightly-controller.mjs");
+  const daytimeServices = read("tools/nightly/daytime-cloud-services.mjs");
   assert.match(controller, /claimedIssueNumbers/);
   assert.match(controller, /--remove-label", "ready-for-agent"/);
   assert.match(controller, /--add-label", "review-pending"/);
   assert.match(controller, /--remove-label", "nightly-running"/);
+  const transitionBlock = controller.slice(controller.indexOf("const queueTransition"), controller.indexOf("const readyPullRequest"));
+  assert.doesNotMatch(transitionBlock, /--remove-label", "ready-for-agent"/);
+  const daytimeTransition = daytimeServices.split(/\r?\n/).find((line) => line.includes("transitionToReview")) ?? "";
+  assert.doesNotMatch(daytimeTransition, /ready-for-agent/);
 });
 
 test("nightly retries use unique branches and clean local branch state", () => {

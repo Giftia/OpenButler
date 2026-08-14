@@ -287,7 +287,7 @@ test("a later ready-for-agent approval invalidates older merge evidence", () => 
   assert.equal(approvalTimelineIsCurrent(timeline, "2026-08-12T01:00:00Z"), false);
 });
 
-test("ready approval removal is revocation unless paired with review transition", () => {
+test("ready approval removal is always a revocation", () => {
   const approvedAt = "2026-08-12T01:00:00Z";
   const base = [{event: "labeled", label: {name: "ready-for-agent"}, actor: {login: "Giftia"}, created_at: approvedAt}];
   const revoked = [...base, {event: "unlabeled", label: {name: "ready-for-agent"}, actor: {login: "Giftia"}, created_at: "2026-08-12T02:00:00Z"}];
@@ -296,7 +296,7 @@ test("ready approval removal is revocation unless paired with review transition"
     ...revoked,
     {event: "labeled", label: {name: "review-pending"}, actor: {login: "Giftia"}, created_at: "2026-08-12T02:00:02Z"},
   ];
-  assert.equal(approvalTimelineIsCurrent(transitioned, approvedAt), true);
+  assert.equal(approvalTimelineIsCurrent(transitioned, approvedAt), false);
   const wrongActor = [
     ...revoked,
     {event: "labeled", label: {name: "review-pending"}, actor: {login: "automation"}, created_at: "2026-08-12T02:00:02Z"},

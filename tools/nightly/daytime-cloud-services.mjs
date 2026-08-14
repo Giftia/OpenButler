@@ -271,7 +271,7 @@ export function createProductionServices() {
     release: (number) => ghCommand(["issue", "edit", String(number), "--repo", repo, "--remove-label", "cloud-running"]).ok,
     restoreLease: (number) => ghCommand(["issue", "edit", String(number), "--repo", repo, "--add-label", "cloud-running"]).ok,
     quarantine: (number) => ghCommand(["issue", "edit", String(number), "--repo", repo, "--remove-label", "ready-for-agent", "--add-label", "nightly-failed"]).ok,
-    transitionToReview: (number) => ghCommand(["issue", "edit", String(number), "--repo", repo, "--remove-label", "ready-for-agent", "--remove-label", "cloud-running", "--add-label", "review-pending"]).ok,
+    transitionToReview: (number) => ghCommand(["issue", "edit", String(number), "--repo", repo, "--remove-label", "cloud-running", "--add-label", "review-pending"]).ok,
     closePullRequest: (number, branch) => {
       if (!ghCommand(["pr", "close", String(number), "--repo", repo, "--delete-branch"]).ok) return false;
       const pullRequest = ghJson(["pr", "view", String(number), "--repo", repo, "--json", "state"]);
