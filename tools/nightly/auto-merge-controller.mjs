@@ -2,7 +2,8 @@ import {execFileSync, spawnSync} from "node:child_process";
 import {existsSync, mkdirSync, readFileSync, writeFileSync} from "node:fs";
 import {dirname, join, resolve} from "node:path";
 import {fileURLToPath} from "node:url";
-import {canAutoMergePullRequest, isFreshAcceptancePack, readJson, sanitizeAcceptanceValue} from "./nightly-lib.mjs";
+import {canAutoMergePullRequest, isFreshAcceptancePack, parseDependencies, readJson, sanitizeAcceptanceValue} from "./nightly-lib.mjs";
+import {approvalTimelineIsCurrent, issueContentFingerprint} from "./daytime-cloud-lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..", "..");
@@ -11,9 +12,12 @@ const requiredChecks = new Set([
   "Butler Core",
   "PC Activity",
   "Workstation Vision",
+  "Context Engine",
   "Frontend Build",
   "Desktop Contract",
   "Loop Governance",
+  "Nightly Controller",
+  "Merge Authorization",
 ]);
 
 function gh(args, {allowFailure = false, timeout = 120_000} = {}) {
@@ -31,6 +35,56 @@ function gh(args, {allowFailure = false, timeout = 120_000} = {}) {
 function ghJson(args) {
   const result = gh(args);
   return JSON.parse(result.stdout || "null");
+}
+
+function pullRequestLinksAcceptanceIssue(pullRequest, acceptance) {
+  const text = `${pullRequest.title ?? ""}\n${pullRequest.body ?? ""}`;
+  const numbers = new Set();
+  for (const match of text.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/gi)) numbers.add(Number(match[1]));
+  for (const match of text.matchAll(/\(#(\d+)\)/g)) numbers.add(Number(match[1]));
+  return numbers.size === 1 && numbers.has(Number(acceptance.issue_number));
+}
+
+function issueApprovalStillCurrent(acceptance) {
+  if (!acceptance.issue_number || !acceptance.issue_content_fingerprint || !acceptance.issue_approved_at) return false;
+  const issue = ghJson(["issue", "view", String(acceptance.issue_number), "--repo", "Giftia/OpenButler", "--json", "number,title,body,state"]);
+  if (issue.state !== "OPEN" || issueContentFingerprint(issue) !== acceptance.issue_content_fingerprint) return false;
+  const dependencies = parseDependencies(issue.body);
+  if (dependencies.length) {
+    const closed = new Set((ghJson(["issue", "list", "--repo", "Giftia/OpenButler", "--state", "closed", "--limit", "200", "--json", "number"]) ?? []).map((item) => item.number));
+    if (dependencies.some((number) => !closed.has(number))) return false;
+  }
+  const timeline = ghJson(["api", `repos/Giftia/OpenButler/issues/${acceptance.issue_number}/timeline`, "--paginate"]);
+  return approvalTimelineIsCurrent(timeline, acceptance.issue_approved_at);
+}
+
+function currentIssueAuthorizationNonce(issueNumber) {
+  const timeline = ghJson(["api", `repos/Giftia/OpenButler/issues/${issueNumber}/timeline`, "--paginate"]);
+  const latestReady = timeline.filter((event) => event.event === "labeled" && event.label?.name === "ready-for-agent").at(-1);
+  const latestEvent = timeline.at(-1);
+  if (!latestReady || !latestEvent) return null;
+  const latestEventId = latestEvent.id
+    ?? latestEvent.source?.issue?.id
+    ?? latestEvent.commit_id
+    ?? `${latestEvent.event}:${latestEvent.created_at}:${latestEvent.updated_at ?? ""}`;
+  return `${latestReady.id ?? latestReady.node_id}:${latestEventId}`;
+}
+
+function refreshAndVerifyMergeAuthorization(acceptance) {
+  const refreshed = spawnSync(process.execPath, [join(here, "merge-authorization.mjs"), "refresh-issue"], {
+    cwd: root,
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 120_000,
+    env: {...process.env, OPENBUTLER_ISSUE_NUMBER: String(acceptance.issue_number)},
+  });
+  if (refreshed.status !== 0) return false;
+  if (!issueApprovalStillCurrent(acceptance)) return false;
+  const currentNonce = currentIssueAuthorizationNonce(acceptance.issue_number);
+  const combined = ghJson(["api", `repos/Giftia/OpenButler/commits/${acceptance.head_sha}/status`]);
+  const authorization = (combined.statuses ?? []).find((status) => status.context === "Merge Authorization");
+  return authorization?.state === "success"
+    && authorization.description === `issue=${acceptance.issue_number};nonce=${currentNonce}`;
 }
 
 function createRevertPullRequest(mergeSha, prNumber) {
@@ -88,11 +142,19 @@ for (const acceptance of pack.pull_requests ?? []) {
   pack.auto_merge.attempted += 1;
   const pullRequest = ghJson([
     "pr", "view", String(acceptance.number), "--repo", "Giftia/OpenButler",
-    "--json", "number,state,isDraft,headRefOid,reviewDecision,statusCheckRollup,labels",
+    "--json", "number,title,body,state,isDraft,headRefOid,reviewDecision,statusCheckRollup,labels",
   ]);
+  if (!pullRequestLinksAcceptanceIssue(pullRequest, acceptance)) {
+    pack.auto_merge.blocked.push({pr: acceptance.number, reasons: ["PR no longer links exactly the accepted Issue"]});
+    continue;
+  }
   const labels = new Set((pullRequest.labels ?? []).map((label) => label.name));
   if (!labels.has("acceptance-ready") || !labels.has("auto-merge-eligible")) {
     pack.auto_merge.blocked.push({pr: acceptance.number, reasons: ["required merge labels missing"]});
+    continue;
+  }
+  if (!issueApprovalStillCurrent(acceptance)) {
+    pack.auto_merge.blocked.push({pr: acceptance.number, reasons: ["Issue approval is stale or cannot be verified"]});
     continue;
   }
   const gate = canAutoMergePullRequest({
@@ -103,6 +165,39 @@ for (const acceptance of pack.pull_requests ?? []) {
   });
   if (!gate.eligible) {
     pack.auto_merge.blocked.push({pr: acceptance.number, reasons: gate.reasons});
+    continue;
+  }
+  // Re-read the user approval immediately before the SHA-bound merge. GitHub
+  // does not offer a transaction spanning Issue state and PR merge, so any
+  // observed approval drift fails closed at the last possible boundary.
+  if (!issueApprovalStillCurrent(acceptance)) {
+    pack.auto_merge.blocked.push({pr: acceptance.number, reasons: ["Issue approval changed during final merge preflight"]});
+    continue;
+  }
+  if (!refreshAndVerifyMergeAuthorization(acceptance)) {
+    pack.auto_merge.blocked.push({pr: acceptance.number, reasons: ["Merge Authorization is missing, stale, or failed"]});
+    continue;
+  }
+  const finalPullRequest = ghJson([
+    "pr", "view", String(acceptance.number), "--repo", "Giftia/OpenButler",
+    "--json", "number,title,body,state,isDraft,headRefOid,reviewDecision,statusCheckRollup,labels",
+  ]);
+  if (!pullRequestLinksAcceptanceIssue(finalPullRequest, acceptance)) {
+    pack.auto_merge.blocked.push({pr: acceptance.number, reasons: ["PR Issue linkage changed during final merge preflight"]});
+    continue;
+  }
+  const finalGate = canAutoMergePullRequest({
+    pullRequest: finalPullRequest,
+    acceptance,
+    requiredChecks,
+    requireNightly: acceptance.risk === "high",
+  });
+  if (!finalGate.eligible) {
+    pack.auto_merge.blocked.push({pr: acceptance.number, reasons: ["PR state changed during final merge preflight", ...finalGate.reasons]});
+    continue;
+  }
+  if (!issueApprovalStillCurrent(acceptance) || !refreshAndVerifyMergeAuthorization(acceptance)) {
+    pack.auto_merge.blocked.push({pr: acceptance.number, reasons: ["Issue authorization changed during final merge preflight"]});
     continue;
   }
   gh([

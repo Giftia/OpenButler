@@ -8,12 +8,18 @@ import {
   claimedIssueNumbers,
   evaluateCanonicalCheckout,
   evaluateIssueEligibility,
+  beforeNightlyCutoff,
   mayStartIssue,
   parseCurrentLevel,
   resolveCodexCommand,
+  runWithRetry,
   sanitizeAcceptanceValue,
+  shouldClearLocalQuarantine,
+  shouldPreserveRecovery,
   tokenUsageFromJsonl,
 } from "./nightly-lib.mjs";
+import {acquireOwnedLock, releaseOwnedLock} from "./daytime-cloud-services.mjs";
+import {evaluateSpecificationFreshness, issueContentFingerprint, issueSpecificationFingerprint} from "./daytime-cloud-lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..");
@@ -22,12 +28,16 @@ const args = new Map(process.argv.slice(2).map((arg) => {
   return [key, value];
 }));
 const mode = args.get("mode") ?? "dry-run";
+const supervisedSha = args.get("supervised-sha") ?? null;
 const now = new Date();
 const runId = (args.get("run-id") ?? now.toISOString()).replace(/[:.]/g, "-");
 const runDir = join(repoRoot, "data", "nightly", runId);
 const lockPath = join(repoRoot, "data", "nightly", "active-run.json");
 const cutoffFlag = join(repoRoot, "data", "nightly", "control", "stop-new-issues.flag");
 const eventsPath = join(runDir, "events.jsonl");
+const quarantineRoot = join(repoRoot, "data", "nightly", "quarantine");
+const daytimeStatePath = join(repoRoot, "data", "daytime-cloud", "active-run.json");
+const executionClaimLockPath = join(repoRoot, "data", "automation", "execution-claim.lock");
 const codexCommand = resolveCodexCommand();
 mkdirSync(runDir, {recursive: true});
 
@@ -62,8 +72,19 @@ function command(commandName, commandArgs, options = {}) {
   };
 }
 
+function commandWithRetry(commandName, commandArgs, options = {}) {
+  return runWithRetry(
+    () => command(commandName, commandArgs, options),
+    {attempts: options.attempts ?? 3, delays: options.delays},
+  );
+}
+
+function ghCommand(commandArgs, options = {}) {
+  return commandWithRetry("gh", commandArgs, {timeout: 60_000, attempts: 3, ...options});
+}
+
 function ghJson(commandArgs) {
-  const result = command("gh", commandArgs, {timeout: 60_000});
+  const result = ghCommand(commandArgs);
   if (!result.ok) throw new Error(result.stderr || `gh ${commandArgs.join(" ")} failed`);
   return JSON.parse(result.stdout || "null");
 }
@@ -96,6 +117,23 @@ function runFocusedTests(worktree) {
   if (files.some((file) => file.startsWith("backend/app/modules/workstation_vision/"))) {
     run("Workstation Vision", "python", ["-m", "unittest", "discover", "-s", "backend/app/modules/workstation_vision/tests"], {env: pythonEnv});
   }
+  if (files.some((file) => file.startsWith("backend/app/modules/context_engine/"))) {
+    run("Context Engine", "python", ["-m", "unittest", "discover", "-s", "backend/app/modules/context_engine/tests"], {env: pythonEnv});
+  }
+  const knownBackendPrefixes = [
+    "backend/app/modules/butler_core/",
+    "backend/app/modules/pc_activity_context/",
+    "backend/app/modules/workstation_vision/",
+    "backend/app/modules/context_engine/",
+  ];
+  if (files.some((file) => file.startsWith("backend/") && !knownBackendPrefixes.some((prefix) => file.startsWith(prefix)))) {
+    if (!checks.some((check) => check.name === "Butler Core")) run("Butler Core", "python", ["-m", "unittest", "discover", "-s", "backend/app/modules/butler_core/tests"], {env: pythonEnv});
+    if (!checks.some((check) => check.name === "PC Activity")) run("PC Activity", "python", ["-m", "unittest", "discover", "-s", "backend/app/modules/pc_activity_context/tests"], {env: pythonEnv});
+    if (!checks.some((check) => check.name === "Workstation Vision")) run("Workstation Vision", "python", ["-m", "unittest", "discover", "-s", "backend/app/modules/workstation_vision/tests"], {env: pythonEnv});
+    if (existsSync(join(worktree, "backend", "app", "modules", "context_engine", "tests")) && !checks.some((check) => check.name === "Context Engine")) {
+      run("Context Engine", "python", ["-m", "unittest", "discover", "-s", "backend/app/modules/context_engine/tests"], {env: pythonEnv});
+    }
+  }
   if (files.some((file) => file.startsWith("frontend/"))) {
     installNpmDependencies("Frontend", join(worktree, "frontend"));
     run("Frontend Build", "npm.cmd", ["run", "build"], {cwd: join(worktree, "frontend")});
@@ -105,7 +143,7 @@ function runFocusedTests(worktree) {
     run("Desktop Contract", "npm.cmd", ["run", "check"], {cwd: join(worktree, "desktop")});
   }
   if (files.some((file) => file.startsWith("tools/nightly/"))) {
-    run("Nightly Controller", "node", ["--test", "tests/nightly-lib.test.mjs"], {cwd: join(worktree, "tools", "nightly")});
+    run("Nightly Controller", "node", ["--test", "tests"], {cwd: join(worktree, "tools", "nightly")});
   }
   if (!checks.length) {
     installNpmDependencies("Loop Governance", join(worktree, "tools", "loop"));
@@ -155,14 +193,18 @@ function fail(reason, exitCode = 3) {
 
 if (!new Set(["dry-run", "execute"]).has(mode)) fail(`unsupported mode: ${mode}`);
 
-const fetchedMain = command("git", ["fetch", "origin", "main"], {timeout: 10 * 60 * 1000});
+const fetchedMain = commandWithRetry("git", ["fetch", "origin", "main"], {timeout: 10 * 60 * 1000});
 if (!fetchedMain.ok) fail("unable to refresh canonical origin/main");
 const branch = command("git", ["branch", "--show-current"]);
 const head = command("git", ["rev-parse", "HEAD"]);
 const canonicalHead = command("git", ["rev-parse", "origin/main"]);
 if (!branch.ok || !head.ok || !canonicalHead.ok) fail("unable to verify canonical checkout");
 const canonicalCheckout = evaluateCanonicalCheckout({branch: branch.stdout, head: head.stdout, originMain: canonicalHead.stdout});
-if (!canonicalCheckout.eligible) fail(`nightly controller requires canonical main: ${canonicalCheckout.reasons.join(", ")}`);
+const supervisedDryRun = mode === "dry-run"
+  && /^[0-9a-f]{40}$/i.test(supervisedSha ?? "")
+  && head.stdout.trim().toLowerCase() === supervisedSha.toLowerCase();
+if (!canonicalCheckout.eligible && !supervisedDryRun) fail(`nightly controller requires canonical main: ${canonicalCheckout.reasons.join(", ")}`);
+if (supervisedSha && !supervisedDryRun) fail("supervised SHA is allowed only for a dry-run at the exact current HEAD");
 const canonicalState = command("git", ["show", "origin/main:STATE.md"]);
 if (!canonicalState.ok) fail("unable to read canonical STATE.md");
 const stateMarkdown = canonicalState.stdout;
@@ -170,24 +212,49 @@ const level = parseCurrentLevel(stateMarkdown);
 if (/loop-pause-all:\s*true/i.test(stateMarkdown)) fail("loop-pause-all is active", 0);
 if (mode === "execute" && level !== "L2") fail(`execute requires canonical L2 active; current level is ${level}`);
 
-const existingLock = existsSync(lockPath) ? JSON.parse(readFileSync(lockPath, "utf8")) : null;
-if (existingLock && existingLock.pid !== process.pid) {
-  try {
-    process.kill(existingLock.pid, 0);
-    fail(`another nightly run is active: ${existingLock.run_id}`);
-  } catch {
-    rmSync(lockPath, {force: true});
-  }
-}
-writeFileSync(lockPath, `${JSON.stringify({run_id: runId, pid: process.pid, mode, started_at: now.toISOString()}, null, 2)}\n`, "utf8");
-
-const cleanup = () => rmSync(lockPath, {force: true});
+const controllerLock = acquireOwnedLock(lockPath);
+if (!controllerLock.acquired) fail("another nightly run is active");
+const cleanup = () => releaseOwnedLock(lockPath, controllerLock.token);
 process.on("exit", cleanup);
 process.on("SIGINT", () => { cleanup(); process.exit(130); });
+
+const startupRecoveries = [];
 
 try {
   const status = command("git", ["status", "--porcelain=v1"]);
   if (!status.ok || status.stdout.trim()) fail("working tree is not clean");
+  if (existsSync(daytimeStatePath)) {
+    let daytimeState = null;
+    try { daytimeState = JSON.parse(readFileSync(daytimeStatePath, "utf8")); } catch {}
+    if (daytimeState) fail("an unresolved daytime Cloud run is active", 0);
+  }
+  const cloudLeases = ghJson([
+    "issue", "list", "--repo", "Giftia/OpenButler", "--state", "open",
+    "--label", "cloud-running", "--limit", "10", "--json", "number",
+  ]) ?? [];
+  if (cloudLeases.length) fail("a Cloud execution lease is active", 0);
+  const orphanNightlyLeases = ghJson([
+    "issue", "list", "--repo", "Giftia/OpenButler", "--state", "open",
+    "--label", "nightly-running", "--limit", "10", "--json", "number",
+  ]) ?? [];
+  if (orphanNightlyLeases.length) {
+    if (mode !== "execute") fail("an unresolved Nightly execution lease is active", 0);
+    for (const orphan of orphanNightlyLeases) {
+      const quarantined = ghCommand([
+        "issue", "edit", String(orphan.number), "--repo", "Giftia/OpenButler",
+        "--remove-label", "ready-for-agent", "--add-label", "nightly-failed",
+      ]);
+      if (!quarantined.ok) fail(`unable to quarantine orphan Nightly lease #${orphan.number}`);
+      const released = ghCommand([
+        "issue", "edit", String(orphan.number), "--repo", "Giftia/OpenButler",
+        "--remove-label", "nightly-running",
+      ]);
+      if (!released.ok) fail(`unable to release quarantined orphan Nightly lease #${orphan.number}`);
+      mkdirSync(quarantineRoot, {recursive: true});
+      writeFileSync(join(quarantineRoot, `issue-${orphan.number}.json`), `${JSON.stringify({issue: orphan.number, run_id: runId, failed_at: new Date().toISOString(), reason: "orphan Nightly execution lease recovered at startup", recovery_available: true}, null, 2)}\n`, "utf8");
+      startupRecoveries.push(`Issue #${orphan.number} 的孤儿 Nightly 租约已隔离并释放。`);
+    }
+  }
   const issues = ghJson([
     "issue", "list", "--repo", "Giftia/OpenButler", "--state", "open",
     "--label", "ready-for-agent", "--limit", "100",
@@ -201,13 +268,31 @@ try {
     "--json", "number,title,body,headRefName,url"
   ]) ?? []);
 
-  const evaluated = issues.map((issue) => ({
-    ...issue,
-    evaluation: evaluateIssueEligibility(issue, {
+  const evaluated = issues.map((issue) => {
+    const timeline = ghJson(["api", `repos/Giftia/OpenButler/issues/${issue.number}/timeline`, "--paginate"]);
+    const evaluation = evaluateIssueEligibility(issue, {
       closedIssues: closed,
       claimedIssues: claimed,
-    }),
-  }));
+    });
+    const freshness = evaluateSpecificationFreshness(issue, timeline);
+    evaluation.reasons.push(...freshness.reasons);
+    evaluation.approvedAt = freshness.latestReadyAt ? new Date(freshness.latestReadyAt).toISOString() : null;
+    const quarantinePath = join(quarantineRoot, `issue-${issue.number}.json`);
+    let localQuarantine = existsSync(quarantinePath);
+    if (localQuarantine) {
+      try {
+        const quarantine = JSON.parse(readFileSync(quarantinePath, "utf8"));
+        const retriaged = shouldClearLocalQuarantine({issue, quarantine, timeline});
+        if (retriaged) {
+          rmSync(quarantinePath, {force: true});
+          localQuarantine = false;
+        }
+      } catch {}
+    }
+    if (localQuarantine) evaluation.reasons.push("local failure quarantine requires retriage");
+    evaluation.eligible = evaluation.reasons.length === 0;
+    return {...issue, evaluation};
+  });
 
   const eligible = evaluated.filter((issue) => issue.evaluation.eligible);
   const pack = {
@@ -244,11 +329,19 @@ try {
       github_mutated: false,
     },
     execution_surface: "local",
-    blockers: mode === "execute" ? [] : ["L1 dry-run：仅验证队列、预算、隐私和调度，不执行 Issue。"],
+    blockers: [
+      ...(mode === "execute" ? [] : ["L1 dry-run：仅验证队列、预算、隐私和调度，不执行 Issue。"]),
+      ...startupRecoveries,
+    ],
   };
 
   if (mode === "execute") {
-    runRealDataSmoke(pack);
+    if (beforeNightlyCutoff(new Date())) {
+      runRealDataSmoke(pack);
+    } else {
+      pack.real_data = {status: "skipped_outside_authorized_window", lookback_hours: 48};
+      pack.blockers.push("真实数据预览已跳过：当前不在 20:00 至 07:15 的授权窗口内。");
+    }
     let tokensUsed = 0;
     for (const issue of eligible) {
       if (existsSync(cutoffFlag) || !mayStartIssue(tokensUsed, new Date())) {
@@ -256,14 +349,26 @@ try {
         break;
       }
       log("issue_selected", {issue: issue.number, high_risk: issue.evaluation.highRisk});
-      const issueResult = await executeIssue(issue, {tokensUsed});
+      let issueResult;
+      try {
+        issueResult = await executeIssue(issue, {tokensUsed});
+      } catch (error) {
+        const reason = String(error?.message ?? error);
+        pack.blockers.push(`Issue #${issue.number} failed before it could be isolated: ${reason}`);
+        pack.rejected_candidates.push({issue_number: issue.number, reasons: [reason]});
+        log("issue_failed_before_isolation", {issue: issue.number, reason});
+        continue;
+      }
       tokensUsed += issueResult.tokens;
       if (issueResult.pullRequest) pack.pull_requests.push(issueResult.pullRequest);
       pack.scenarios.push(...issueResult.scenarios);
+      if (issueResult.blocker) pack.blockers.push(issueResult.blocker);
+      if (issueResult.rejected) pack.rejected_candidates.push(issueResult.rejected);
+      if (issueResult.githubMutated) pack.privacy.github_mutated = true;
       if (issueResult.stop) break;
     }
     pack.tokens_used = tokensUsed;
-    pack.privacy.github_mutated = pack.pull_requests.length > 0;
+    pack.privacy.github_mutated = pack.privacy.github_mutated || pack.pull_requests.length > 0;
     if (pack.pull_requests.some((pullRequest) => pullRequest.status === "acceptance_ready")) {
       const preview = buildPreviewCandidate(pack);
       if (preview) {
@@ -307,18 +412,81 @@ async function executeIssue(issue, {tokensUsed}) {
   if (!add.ok) throw new Error(`worktree creation failed for #${issue.number}: ${add.stderr}`);
 
   let totalTokens = 0;
+  let preserveWorktree = false;
+  let releaseExecutionLease = true;
+  let leaseAcquired = false;
+  const verifyCurrentIssueContract = () => {
+    const currentIssue = ghJson([
+      "issue", "view", String(issue.number), "--repo", "Giftia/OpenButler",
+      "--json", "number,title,body,labels,createdAt,updatedAt,state,url",
+    ]);
+    const openPullRequests = ghJson([
+      "pr", "list", "--repo", "Giftia/OpenButler", "--state", "open", "--limit", "200",
+      "--json", "number,title,body,headRefName,url",
+    ]) ?? [];
+    const currentEvaluation = evaluateIssueEligibility(currentIssue, {
+      closedIssues: new Set((ghJson(["issue", "list", "--repo", "Giftia/OpenButler", "--state", "closed", "--limit", "200", "--json", "number"]) ?? []).map((item) => item.number)),
+      claimedIssues: claimedIssueNumbers(openPullRequests.filter((pullRequest) => pullRequest.headRefName !== branchName)),
+      ownedLease: "nightly-running",
+    });
+    const currentFreshness = evaluateSpecificationFreshness(currentIssue, ghJson(["api", `repos/Giftia/OpenButler/issues/${issue.number}/timeline`, "--paginate"]));
+    if (!currentEvaluation.eligible || !currentFreshness.fresh || issueSpecificationFingerprint(currentIssue) !== issueSpecificationFingerprint(issue)) {
+      throw new Error(`Issue #${issue.number} changed after approval and requires retriage`);
+    }
+  };
   try {
-    const lease = command("gh", [
+    const executionClaimLock = acquireOwnedLock(executionClaimLockPath);
+    if (!executionClaimLock.acquired) throw new Error("another execution surface is claiming work");
+    try {
+      if (existsSync(daytimeStatePath)) throw new Error("an unresolved daytime Cloud run appeared while claiming");
+      const competingCloudLeases = ghJson([
+        "issue", "list", "--repo", "Giftia/OpenButler", "--state", "open",
+        "--label", "cloud-running", "--limit", "10", "--json", "number",
+      ]) ?? [];
+      const orphanNightlyLeases = ghJson([
+        "issue", "list", "--repo", "Giftia/OpenButler", "--state", "open",
+        "--label", "nightly-running", "--limit", "10", "--json", "number",
+      ]) ?? [];
+      if (competingCloudLeases.length || orphanNightlyLeases.length) throw new Error("another execution lease is active while claiming");
+    const lease = ghCommand([
       "issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler",
       "--add-label", "nightly-running",
     ]);
     if (!lease.ok) throw new Error(lease.stderr || `failed to acquire local lease for #${issue.number}`);
+    leaseAcquired = true;
+    const claimedIssue = ghJson([
+      "issue", "view", String(issue.number), "--repo", "Giftia/OpenButler",
+      "--json", "number,title,body,labels,updatedAt,state,url",
+    ]);
+    const claimedLabels = new Set((claimedIssue.labels ?? []).map((label) => label.name ?? label));
+    const competingPullRequests = claimedIssueNumbers(ghJson([
+      "pr", "list", "--repo", "Giftia/OpenButler", "--state", "open", "--limit", "200",
+      "--json", "number,title,body,headRefName,url",
+    ]) ?? []);
+    const postClaimClosed = new Set((ghJson([
+      "issue", "list", "--repo", "Giftia/OpenButler", "--state", "closed", "--limit", "200", "--json", "number",
+    ]) ?? []).map((item) => item.number));
+    const postClaimEvaluation = evaluateIssueEligibility(claimedIssue, {
+      closedIssues: postClaimClosed,
+      claimedIssues: competingPullRequests,
+      ownedLease: "nightly-running",
+    });
+    const postClaimFreshness = evaluateSpecificationFreshness(claimedIssue, ghJson(["api", `repos/Giftia/OpenButler/issues/${issue.number}/timeline`, "--paginate"]));
+    if (!postClaimEvaluation.eligible || !postClaimFreshness.fresh) {
+      throw new Error(`execution lease changed while claiming #${issue.number}`);
+    }
+    if (claimedIssue.title !== issue.title || claimedIssue.body !== issue.body) {
+      throw new Error(`Issue specification changed while claiming #${issue.number}`);
+    }
+    } finally {
+      releaseOwnedLock(executionClaimLockPath, executionClaimLock.token);
+    }
     let verifierFeedback = "";
     let approved = false;
     let codeVerifierVerdict = null;
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       const prompt = attempt === 1
-        ? `Implement GitHub Issue #${issue.number}: ${issue.title}\n\n${issue.body}\n\nRead AGENTS.md, LOOP.md and loop-constraints.md. Work only in this worktree. Do not push, merge, deploy, read personal data, or change GitHub state. Run focused tests. Return the required JSON result.`
+        ? `Implement GitHub Issue #${issue.number}: ${issue.title}\n\n${issue.body}\n\nRead AGENTS.md, LOOP.md and loop-constraints.md. Work only in this worktree. Do not push, merge, deploy, read personal data, or change GitHub state. Run focused tests. Keep combined uncached input and output below 120000 tokens; prefer the smallest complete patch. Return the required JSON result.`
         : `Correct only the verifier findings for Issue #${issue.number}. Preserve the existing scope and tests. Verifier evidence:\n${verifierFeedback}`;
       const eventsFile = join(runDir, `issue-${issue.number}-maker-attempt-${attempt}.jsonl`);
       const maker = command(codexCommand.command, [
@@ -346,10 +514,13 @@ async function executeIssue(issue, {tokensUsed}) {
         : ["commit", "--amend", "--no-edit"];
       const committed = command("git", commitArgs, {cwd: worktree});
       if (!committed.ok) throw new Error(committed.stderr || "commit failed");
+      preserveWorktree = true;
       const checks = runFocusedTests(worktree);
       log("issue_tests_passed", {issue: issue.number, attempt, checks});
 
       const verdictPath = join(runDir, `issue-${issue.number}-verifier-attempt-${attempt}.json`);
+      const codeHeadBefore = command("git", ["rev-parse", "HEAD"], {cwd: worktree});
+      if (!codeHeadBefore.ok) throw new Error("unable to bind code verifier to a commit");
       const review = command(codexCommand.command, [
         ...codexCommand.argsPrefix, "exec", "review", "--base", "origin/main", "--json",
         "--output-schema", join(here, "schemas", "verifier-output.schema.json"),
@@ -359,27 +530,30 @@ async function executeIssue(issue, {tokensUsed}) {
       writeFileSync(join(runDir, `issue-${issue.number}-verifier-attempt-${attempt}.jsonl`), review.stdout, "utf8");
       totalTokens += tokenUsageFromJsonl(review.stdout);
       if (totalTokens > ISSUE_TOKEN_CAP || tokensUsed + totalTokens > NIGHTLY_TOKEN_CAP) {
-        command("gh", ["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
-        return {tokens: totalTokens, stop: true, pullRequest: null, scenarios: []};
+        return quarantineReturn("verifier token budget exceeded", true);
       }
       const verdict = JSON.parse(readFileSync(verdictPath, "utf8"));
+      const codeHeadAfter = command("git", ["rev-parse", "HEAD"], {cwd: worktree});
+      if (!codeHeadAfter.ok || codeHeadAfter.stdout.trim() !== codeHeadBefore.stdout.trim()) {
+        return quarantineReturn("worktree head changed during code verification", true);
+      }
       if (review.ok && verdict.verdict === "APPROVE") {
         approved = true;
-        codeVerifierVerdict = verdict;
+        codeVerifierVerdict = {...verdict, reviewed_head_sha: codeHeadBefore.stdout.trim()};
         break;
       }
       verifierFeedback = JSON.stringify(verdict);
       if (verdict.verdict === "ESCALATE_HUMAN") {
-        command("gh", ["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
-        return {tokens: totalTokens, stop: true, pullRequest: null, scenarios: []};
+        return quarantineReturn("code verifier escalated to human", true);
       }
     }
     if (!approved) {
-      command("gh", ["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
-      return {tokens: totalTokens, stop: false, pullRequest: null, scenarios: []};
+      return quarantineReturn("code verifier rejected all attempts", false);
     }
 
     const productVerdictPath = join(runDir, `issue-${issue.number}-product-privacy-verifier.json`);
+    const productHeadBefore = command("git", ["rev-parse", "HEAD"], {cwd: worktree});
+    if (!productHeadBefore.ok) throw new Error("unable to bind product/privacy verifier to a commit");
     const productReview = command(codexCommand.command, [
       ...codexCommand.argsPrefix, "exec", "review", "--base", "origin/main", "--json",
       "--output-schema", join(here, "schemas", "verifier-output.schema.json"),
@@ -389,67 +563,164 @@ async function executeIssue(issue, {tokensUsed}) {
     writeFileSync(join(runDir, `issue-${issue.number}-product-privacy-verifier.jsonl`), productReview.stdout, "utf8");
     totalTokens += tokenUsageFromJsonl(productReview.stdout);
     if (!productReview.ok || totalTokens > ISSUE_TOKEN_CAP || tokensUsed + totalTokens > NIGHTLY_TOKEN_CAP) {
-      command("gh", ["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
-      return {tokens: totalTokens, stop: true, pullRequest: null, scenarios: []};
+      return quarantineReturn("product/privacy verifier failed or budget was exceeded", true);
     }
-    const productVerifierVerdict = JSON.parse(readFileSync(productVerdictPath, "utf8"));
+    const productHeadAfter = command("git", ["rev-parse", "HEAD"], {cwd: worktree});
+    if (!productHeadAfter.ok || productHeadAfter.stdout.trim() !== productHeadBefore.stdout.trim()) {
+      return quarantineReturn("worktree head changed during product/privacy verification", true);
+    }
+    const productVerifierVerdict = {...JSON.parse(readFileSync(productVerdictPath, "utf8")), reviewed_head_sha: productHeadBefore.stdout.trim()};
     if (productVerifierVerdict.verdict !== "APPROVE") {
       const blockLabel = productVerifierVerdict.verdict === "ESCALATE_HUMAN" ? "automation-blocked" : "nightly-failed";
-      command("gh", ["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", blockLabel]);
-      return {tokens: totalTokens, stop: productVerifierVerdict.verdict === "ESCALATE_HUMAN", pullRequest: null, scenarios: []};
+      return quarantineReturn(`product/privacy verifier returned ${productVerifierVerdict.verdict}`, productVerifierVerdict.verdict === "ESCALATE_HUMAN", blockLabel);
     }
 
+    verifyCurrentIssueContract();
+    const reviewedHead = command("git", ["rev-parse", "HEAD"], {cwd: worktree});
+    if (!reviewedHead.ok) throw new Error("unable to bind verifier evidence to the reviewed commit");
+    const reviewedHeadSha = reviewedHead.stdout.trim();
+    if (codeVerifierVerdict.reviewed_head_sha !== reviewedHeadSha || productVerifierVerdict.reviewed_head_sha !== reviewedHeadSha) {
+      throw new Error("independent verifier evidence does not match the reviewed commit");
+    }
     const push = command("git", ["push", "-u", "origin", branchName], {cwd: worktree, timeout: 10 * 60 * 1000});
     if (!push.ok) throw new Error(push.stderr || "push failed");
-    const createdPullRequest = command("gh", [
+    const createdPullRequest = ghCommand([
       "pr", "create", "--repo", "Giftia/OpenButler", "--draft", "--base", "main", "--head", branchName,
       "--title", `${issue.title} (#${issue.number})`, "--body", `Closes #${issue.number}\n\nNightly run: ${runId}\n\nTwo independent verifiers are required before delegated merge.`
     ], {cwd: worktree});
     if (!createdPullRequest.ok) throw new Error(createdPullRequest.stderr || `pull request creation failed for #${issue.number}`);
     const prUrl = createdPullRequest.stdout.trim();
-    const queueTransition = command("gh", [
+    try {
+      verifyCurrentIssueContract();
+    } catch (error) {
+      ghCommand(["pr", "close", prUrl, "--repo", "Giftia/OpenButler", "--delete-branch"]);
+      throw error;
+    }
+    log("issue_claimed_by_pull_request", {issue: issue.number, pull_request_url: prUrl});
+    const pr = ghJson(["pr", "view", prUrl, "--repo", "Giftia/OpenButler", "--json", "number,url,headRefOid,title,commits"]);
+    if (pr.headRefOid !== reviewedHeadSha) {
+      ghCommand(["pr", "close", String(pr.number), "--repo", "Giftia/OpenButler", "--delete-branch"]);
+      throw new Error("pull request head does not match the commit approved by both verifiers");
+    }
+    const checks = commandWithRetry("gh", ["pr", "checks", String(pr.number), "--repo", "Giftia/OpenButler", "--watch", "--fail-fast"], {cwd: worktree, timeout: 45 * 60 * 1000});
+    if (!checks.ok) {
+      ghCommand(["pr", "edit", String(pr.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
+      ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--remove-label", "ready-for-agent", "--add-label", "nightly-failed"]);
+      preserveWorktree = false;
+      return {tokens: totalTokens, stop: false, pullRequest: {...pr, head_sha: pr.headRefOid, status: "ci_failed"}, scenarios: []};
+    }
+    verifyCurrentIssueContract();
+    const queueTransition = ghCommand([
       "issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler",
-      "--remove-label", "ready-for-agent",
       "--add-label", "review-pending",
     ]);
     if (!queueTransition.ok) throw new Error(queueTransition.stderr || `failed to move #${issue.number} to human review`);
-    log("issue_claimed_by_pull_request", {issue: issue.number, pull_request_url: prUrl});
-    const pr = ghJson(["pr", "view", prUrl, "--repo", "Giftia/OpenButler", "--json", "number,url,headRefOid,title,commits"]);
-    const checks = command("gh", ["pr", "checks", String(pr.number), "--repo", "Giftia/OpenButler", "--watch", "--fail-fast"], {cwd: worktree, timeout: 45 * 60 * 1000});
-    if (!checks.ok) {
-      command("gh", ["pr", "edit", String(pr.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
-      command("gh", ["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
-      return {tokens: totalTokens, stop: false, pullRequest: {...pr, head_sha: pr.headRefOid, status: "ci_failed"}, scenarios: []};
-    }
-    command("gh", ["pr", "ready", String(pr.number), "--repo", "Giftia/OpenButler"]);
-    command("gh", [
+    const readyPullRequest = ghCommand(["pr", "ready", String(pr.number), "--repo", "Giftia/OpenButler"]);
+    if (!readyPullRequest.ok) throw new Error(`failed to mark PR #${pr.number} ready for review`);
+    const acceptanceLabels = ghCommand([
       "pr", "edit", String(pr.number), "--repo", "Giftia/OpenButler",
       "--remove-label", "review-pending",
       "--add-label", "acceptance-ready",
       "--add-label", "auto-merge-eligible",
     ]);
+    if (!acceptanceLabels.ok) throw new Error(`failed to mark PR #${pr.number} acceptance-ready`);
+    preserveWorktree = false;
     return {
       tokens: totalTokens,
       stop: false,
       pullRequest: {
         number: pr.number,
         url: pr.url,
-        head_sha: pr.headRefOid,
+        head_sha: reviewedHeadSha,
         commit_shas: (pr.commits ?? []).map((commit) => commit.oid),
         title: pr.title,
         status: "acceptance_ready",
         risk: issue.evaluation?.highRisk ? "high" : "normal",
         code_verifier: codeVerifierVerdict?.verdict ?? "UNKNOWN",
+        code_verifier_head_sha: codeVerifierVerdict?.reviewed_head_sha ?? null,
         product_privacy_verifier: productVerifierVerdict.verdict,
+        product_privacy_verifier_head_sha: productVerifierVerdict.reviewed_head_sha,
         nightly_status: "pending",
         execution_surface: "local",
+        issue_number: issue.number,
+        issue_content_fingerprint: issueContentFingerprint(issue),
+        issue_approved_at: issue.evaluation?.approvedAt ?? null,
       },
       scenarios: [{id: `pr-${pr.number}`, pr_number: pr.number, title: issue.title, purpose: "验证本次修复", steps: ["打开对应产品入口", "执行 Issue 验收步骤"], expected: "行为符合 Issue done_when，且无隐私回归。", status: "pending"}],
     };
+  } catch (error) {
+    if (!leaseAcquired) throw error;
+    const dirty = command("git", ["status", "--porcelain=v1"], {cwd: worktree});
+    const committed = command("git", ["rev-list", "--count", "origin/main..HEAD"], {cwd: worktree});
+    preserveWorktree = shouldPreserveRecovery({
+      dirty: dirty.ok && Boolean(dirty.stdout.trim()),
+      aheadCount: committed.ok ? Number(committed.stdout.trim()) : 0,
+    });
+    mkdirSync(quarantineRoot, {recursive: true});
+    writeFileSync(join(quarantineRoot, `issue-${issue.number}.json`), `${JSON.stringify({
+      issue: issue.number,
+      run_id: runId,
+      failed_at: new Date().toISOString(),
+      reason: String(error?.message ?? error),
+      recovery_available: preserveWorktree,
+    }, null, 2)}\n`, "utf8");
+    if (preserveWorktree) {
+      writeFileSync(join(runDir, "recovery-worktree.json"), `${JSON.stringify({
+        issue: issue.number,
+        branch: branchName,
+        worktree,
+        tokens_used: totalTokens,
+      }, null, 2)}\n`, "utf8");
+    }
+    const quarantined = ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--remove-label", "ready-for-agent", "--add-label", "nightly-failed"]);
+    if (!quarantined.ok) releaseExecutionLease = false;
+    log("issue_quarantined", {issue: issue.number, recovery_available: preserveWorktree});
+    const reason = String(error?.message ?? error);
+    return {
+      tokens: totalTokens,
+      stop: !quarantined.ok,
+      pullRequest: null,
+      scenarios: [],
+      githubMutated: quarantined.ok,
+      blocker: `Issue #${issue.number} 已隔离：${reason}`,
+      rejected: {issue_number: issue.number, reasons: [reason]},
+    };
   } finally {
-    command("gh", ["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--remove-label", "nightly-running"]);
-    command("git", ["worktree", "remove", "--force", worktree], {timeout: 120_000});
-    command("git", ["branch", "-D", branchName], {timeout: 120_000});
+    if (leaseAcquired && releaseExecutionLease) ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--remove-label", "nightly-running"]);
+    if (!preserveWorktree) {
+      command("git", ["worktree", "remove", "--force", worktree], {timeout: 120_000});
+      command("git", ["branch", "-D", branchName], {timeout: 120_000});
+    }
+  }
+
+  function quarantineReturn(reason, stop, label = "nightly-failed") {
+    mkdirSync(quarantineRoot, {recursive: true});
+    writeFileSync(join(quarantineRoot, `issue-${issue.number}.json`), `${JSON.stringify({
+      issue: issue.number,
+      run_id: runId,
+      failed_at: new Date().toISOString(),
+      reason,
+      recovery_available: preserveWorktree,
+    }, null, 2)}\n`, "utf8");
+    if (preserveWorktree) {
+      writeFileSync(join(runDir, "recovery-worktree.json"), `${JSON.stringify({issue: issue.number, branch: branchName, worktree, tokens_used: totalTokens}, null, 2)}\n`, "utf8");
+    }
+    const quarantined = ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--remove-label", "ready-for-agent", "--add-label", label]);
+    if (!quarantined.ok) {
+      releaseExecutionLease = false;
+      preserveWorktree = true;
+      stop = true;
+    }
+    log("issue_quarantined", {issue: issue.number, recovery_available: preserveWorktree});
+    return {
+      tokens: totalTokens,
+      stop,
+      pullRequest: null,
+      scenarios: [],
+      githubMutated: quarantined.ok,
+      blocker: `Issue #${issue.number} 已隔离：${reason}`,
+      rejected: {issue_number: issue.number, reasons: [reason]},
+    };
   }
 }
 

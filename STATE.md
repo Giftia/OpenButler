@@ -9,7 +9,7 @@ loop-pause-all: false
 ## High Priority
 
 - Implement `OB-GOAL-034: Secure Integrated Context Engine` through decision-complete GitHub Issues.
-- Keep Cloud execution disabled until a docs-only Codex Cloud smoke succeeds.
+- Keep daytime Cloud execution disabled until the dispatcher PR is merged and the Windows task has a successful runtime readback.
 - Run local execution only from 20:00 to 07:15; finish cleanup by 08:20.
 - Keep exactly one execution lease per Issue across Cloud and local workers.
 - Install only the isolated OpenButler Nightly channel automatically.
@@ -28,6 +28,8 @@ loop-pause-all: false
 - ChatGPT Web has no verified GitHub write connection; every issue patch, label change, and PR review remains a draft until local Codex applies it.
 - Issues #10 through #15 describe the superseded OB-GOAL-028 through OB-GOAL-033 route and must not be selected as Integrated Context Engine implementation work.
 - OB-GOAL-034 needs new decision-complete implementation Issues before execution.
+- The Codex Cloud environment and docs-only smoke are verified through PR #33; Issue #34 implements the missing unattended dispatcher.
+- Nightly runs from 2026-08-10 through 2026-08-14 exposed missing GitHub retry, failure quarantine and recovery-worktree handling. The dispatcher recovery PR addresses those control-plane faults before product work resumes.
 - Review any future proposal that touches privacy, identity, sensors, MineContext, Electron lifecycle, dependencies, API schemas, or external actions.
 
 ## Watch List
@@ -53,4 +55,6 @@ loop-pause-all: false
 | Manual L1 run | passed | canonical main; clean; zero product/GitHub mutations; ignored report `2026-07-15T12-06-11-179Z` |
 | Supervised nightly dry-run | passed | scheduled run `2026-07-23T15-15-37-644Z`; task result 0; redacted pack |
 | L2 human approval | passed | user pre-authorization recorded by this governance change |
-| L2 delegated policy | pending merge | `.openbutler/automation-policy.yaml` |
+| L2 delegated policy | passed | `.openbutler/automation-policy.yaml` on canonical main |
+| Codex Cloud environment smoke | passed | PR #33, merged as `309a6a1` |
+| Daytime dispatcher runtime | pending | Issue #34; requires merged controller and Windows Task Scheduler readback |

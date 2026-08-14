@@ -9,6 +9,7 @@ The development loop keeps repository facts, GitHub work, tests, and privacy con
 | Pattern | Cadence | Level | Authority |
 |---|---|---|---|
 | Local repository governance drift audit | On demand | L1 | Report only |
+| Daytime Codex Cloud dispatcher | Every 30 minutes, 08:30-19:30 Asia/Shanghai | L2 | One isolated maker lease; never merge |
 | Local nightly delivery | Daily 20:00 Asia/Shanghai | L2 | Serial implementation, verification and Nightly packaging |
 | Local QA cutoff | Daily 07:15 Asia/Shanghai | L2 | Stop new work and finish the current safe unit |
 | Local cleanup | Daily 08:20 Asia/Shanghai | L2 | Finish report and terminate Nightly test processes |
@@ -42,7 +43,7 @@ The L1 loop must not inspect MineContext source data, OpenButler runtime databas
 
 The local Codex heartbeat `OpenButler Night Loop & Morning Report` remains paused. Windows Task Scheduler is the durable local scheduler. ChatGPT Web is an advisory reviewer and report surface; it is never the hard trigger.
 
-The independent web reviewer produces issue body patches, suggested triage-label changes, and pull-request review drafts. Its current GitHub connection cannot write; local Codex verifies and applies approved GitHub changes. The reviewer must not write code, create implementation pull requests, merge or close work, change the active goal, or remove a promotion gate. This reviewer workflow is not an L2 maker and does not advance the repository's Loop level by itself. Only local Codex implements one `ready-for-agent` issue at a time and supplies approved redacted local evidence when needed.
+The independent web reviewer produces issue body patches, suggested triage-label changes, and pull-request review drafts. Its current GitHub connection cannot write; local Codex verifies and applies approved GitHub changes. The reviewer must not write code, create implementation pull requests, merge or close work, change the active goal, or remove a promotion gate. This reviewer workflow is not an L2 maker and does not advance the repository's Loop level by itself. Codex Cloud or local Codex implements one `ready-for-agent` Issue at a time under the shared execution lease. Local Codex remains authoritative for result verification, Nightly packaging, device checks, and approved redacted local evidence.
 
 The morning report summarizes public GitHub facts. Local tests, Electron behavior, deployments, and real-data checks remain `本机未验证` unless the user provides a redacted report. User authorization for local real-data testing, production deployment, and desktop installation is necessary but not sufficient: the current level, tests, verifier, privacy rules, and rollback gates still apply.
 
@@ -128,7 +129,7 @@ fresh CI, an isolated Nightly pass, and a verified rollback path.
 
 ## Connectors
 
-The local L1 audit uses `gh` read-only. ChatGPT Web reads public GitHub facts and emits review guidance; it is advisory and never the hard trigger. Codex Cloud is enabled only after a docs-only environment smoke. Local Codex remains the authoritative Nightly and device-validation worker.
+The local L1 audit uses `gh` read-only. ChatGPT Web reads public GitHub facts and emits review guidance; it is advisory and never the hard trigger. Codex Cloud is enabled only after a docs-only environment smoke and may only produce a bounded daytime result under `cloud-running`. A local controller rechecks the exact diff, Issue fingerprint, base SHA, privacy paths, and focused tests before creating or updating a draft PR. It never merges. Local Codex remains the authoritative Nightly and device-validation worker.
 
 ## Kill Switch
 

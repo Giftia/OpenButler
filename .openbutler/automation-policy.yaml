@@ -25,8 +25,11 @@ executors:
     github_write: false
   codex_cloud:
     role: daytime_isolated_maker
-    status: authenticated_environment_unconfigured
+    status: dispatcher_available_after_authenticated_smoke
     environment_variable: OPENBUTLER_CODEX_CLOUD_ENV_ID
+    execution_window: "08:30-19:30"
+    max_active_issues: 1
+    auto_merge: false
     fallback: defer_code_to_local_nightly
   local_codex:
     role: nightly_maker_verifier_packager
@@ -80,4 +83,11 @@ nightly:
   token_cap: 750000
   stop_starting_at_tokens: 600000
   issue_token_cap: 160000
+  local_issue_token_cap_enforcement: jsonl_usage_accounting
+  cloud_budget:
+    token_telemetry: unavailable_in_supported_cli
+    attempts: 1
+    wall_time_hours: 14
+    max_changed_files: 5
+    max_verified_diff_bytes: 262144
   max_fix_attempts: 3

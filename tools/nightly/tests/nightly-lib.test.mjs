@@ -6,10 +6,14 @@ import {
   claimedIssueNumbers,
   evaluateCanonicalCheckout,
   evaluateIssueEligibility,
+  isTransientCommandFailure,
+  runWithRetry,
   isFreshAcceptancePack,
   mayStartIssue,
   parseCurrentLevel,
   sanitizeAcceptanceValue,
+  shouldClearLocalQuarantine,
+  shouldPreserveRecovery,
   tokenUsageFromJsonl,
 } from "../nightly-lib.mjs";
 
@@ -22,6 +26,50 @@ test("requires the ready label and no execution lease", () => {
   const running = {...ready, labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]};
   assert.equal(evaluateIssueEligibility(ready).eligible, true);
   assert.equal(evaluateIssueEligibility(running).eligible, false);
+});
+
+test("failed nightly work is quarantined until explicitly retriaged", () => {
+  const issue = {
+    title: "bounded repair",
+    body: "",
+    labels: [{name: "ready-for-agent"}, {name: "nightly-failed"}],
+  };
+  const result = evaluateIssueEligibility(issue);
+  assert.equal(result.eligible, false);
+  assert.match(result.reasons.join("; "), /nightly-failed/);
+});
+
+test("review-pending work cannot be reclaimed after its pull request closes", () => {
+  const issue = {
+    title: "bounded repair",
+    body: "",
+    labels: [{name: "ready-for-agent"}, {name: "review-pending"}],
+  };
+  const result = evaluateIssueEligibility(issue);
+  assert.equal(result.eligible, false);
+  assert.match(result.reasons.join("; "), /review-pending/);
+});
+
+test("transient GitHub failures retry but permanent failures fail immediately", () => {
+  let calls = 0;
+  const recovered = runWithRetry(() => {
+    calls += 1;
+    return calls < 3
+      ? {ok: false, status: 1, stderr: "Post https://api.github.com/graphql: EOF"}
+      : {ok: true, status: 0, stdout: "ok", stderr: ""};
+  }, {attempts: 3, sleep: () => {}});
+  assert.equal(recovered.ok, true);
+  assert.equal(calls, 3);
+
+  calls = 0;
+  const permanent = runWithRetry(() => {
+    calls += 1;
+    return {ok: false, status: 1, stderr: "validation failed"};
+  }, {attempts: 3, sleep: () => {}});
+  assert.equal(permanent.ok, false);
+  assert.equal(calls, 1);
+  assert.equal(isTransientCommandFailure({stderr: "HTTP 502 Bad Gateway"}), true);
+  assert.equal(isTransientCommandFailure({stderr: "permission denied"}), false);
 });
 
 test("rejects an issue that already has an open implementation pull request", () => {
@@ -42,6 +90,30 @@ test("extracts claimed issue numbers from open nightly pull requests", () => {
     {title: "Docs", body: "Resolves #51 and fixes #52"},
   ]);
   assert.deepEqual([...claimed].sort((a, b) => a - b), [42, 51, 52]);
+});
+
+test("claims direct implementation titles and Cloud or Nightly branches", () => {
+  const claimed = claimedIssueNumbers([
+    {title: "Implement #34: bounded fix", body: "", headRefName: "codex/cloud-34-run"},
+    {title: "Issue #35 follow-up", body: "", headRefName: "codex/nightly-35-run"},
+    {title: "Unrelated", body: "", headRefName: "codex/issue-36-recovery"},
+  ]);
+  assert.deepEqual([...claimed].sort((a, b) => a - b), [34, 35, 36]);
+});
+
+test("recovery preservation covers dirty and committed worktrees", () => {
+  assert.equal(shouldPreserveRecovery({dirty: false, aheadCount: 0}), false);
+  assert.equal(shouldPreserveRecovery({dirty: true, aheadCount: 0}), true);
+  assert.equal(shouldPreserveRecovery({dirty: false, aheadCount: 1}), true);
+});
+
+test("local quarantine clears only after an explicit ready reapproval", () => {
+  const quarantine = {failed_at: "2026-08-14T10:00:00Z"};
+  const issue = {labels: [{name: "ready-for-agent"}]};
+  assert.equal(shouldClearLocalQuarantine({issue, quarantine, timeline: []}), false);
+  assert.equal(shouldClearLocalQuarantine({issue: {...issue, labels: [...issue.labels, {name: "nightly-failed"}]}, quarantine, timeline: [{event: "labeled", label: {name: "ready-for-agent"}, created_at: "2026-08-14T11:00:00Z"}]}), false);
+  assert.equal(shouldClearLocalQuarantine({issue, quarantine, timeline: [{event: "labeled", label: {name: "ready-for-agent"}, created_at: "2026-08-14T09:00:00Z"}]}), false);
+  assert.equal(shouldClearLocalQuarantine({issue, quarantine, timeline: [{event: "labeled", label: {name: "ready-for-agent"}, created_at: "2026-08-14T11:00:00Z"}]}), true);
 });
 
 test("hard-stop work is never eligible for automation", () => {
@@ -108,7 +180,9 @@ test("automatic merge requires fresh dual-verifier and CI evidence", () => {
   const acceptance = {
     head_sha: "abc",
     code_verifier: "APPROVE",
+    code_verifier_head_sha: "abc",
     product_privacy_verifier: "APPROVE",
+    product_privacy_verifier_head_sha: "abc",
     nightly_status: "passed",
   };
   assert.equal(canAutoMergePullRequest({

@@ -9,6 +9,8 @@
     "approve": "node approve-release.mjs",
     "auto-merge": "node auto-merge-controller.mjs",
     "cloud:preflight": "node cloud-preflight.mjs",
+    "cloud:daytime": "node daytime-cloud-controller.mjs --mode=dry-run",
+    "cloud:smoke": "node daytime-cloud-smoke.mjs",
     "cutoff": "node set-cutoff.mjs",
     "cleanup": "node cleanup-nightly.mjs"
   }

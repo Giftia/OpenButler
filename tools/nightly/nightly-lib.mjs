@@ -117,16 +117,26 @@ export function claimedIssueNumbers(pullRequests = []) {
     for (const match of String(pullRequest.title ?? "").matchAll(/\(#(\d+)\)/g)) {
       claimed.add(Number(match[1]));
     }
+    for (const match of String(pullRequest.headRefName ?? "").matchAll(/(?:^|\/)codex\/(?:cloud|nightly|issue)-?(\d+)(?:-|$)/gi)) {
+      claimed.add(Number(match[1]));
+    }
+    for (const match of String(pullRequest.title ?? "").matchAll(/\b(?:implement|fix|resolve|issue)\s+#(\d+)\b/gi)) {
+      claimed.add(Number(match[1]));
+    }
   }
   return claimed;
 }
 
-export function evaluateIssueEligibility(issue, {timeline = [], closedIssues = new Set(), claimedIssues = new Set()} = {}) {
+export function evaluateIssueEligibility(issue, {timeline = [], closedIssues = new Set(), claimedIssues = new Set(), ownedLease = null} = {}) {
   const labels = new Set((issue.labels ?? []).map((label) => label.name ?? label));
   const reasons = [];
   if (!labels.has("ready-for-agent")) reasons.push("missing ready-for-agent");
   if (labels.has("automation-blocked")) reasons.push("automation-blocked");
-  if (labels.has("cloud-running") || labels.has("nightly-running")) reasons.push("issue has an active execution lease");
+  if (labels.has("nightly-failed")) reasons.push("nightly-failed requires retriage");
+  if (labels.has("review-pending")) reasons.push("review-pending requires explicit retriage");
+  if ((labels.has("cloud-running") && ownedLease !== "cloud-running")
+    || (labels.has("nightly-running") && ownedLease !== "nightly-running")) reasons.push("issue has an active execution lease");
+  if (issue.state && String(issue.state).toUpperCase() !== "OPEN") reasons.push("issue is not open");
   if (claimedIssues.has(Number(issue.number))) reasons.push("open implementation pull request already claims issue");
 
   const dependencies = parseDependencies(issue.body);
@@ -138,6 +148,41 @@ export function evaluateIssueEligibility(issue, {timeline = [], closedIssues = n
   if (hardStop) reasons.push("hard-stop action requires human decision");
 
   return {eligible: reasons.length === 0, reasons, highRisk, hardStop, dependencies};
+}
+
+export function shouldPreserveRecovery({dirty = false, aheadCount = 0} = {}) {
+  return Boolean(dirty) || Number(aheadCount) > 0;
+}
+
+export function shouldClearLocalQuarantine({issue, quarantine, timeline = []} = {}) {
+  const labels = new Set((issue?.labels ?? []).map((label) => label.name ?? label));
+  if (labels.has("nightly-failed")) return false;
+  const failedAt = Date.parse(quarantine?.failed_at ?? "");
+  if (!Number.isFinite(failedAt)) return false;
+  const latestReadyAt = Math.max(...timeline
+    .filter((event) => event.event === "labeled" && event.label?.name === "ready-for-agent")
+    .map((event) => Date.parse(event.created_at) || 0), 0);
+  return latestReadyAt > failedAt;
+}
+
+export function isTransientCommandFailure(result) {
+  const message = `${result?.stderr ?? ""}\n${result?.stdout ?? ""}\n${result?.errorCode ?? ""}`;
+  return /(?:unexpected\s+EOF|\bEOF\b|HTTP\s+(?:408|429|5\d\d)\b|Bad Gateway|ECONNRESET|ETIMEDOUT|socket hang up|connection.*(?:reset|closed)|TLS handshake timeout)/i.test(message);
+}
+
+export function runWithRetry(run, {
+  attempts = 3,
+  isRetryable = isTransientCommandFailure,
+  sleep = (milliseconds) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds),
+  delays = [1_000, 3_000],
+} = {}) {
+  let result;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    result = run(attempt);
+    if (result?.ok || attempt === attempts || !isRetryable(result)) return result;
+    sleep(delays[Math.min(attempt - 1, delays.length - 1)] ?? 0);
+  }
+  return result;
 }
 
 export function beforeNightlyCutoff(now = new Date()) {
@@ -173,6 +218,8 @@ export function canAutoMergePullRequest({
   if (pullRequest?.reviewDecision === "CHANGES_REQUESTED") reasons.push("requested changes");
   if (acceptance?.code_verifier !== "APPROVE") reasons.push("code verifier missing");
   if (acceptance?.product_privacy_verifier !== "APPROVE") reasons.push("product/privacy verifier missing");
+  if (acceptance?.code_verifier_head_sha !== acceptance?.head_sha) reasons.push("code verifier head SHA is stale");
+  if (acceptance?.product_privacy_verifier_head_sha !== acceptance?.head_sha) reasons.push("product/privacy verifier head SHA is stale");
   if (requireNightly && acceptance?.nightly_status !== "passed") reasons.push("Nightly verification missing");
   const byName = new Map((pullRequest?.statusCheckRollup ?? []).map((check) => [check.name ?? check.context, check]));
   for (const name of requiredChecks) {

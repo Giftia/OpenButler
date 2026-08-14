@@ -1,6 +1,7 @@
 param(
   [ValidateSet("dry-run", "execute")]
-  [string]$Mode = "dry-run"
+  [string]$Mode = "dry-run",
+  [string]$SupervisedSha = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -9,10 +10,15 @@ $nightScript = Join-Path $PSScriptRoot "run-nightly.ps1"
 $cutoffScript = Join-Path $PSScriptRoot "run-cutoff.ps1"
 $finalizeScript = Join-Path $PSScriptRoot "run-finalize.ps1"
 $morningScript = Join-Path $PSScriptRoot "run-morning.ps1"
+$daytimeCloudScript = Join-Path $PSScriptRoot "run-daytime-cloud.ps1"
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 12 -Minutes 15) -MultipleInstances IgnoreNew
 
-$nightAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$nightScript`" -Mode $Mode" -WorkingDirectory $repoRoot
+if ($SupervisedSha -and ($Mode -ne "dry-run" -or $SupervisedSha -notmatch '^[0-9a-fA-F]{40}$')) {
+  throw "SupervisedSha requires dry-run mode and an exact 40-character commit SHA"
+}
+$supervisedArgument = if ($SupervisedSha) { " -SupervisedSha $SupervisedSha" } else { "" }
+$nightAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$nightScript`" -Mode $Mode$supervisedArgument" -WorkingDirectory $repoRoot
 $nightTrigger = New-ScheduledTaskTrigger -Daily -At "20:00"
 Register-ScheduledTask -TaskName "OpenButler-Nightly-Delivery" -Action $nightAction -Trigger $nightTrigger -Principal $principal -Settings $settings -Description "OpenButler nightly delivery controller ($Mode)" -Force | Out-Null
 
@@ -28,7 +34,38 @@ $morningAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-N
 $morningTrigger = New-ScheduledTaskTrigger -Daily -At "08:30"
 Register-ScheduledTask -TaskName "OpenButler-Morning-Report" -Action $morningAction -Trigger $morningTrigger -Principal $principal -Settings $settings -Description "Prepare the redacted OpenButler morning report" -Force | Out-Null
 
+$daytimeAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$daytimeCloudScript`" -Mode $Mode" -WorkingDirectory $repoRoot
+$daytimeTriggers = for ($minutes = 8 * 60 + 30; $minutes -lt 19 * 60 + 30; $minutes += 30) {
+  New-ScheduledTaskTrigger -Daily -At ((Get-Date).Date.AddMinutes($minutes))
+}
+Register-ScheduledTask -TaskName "OpenButler-Daytime-Cloud" -Action $daytimeAction -Trigger $daytimeTriggers -Principal $principal -Settings $settings -Description "Submit or resume one bounded Codex Cloud Issue ($Mode)" -Force | Out-Null
+
 Unregister-ScheduledTask -TaskName "OpenButler-Morning-Acceptance" -Confirm:$false -ErrorAction SilentlyContinue
 
-Get-ScheduledTask -TaskName "OpenButler-Nightly-Delivery", "OpenButler-Nightly-Cutoff", "OpenButler-Nightly-Finalize", "OpenButler-Morning-Report" |
+$expected = @{
+  "OpenButler-Nightly-Delivery" = @{ TriggerCount = 1; ModeArgument = "-Mode $Mode"; SupervisedArgument = $(if ($SupervisedSha) { "-SupervisedSha $SupervisedSha" } else { $null }) }
+  "OpenButler-Nightly-Cutoff" = @{ TriggerCount = 1; ModeArgument = $null }
+  "OpenButler-Nightly-Finalize" = @{ TriggerCount = 1; ModeArgument = $null }
+  "OpenButler-Morning-Report" = @{ TriggerCount = 1; ModeArgument = $null }
+  "OpenButler-Daytime-Cloud" = @{ TriggerCount = 22; ModeArgument = "-Mode $Mode" }
+}
+foreach ($taskName in $expected.Keys) {
+  $task = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
+  $taskInfo = Get-ScheduledTaskInfo -TaskName $taskName -ErrorAction Stop
+  $rule = $expected[$taskName]
+  $valid = $task.State -ne "Disabled" -and $task.Triggers.Count -eq $rule.TriggerCount
+  if ($rule.ModeArgument) { $valid = $valid -and $task.Actions.Arguments.Contains($rule.ModeArgument) }
+  if ($rule.SupervisedArgument) { $valid = $valid -and $task.Actions.Arguments.Contains($rule.SupervisedArgument) }
+  if (-not $valid) { throw "scheduled task verification failed for $taskName" }
+  [pscustomobject]@{
+    TaskName = $taskName
+    State = $task.State
+    LastTaskResult = $taskInfo.LastTaskResult
+    NextRunTime = $taskInfo.NextRunTime
+    TriggerCount = $task.Triggers.Count
+    Mode = $Mode
+  }
+}
+
+Get-ScheduledTask -TaskName "OpenButler-Nightly-Delivery", "OpenButler-Nightly-Cutoff", "OpenButler-Nightly-Finalize", "OpenButler-Morning-Report", "OpenButler-Daytime-Cloud" |
   Select-Object TaskName, State, Description

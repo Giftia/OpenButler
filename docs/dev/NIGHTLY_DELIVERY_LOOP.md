@@ -73,7 +73,7 @@ The acceptance pack records:
 - privacy invariants and rollback reference;
 - merge or block reason.
 
-Before automatic merge, `auto-merge-controller.mjs` rechecks the exact PR head SHA, green required checks, both verifier verdicts, `acceptance-ready`, `auto-merge-eligible`, rollback evidence, and the additional Nightly requirement for high-risk changes. A changed SHA invalidates every prior approval.
+Before automatic merge, `auto-merge-controller.mjs` rechecks the exact PR head SHA, all nine green required checks, both verifier verdicts, `acceptance-ready`, `auto-merge-eligible`, rollback evidence, and the additional Nightly requirement for high-risk changes. `Merge Authorization` is refreshed by Issue label, edit and lifecycle events so a revoked or stale Issue approval fails at GitHub branch protection as well as in the local controller. A changed SHA invalidates every prior approval.
 
 After merge, the controller waits for GitHub Actions on the exact new `main` SHA. If main CI fails, it creates a revert pull request instead of force-pushing. Automatic Nightly delivery never creates a stable GitHub Release or replaces the installed stable application.
 

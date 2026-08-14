@@ -31,7 +31,8 @@ npx @cobusgreyling/loop-cost@1.1.0 --pattern daily-triage --level L1
 
 - L2 nightly hard token cap is 750,000, with no new issue started after 600,000 tokens or 07:15 Asia/Shanghai.
 - L2 may run one maker and one independent verifier per item, strictly serially.
-- An individual issue may consume at most 160,000 tokens before escalation.
+- A local Codex issue may consume at most 160,000 measured tokens before escalation.
+- The supported Codex Cloud CLI does not expose per-task token telemetry. Cloud work is therefore bounded by one attempt, a 14-hour lease, at most 5 changed files, and a 256 KiB verified diff; the prompt retains the 160,000-token instruction, but reports it as unverified rather than claiming a measured hard cap.
 - L2 has no fixed issue-count limit; time, token, privacy, CI, and verifier circuit breakers are authoritative.
 - Product/privacy verification uses a fresh context and is counted inside the same per-Issue cap.
 - Daytime Codex Cloud work is disabled until `OPENBUTLER_CODEX_CLOUD_ENV_ID` passes a docs-only smoke.

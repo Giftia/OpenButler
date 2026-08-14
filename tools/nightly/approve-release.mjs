@@ -10,7 +10,7 @@ if (!requested.length) throw new Error("Pass one or more approved PR numbers.");
 
 const latest = readFileSync(join(root, "data", "nightly", "latest-run.txt"), "utf8").trim();
 const pack = JSON.parse(readFileSync(join(root, "data", "nightly", latest, "acceptance-pack.json"), "utf8"));
-const requiredChecks = new Set(["Butler Core", "PC Activity", "Workstation Vision", "Frontend Build", "Desktop Contract", "Loop Governance"]);
+const requiredChecks = new Set(["Butler Core", "PC Activity", "Workstation Vision", "Context Engine", "Frontend Build", "Desktop Contract", "Loop Governance", "Nightly Controller"]);
 
 function gh(args) {
   return execFileSync("gh", args, {cwd: root, encoding: "utf8", windowsHide: true});

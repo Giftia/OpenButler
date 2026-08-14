@@ -1,0 +1,27 @@
+name: Refresh Merge Authorization
+
+on:
+  issues:
+    types: [labeled, unlabeled, edited, closed, reopened]
+  pull_request_target:
+    types: [edited]
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  statuses: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Refresh affected pull-request authorization status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPENBUTLER_ISSUE_NUMBER: ${{ github.event.issue.number }}
+          OPENBUTLER_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node tools/nightly/merge-authorization.mjs ${{ github.event_name == 'issues' && 'refresh-issue' || 'refresh-pr' }}
