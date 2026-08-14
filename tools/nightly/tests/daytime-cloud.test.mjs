@@ -34,10 +34,10 @@ const readyIssue = (overrides = {}) => ({
 });
 const readyTimeline = [{event: "labeled", label: {name: "ready-for-agent"}, created_at: "2026-08-12T01:00:00Z"}];
 const safeDiff = [
-  "diff --git a/tools/nightly/example.mjs b/tools/nightly/example.mjs",
+  "diff --git a/frontend/src/example.ts b/frontend/src/example.ts",
   "new file mode 100644",
   "--- /dev/null",
-  "+++ b/tools/nightly/example.mjs",
+  "+++ b/frontend/src/example.ts",
   "@@ -0,0 +1 @@",
   "+export const ok = true;",
   "",
@@ -88,6 +88,7 @@ function mockServices(options = {}) {
     closedIssues: () => new Set(options.currentClosedIssues ?? options.closedIssues ?? []),
     executionLeases: () => (options.executionLeasesSequence?.[leaseRead++] ?? options.executionLeases ?? []),
     timeline: () => (options.timelineSequence?.[timelineRead++] ?? options.timeline ?? readyTimeline),
+    leaseEpoch: () => options.leaseEpoch ?? "2026-08-12T10:00:01.000Z",
     acquireExecutionClaimLock: () => { calls.push(["claimLock"]); return options.claimLockOk ?? true; },
     releaseExecutionClaimLock: () => { calls.push(["releaseClaimLock"]); },
     claim: () => { calls.push(["claim"]); if (options.claimOk === false) return false; withLease(); return true; },
@@ -95,7 +96,7 @@ function mockServices(options = {}) {
     restoreLease: () => { calls.push(["restoreLease"]); if (options.restoreLeaseOk === false) return false; withLease(); return true; },
     quarantine: () => { calls.push(["quarantine"]); return options.quarantineOk ?? true; },
     transitionToReview: () => { calls.push(["transition"]); withoutLease(); return options.transitionOk ?? true; },
-    closePullRequest: () => { calls.push(["closePullRequest"]); return true; },
+    closePullRequest: () => { calls.push(["closePullRequest"]); return options.closePullRequestOk ?? true; },
     submit: () => { calls.push(["submit"]); return options.submitted ?? {ok: true, taskId: "task_123"}; },
     recoverTask: () => { calls.push(["recover"]); return options.recoveredTask ?? null; },
     recordTaskMarker: () => { calls.push(["recordTaskMarker"]); return options.markerOk ?? true; },
@@ -103,7 +104,7 @@ function mockServices(options = {}) {
     taskStatus: () => options.taskStatus ?? "pending",
     taskDiff: () => options.diff ?? safeDiff,
     openPullRequests: () => options.openPullRequests ?? [],
-    materialize: () => { calls.push(["materialize"]); if (options.materializeError) throw new Error(options.materializeError); return {number: 77}; },
+    materialize: () => { calls.push(["materialize"]); if (options.materializeError) throw new Error(options.materializeError); return {number: 77, headRefOid: "def"}; },
     waitForChecks: () => { calls.push(["waitForChecks"]); return options.checksOk ?? true; },
   };
 }
@@ -394,6 +395,22 @@ test("Cloud pull request remains quarantined unless exact-head required CI passe
   assert.equal(services.calls.some(([name]) => name === "transition"), false);
 });
 
+test("failed PR cleanup retains the lease and records cleanup-required", async () => {
+  const issue = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});
+  const services = mockServices({
+    issue,
+    state: activeState(issue),
+    taskStatus: "ready",
+    checksOk: false,
+    closePullRequestOk: false,
+  });
+  const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services});
+  assert.equal(result.status, "cleanup-required");
+  assert.match(result.reason, /cleanup could not be proven/);
+  assert.equal(services.calls.some(([name]) => name === "release"), false);
+  assert.equal(services.calls.some(([name]) => name === "quarantine"), false);
+});
+
 test("ready Cloud result is rejected when the Issue closes or a dependency reopens", async () => {
   const leased = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});
   const closedServices = mockServices({issue: leased, currentIssue: {...leased, state: "CLOSED"}, state: activeState(leased), taskStatus: "ready"});
@@ -417,6 +434,43 @@ test("diff privacy and forbidden path violations fail and release the lease", as
   assert.match(result.reason, /forbidden path|privacy/);
   assert.equal(services.calls.some(([name]) => name === "release"), true);
   assert.equal(services.calls.some(([name]) => name === "quarantine"), true);
+});
+
+test("Cloud diffs cannot modify their own control plane or tests", () => {
+  for (const path of [
+    ".github/workflows/ci.yml",
+    ".codex/agents/verifier.toml",
+    ".openbutler/automation-policy.yaml",
+    ".openbutler/goals.yaml",
+    "AGENTS.md",
+    "loop-constraints.md",
+    "docs/privacy/PRIVACY_BOUNDARIES.md",
+    "frontend/package.json",
+    "backend/requirements.txt",
+    "tools/nightly/daytime-cloud-controller.mjs",
+    "frontend/src/App.test.tsx",
+    "backend/app/modules/context_engine/tests/test_privacy.py",
+  ]) {
+    const diff = `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1 +1 @@\n-old\n+new\n`;
+    const evaluation = evaluateCloudDiff(diff);
+    assert.equal(evaluation.accepted, false, path);
+    assert.match(evaluation.reasons.join("; "), /forbidden path/);
+  }
+});
+
+test("new claims persist the GitHub lease epoch instead of dispatcher start time", async () => {
+  const services = mockServices({leaseEpoch: "2026-08-12T10:00:17.000Z"});
+  const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services, runId: "lease-epoch"});
+  assert.equal(result.status, "submitted");
+  assert.equal(services.state.claimed_at, "2026-08-12T10:00:17.000Z");
+});
+
+test("an unreadable GitHub lease epoch fails before Cloud submission", async () => {
+  const services = mockServices({leaseEpoch: ""});
+  const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services, runId: "missing-lease-epoch"});
+  assert.equal(result.status, "blocked");
+  assert.match(result.reason, /lease epoch/);
+  assert.equal(services.calls.some(([name]) => name === "submit"), false);
 });
 
 test("failed Cloud quarantine retains the execution lease", async () => {

@@ -11,6 +11,16 @@ const forbiddenPathPatterns = [
   /^(?:minecontext|minecontext_data|minecontext_exports)(?:\/|$)/i,
   /(^|\/)(?:secrets?|credentials?|cookies?)(?:\/|$)/i,
   /\.(?:db|sqlite3?|pem|key|p12|pfx|crt|log)$/i,
+  /^\.github\//i,
+  /^\.codex\/agents\//i,
+  /^\.openbutler\//i,
+  /^AGENTS\.md$/i,
+  /^(?:LOOP|STATE|loop-budget|loop-constraints|loop-run-log)\.md$/i,
+  /^tools\/(?:nightly|loop)\//i,
+  /^docs\/(?:privacy|architecture\/decisions)\//i,
+  /(^|\/)(?:package-lock\.json|package\.json|requirements[^/]*\.txt|pyproject\.toml|poetry\.lock)$/i,
+  /(^|\/)(?:tests?|__tests__)(?:\/|$)/i,
+  /\.(?:test|spec)\.[^/]+$/i,
 ];
 
 const forbiddenDiffPatterns = [

@@ -14,7 +14,7 @@ const latestStatusPath = join(runtimeRoot, "latest-status.json");
 const lockPath = join(runtimeRoot, "controller.lock");
 const executionClaimLockPath = join(repoRoot, "data", "automation", "execution-claim.lock");
 const repo = "Giftia/OpenButler";
-const requiredChecks = new Set(["Butler Core", "PC Activity", "Workstation Vision", "Frontend Build", "Desktop Contract", "Loop Governance"]);
+const requiredChecks = new Set(["Butler Core", "PC Activity", "Workstation Vision", "Context Engine", "Frontend Build", "Desktop Contract", "Loop Governance", "Nightly Controller"]);
 
 function processIsAlive(pid) {
   try {
@@ -251,12 +251,27 @@ export function createProductionServices() {
     executionLeases: () => ghJson(["issue", "list", "--repo", repo, "--state", "open", "--limit", "200", "--json", "number,labels"])
       .filter((issue) => (issue.labels ?? []).some((label) => ["cloud-running", "nightly-running"].includes(label.name ?? label))),
     timeline: (number) => ghJson(["api", `repos/${repo}/issues/${number}/timeline`, "--paginate"]),
+    leaseEpoch: (number) => {
+      const timeline = ghJson(["api", `repos/${repo}/issues/${number}/timeline`, "--paginate"]);
+      const epochs = timeline
+        .filter((event) => event.event === "labeled" && event.label?.name === "cloud-running")
+        .map((event) => event.created_at)
+        .filter(Boolean)
+        .sort();
+      return epochs.at(-1) ?? null;
+    },
     claim: (number) => ghCommand(["issue", "edit", String(number), "--repo", repo, "--add-label", "cloud-running"]).ok,
     release: (number) => ghCommand(["issue", "edit", String(number), "--repo", repo, "--remove-label", "cloud-running"]).ok,
     restoreLease: (number) => ghCommand(["issue", "edit", String(number), "--repo", repo, "--add-label", "cloud-running"]).ok,
     quarantine: (number) => ghCommand(["issue", "edit", String(number), "--repo", repo, "--remove-label", "ready-for-agent", "--add-label", "nightly-failed"]).ok,
     transitionToReview: (number) => ghCommand(["issue", "edit", String(number), "--repo", repo, "--remove-label", "ready-for-agent", "--remove-label", "cloud-running", "--add-label", "review-pending"]).ok,
-    closePullRequest: (number) => ghCommand(["pr", "close", String(number), "--repo", repo, "--delete-branch"]).ok,
+    closePullRequest: (number, branch) => {
+      if (!ghCommand(["pr", "close", String(number), "--repo", repo, "--delete-branch"]).ok) return false;
+      const pullRequest = ghJson(["pr", "view", String(number), "--repo", repo, "--json", "state"]);
+      if (pullRequest.state !== "CLOSED") return false;
+      const remote = command("git", ["ls-remote", "--heads", "origin", branch]);
+      return remote.ok && !remote.stdout.trim();
+    },
     submit: ({environmentId, prompt}) => {
       const result = codexRun(["cloud", "exec", "--env", environmentId, "--attempts", "1", "--branch", "main", prompt], {timeout: 120_000});
       return {ok: result.ok, taskId: result.ok ? parseCloudTaskId(`${result.stdout}\n${result.stderr}`) : null};
@@ -373,7 +388,7 @@ export function createProductionServices() {
           refreshBase();
           verifyIssueContract();
 
-          const existing = ghJson(["pr", "list", "--repo", repo, "--state", "open", "--head", state.branch, "--json", "number,url"])[0];
+          const existing = ghJson(["pr", "list", "--repo", repo, "--state", "open", "--head", state.branch, "--json", "number,url,headRefOid"])[0];
           if (existing) return existing;
           const created = ghCommand([
             "pr", "create", "--repo", repo, "--base", "main", "--head", state.branch, "--draft",

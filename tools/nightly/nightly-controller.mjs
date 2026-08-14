@@ -213,6 +213,8 @@ const cleanup = () => releaseOwnedLock(lockPath, controllerLock.token);
 process.on("exit", cleanup);
 process.on("SIGINT", () => { cleanup(); process.exit(130); });
 
+const startupRecoveries = [];
+
 try {
   const status = command("git", ["status", "--porcelain=v1"]);
   if (!status.ok || status.stdout.trim()) fail("working tree is not clean");
@@ -245,6 +247,7 @@ try {
       if (!released.ok) fail(`unable to release quarantined orphan Nightly lease #${orphan.number}`);
       mkdirSync(quarantineRoot, {recursive: true});
       writeFileSync(join(quarantineRoot, `issue-${orphan.number}.json`), `${JSON.stringify({issue: orphan.number, run_id: runId, failed_at: new Date().toISOString(), reason: "orphan Nightly execution lease recovered at startup", recovery_available: true}, null, 2)}\n`, "utf8");
+      startupRecoveries.push(`Issue #${orphan.number} 的孤儿 Nightly 租约已隔离并释放。`);
     }
   }
   const issues = ghJson([
@@ -321,7 +324,10 @@ try {
       github_mutated: false,
     },
     execution_surface: "local",
-    blockers: mode === "execute" ? [] : ["L1 dry-run：仅验证队列、预算、隐私和调度，不执行 Issue。"],
+    blockers: [
+      ...(mode === "execute" ? [] : ["L1 dry-run：仅验证队列、预算、隐私和调度，不执行 Issue。"]),
+      ...startupRecoveries,
+    ],
   };
 
   if (mode === "execute") {

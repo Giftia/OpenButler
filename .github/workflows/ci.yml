@@ -54,6 +54,28 @@ jobs:
         env:
           PYTHONPATH: backend
 
+  context-engine:
+    name: Context Engine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: python -m pip install -r backend/requirements.txt
+      - name: Run Context Engine tests when present
+        shell: bash
+        run: |
+          if [ -d backend/app/modules/context_engine/tests ]; then
+            python -m unittest discover -s backend/app/modules/context_engine/tests
+          else
+            echo "Context Engine tests are not present yet."
+          fi
+        env:
+          PYTHONPATH: backend
+
   frontend:
     name: Frontend Build
     runs-on: ubuntu-latest
@@ -105,3 +127,14 @@ jobs:
       - run: npm ci --registry=https://registry.npmjs.org
       - run: npm test
       - run: npm run audit:governance -- --no-write
+
+  nightly-controller:
+    name: Nightly Controller
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: node --test tests
+        working-directory: tools/nightly

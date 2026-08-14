@@ -10,7 +10,7 @@ const worktree = join(root, "data", "nightly", "release", runId);
 const installedDir = join(process.env.LOCALAPPDATA ?? "", "Programs", "OpenButler");
 const installedExecutable = join(installedDir, "OpenButler.exe");
 const backupDir = join(root, "data", "nightly", "release-backups", runId, "OpenButler");
-const requiredChecks = new Set(["Butler Core", "PC Activity", "Workstation Vision", "Frontend Build", "Desktop Contract", "Loop Governance"]);
+const requiredChecks = new Set(["Butler Core", "PC Activity", "Workstation Vision", "Context Engine", "Frontend Build", "Desktop Contract", "Loop Governance", "Nightly Controller"]);
 
 function rawCommand(name, args, options = {}) {
   const result = spawnSync(name, args, {cwd: options.cwd ?? root, encoding: "utf8", windowsHide: true, timeout: options.timeout ?? 30 * 60 * 1000, env: {...process.env, ...(options.env ?? {})}, stdio: options.inherit ? "inherit" : "pipe"});

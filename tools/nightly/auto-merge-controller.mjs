@@ -12,9 +12,11 @@ const requiredChecks = new Set([
   "Butler Core",
   "PC Activity",
   "Workstation Vision",
+  "Context Engine",
   "Frontend Build",
   "Desktop Contract",
   "Loop Governance",
+  "Nightly Controller",
 ]);
 
 function gh(args, {allowFailure = false, timeout = 120_000} = {}) {
@@ -121,6 +123,27 @@ for (const acceptance of pack.pull_requests ?? []) {
   });
   if (!gate.eligible) {
     pack.auto_merge.blocked.push({pr: acceptance.number, reasons: gate.reasons});
+    continue;
+  }
+  // Re-read the user approval immediately before the SHA-bound merge. GitHub
+  // does not offer a transaction spanning Issue state and PR merge, so any
+  // observed approval drift fails closed at the last possible boundary.
+  if (!issueApprovalStillCurrent(acceptance)) {
+    pack.auto_merge.blocked.push({pr: acceptance.number, reasons: ["Issue approval changed during final merge preflight"]});
+    continue;
+  }
+  const finalPullRequest = ghJson([
+    "pr", "view", String(acceptance.number), "--repo", "Giftia/OpenButler",
+    "--json", "number,state,isDraft,headRefOid,reviewDecision,statusCheckRollup,labels",
+  ]);
+  const finalGate = canAutoMergePullRequest({
+    pullRequest: finalPullRequest,
+    acceptance,
+    requiredChecks,
+    requireNightly: acceptance.risk === "high",
+  });
+  if (!finalGate.eligible) {
+    pack.auto_merge.blocked.push({pr: acceptance.number, reasons: ["PR state changed during final merge preflight", ...finalGate.reasons]});
     continue;
   }
   gh([

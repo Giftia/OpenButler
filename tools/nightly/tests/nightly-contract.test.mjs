@@ -15,14 +15,14 @@ test("automatic merge is bound to dual verification and accepted head SHA", () =
   assert.match(source, /createRevertPullRequest/);
   assert.match(source, /issueApprovalStillCurrent/);
   assert.match(source, /issue_content_fingerprint/);
-  for (const check of ["Butler Core", "PC Activity", "Workstation Vision", "Frontend Build", "Desktop Contract", "Loop Governance"]) {
+  for (const check of ["Butler Core", "PC Activity", "Workstation Vision", "Context Engine", "Frontend Build", "Desktop Contract", "Loop Governance", "Nightly Controller"]) {
     assert.match(source, new RegExp(check));
   }
 });
 
 test("stable release waits for the complete required check set and has rollback", () => {
   const source = read("tools/nightly/post-approval-release.mjs");
-  for (const check of ["Butler Core", "PC Activity", "Workstation Vision", "Frontend Build", "Desktop Contract", "Loop Governance"]) {
+  for (const check of ["Butler Core", "PC Activity", "Workstation Vision", "Context Engine", "Frontend Build", "Desktop Contract", "Loop Governance", "Nightly Controller"]) {
     assert.match(source, new RegExp(check));
   }
   assert.match(source, /restoreStableInstall/);
@@ -88,6 +88,8 @@ test("daytime Cloud scheduling is bounded and never auto-merges", () => {
   assert.match(services, /cloud", "diff"/);
   assert.match(services, /waitForChecks/);
   assert.match(services, /requiredChecks/);
+  assert.match(services, /"Context Engine"/);
+  assert.match(services, /"Nightly Controller"/);
   assert.match(services, /normalizeUnifiedDiff/);
   assert.match(services, /Cloud-authored code is never executed/);
   assert.doesNotMatch(services, /for \(const test of requiredTestsForPaths\(paths, worktree\)\)/);
@@ -98,6 +100,7 @@ test("daytime Cloud scheduling is bounded and never auto-merges", () => {
   assert.match(services, /Product code has not been executed on this PC; required tests run in CI/);
   assert.match(services, /"--head", state\.branch/);
   assert.match(services, /--draft/);
+  assert.match(controller, /pull request or remote branch cleanup could not be proven/);
   assert.doesNotMatch(controller, /pr", "merge"/);
   assert.doesNotMatch(services, /pr", "merge"/);
   assert.match(morning, /白天 Cloud 工作/);

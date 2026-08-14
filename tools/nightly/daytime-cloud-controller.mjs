@@ -20,6 +20,18 @@ function terminalFailure(services, state, reason, status = "blocked") {
   return services.completeState({...state, status, reason});
 }
 
+function retainForPullRequestCleanup(services, state, pullRequest, reason) {
+  if (!pullRequest?.number || !services.closePullRequest?.(pullRequest.number, state.branch)) {
+    return services.saveState({
+      ...state,
+      status: "cleanup-required",
+      pr_number: pullRequest?.number ?? null,
+      reason: `${reason}; pull request or remote branch cleanup could not be proven, so the lease is retained`,
+    });
+  }
+  return terminalFailure(services, state, reason, "failed");
+}
+
 async function runDaytimeDispatcherUnlocked({
   mode = "dry-run",
   now = new Date(),
@@ -27,6 +39,7 @@ async function runDaytimeDispatcherUnlocked({
   services = createProductionServices(),
   runId = now.toISOString().replace(/[:.]/g, "-"),
 } = {}) {
+  const orphanRecoveries = [];
   if (!withinDaytimeWindow(now)) return {status: "outside-window", issue: null};
   let state = services.loadState();
   if (!environmentId) {
@@ -121,8 +134,7 @@ async function runDaytimeDispatcherUnlocked({
     try {
       const pr = services.materialize({state, diff, paths: evaluatedDiff.paths});
       if (!services.waitForChecks?.(pr.number, pr.headRefOid)) {
-        services.closePullRequest?.(pr.number);
-        return terminalFailure(services, state, "Cloud pull request did not pass required CI at the exact head SHA", "failed");
+        return retainForPullRequestCleanup(services, state, pr, "Cloud pull request did not pass required CI at the exact head SHA");
       }
       const issueAfterPullRequest = services.issue(state.issue);
       const afterPullRequestEligibility = evaluateIssueEligibility(issueAfterPullRequest, {
@@ -134,11 +146,10 @@ async function runDaytimeDispatcherUnlocked({
       if (!afterPullRequestEligibility.eligible
         || !afterPullRequestFreshness.fresh
         || issueSpecificationFingerprint(issueAfterPullRequest) !== state.specification_fingerprint) {
-        services.closePullRequest?.(pr.number);
-        return terminalFailure(services, state, "Issue changed after Cloud pull request creation", "failed");
+        return retainForPullRequestCleanup(services, state, pr, "Issue changed after Cloud pull request creation");
       }
       if (!services.transitionToReview(state.issue)) {
-        return terminalFailure(services, state, "pull request exists but Issue label transition failed", "failed");
+        return retainForPullRequestCleanup(services, state, pr, "pull request exists but Issue label transition failed");
       }
       return services.completeState({...state, status: "pr-ready", pr_number: pr.number, reason: null});
     } catch (error) {
@@ -153,11 +164,16 @@ async function runDaytimeDispatcherUnlocked({
       for (const orphan of orphanCloudLeases) {
         const reconciliation = services.reconcileOrphanCloudLease?.(orphan.number) ?? {terminal: false};
         if (!reconciliation.terminal) {
-          return {status: "cleanup-required", issue: orphan.number, reason: "orphan Cloud lease has no provably terminal remote task; automation remains blocked"};
+          const result = {status: "cleanup-required", issue: orphan.number, reason: "orphan Cloud lease has no provably terminal remote task; automation remains blocked"};
+          services.recordStatus?.({...result, run_id: runId});
+          return result;
         }
         if (!services.quarantine(orphan.number) || !services.release(orphan.number)) {
-          return {status: "cleanup-required", issue: orphan.number, reason: "orphan Cloud lease could not be quarantined safely"};
+          const result = {status: "cleanup-required", issue: orphan.number, reason: "orphan Cloud lease could not be quarantined safely"};
+          services.recordStatus?.({...result, run_id: runId});
+          return result;
         }
+        orphanRecoveries.push(orphan.number);
       }
     } else {
       const result = {status: "blocked", issue: null, reason: "another Cloud or Nightly execution lease is active"};
@@ -174,7 +190,13 @@ async function runDaytimeDispatcherUnlocked({
     if (eligibility.eligible && freshness.fresh) candidates.push(issue);
   }
   if (!candidates.length) {
-    const result = {status: "no-op", issue: null};
+    const result = {
+      status: "no-op",
+      issue: null,
+      reason: orphanRecoveries.length
+        ? `terminal orphan Cloud leases quarantined and released: ${orphanRecoveries.map((number) => `#${number}`).join(", ")}`
+        : null,
+    };
     services.recordStatus?.({...result, run_id: runId});
     return result;
   }
@@ -202,13 +224,18 @@ async function runDaytimeDispatcherUnlocked({
       task_id: null,
       branch: `codex/cloud-${issue.number}-${runId.replace(/[^0-9A-Za-z]/g, "").slice(0, 20)}`,
       specification_fingerprint: issueSpecificationFingerprint(issue),
-      claimed_at: now.toISOString(),
+      claimed_at: null,
       status: "claiming",
       reason: null,
     });
     if (!services.claim(issue.number)) {
       return services.completeState({...state, status: "failed", reason: "unable to acquire cloud-running lease"});
     }
+    const leaseEpoch = services.leaseEpoch?.(issue.number);
+    if (!leaseEpoch || !Number.isFinite(Date.parse(leaseEpoch))) {
+      return terminalFailure(services, state, "GitHub lease epoch could not be read after claim");
+    }
+    state = services.saveState({...state, claimed_at: leaseEpoch});
     const claimedIssue = services.issue(issue.number);
     const postClaimEvaluation = evaluateIssueEligibility(claimedIssue, {
       closedIssues: services.closedIssues(),
