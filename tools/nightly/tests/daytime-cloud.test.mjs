@@ -236,6 +236,16 @@ test("stale pending Cloud task retains its Issue lease when cancellation is unav
   assert.equal(services.calls.some(([name]) => name === "release"), false);
 });
 
+test("stale ready Cloud task is never materialized after the 14-hour lease", async () => {
+  const issue = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});
+  const state = activeState(issue, {claimed_at: "2026-08-11T10:00:00.000Z"});
+  const services = mockServices({issue, state, taskStatus: "ready"});
+  const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services});
+  assert.equal(result.status, "cleanup-required");
+  assert.match(result.reason, /14-hour execution lease/);
+  assert.equal(services.calls.some(([name]) => name === "materialize"), false);
+});
+
 test("unavailable or unknown Cloud status retains the lease", async () => {
   for (const taskStatus of ["unavailable", "unknown"]) {
     const issue = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});

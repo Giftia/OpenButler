@@ -77,20 +77,15 @@ async function runDaytimeDispatcherUnlocked({
     }
 
     const taskStatus = services.taskStatus(state.task_id);
+    const claimedAt = Date.parse(state.claimed_at ?? "");
+    const ageHours = Number.isFinite(claimedAt) ? (now.getTime() - claimedAt) / 3_600_000 : 0;
+    if (ageHours >= EXECUTION_LEASE_HOURS && !["failed", "cancelled"].includes(taskStatus)) {
+      return services.saveState({...state, status: "cleanup-required", reason: "Cloud task exceeded its 14-hour execution lease; result will not be materialized and remote cancellation is unavailable"});
+    }
     if (taskStatus === "pending") {
-      const claimedAt = Date.parse(state.claimed_at ?? "");
-      const ageHours = Number.isFinite(claimedAt) ? (now.getTime() - claimedAt) / 3_600_000 : 0;
-      if (ageHours >= EXECUTION_LEASE_HOURS) {
-        return services.saveState({...state, status: "cleanup-required", reason: "Cloud task exceeded its execution lease; remote cancellation is unavailable, so the Issue lease is retained"});
-      }
       return services.saveState({...state, status: "pending", reason: null});
     }
     if (["unknown", "unavailable"].includes(taskStatus)) {
-      const claimedAt = Date.parse(state.claimed_at ?? "");
-      const ageHours = Number.isFinite(claimedAt) ? (now.getTime() - claimedAt) / 3_600_000 : 0;
-      if (ageHours >= EXECUTION_LEASE_HOURS) {
-        return services.saveState({...state, status: "cleanup-required", reason: "Cloud task status stayed unavailable beyond its lease; Issue lease retained for manual reconciliation"});
-      }
       return services.saveState({...state, status: "pending", reason: "Cloud task status is unavailable; lease retained"});
     }
     if (["failed", "cancelled"].includes(taskStatus)) {

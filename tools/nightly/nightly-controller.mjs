@@ -18,6 +18,7 @@ import {
   tokenUsageFromJsonl,
 } from "./nightly-lib.mjs";
 import {acquireOwnedLock, releaseOwnedLock} from "./daytime-cloud-services.mjs";
+import {evaluateSpecificationFreshness} from "./daytime-cloud-lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..");
@@ -228,7 +229,23 @@ try {
     "issue", "list", "--repo", "Giftia/OpenButler", "--state", "open",
     "--label", "nightly-running", "--limit", "10", "--json", "number",
   ]) ?? [];
-  if (orphanNightlyLeases.length) fail("an unresolved Nightly execution lease is active", 0);
+  if (orphanNightlyLeases.length) {
+    if (mode !== "execute") fail("an unresolved Nightly execution lease is active", 0);
+    for (const orphan of orphanNightlyLeases) {
+      const quarantined = ghCommand([
+        "issue", "edit", String(orphan.number), "--repo", "Giftia/OpenButler",
+        "--remove-label", "ready-for-agent", "--add-label", "nightly-failed",
+      ]);
+      if (!quarantined.ok) fail(`unable to quarantine orphan Nightly lease #${orphan.number}`);
+      const released = ghCommand([
+        "issue", "edit", String(orphan.number), "--repo", "Giftia/OpenButler",
+        "--remove-label", "nightly-running",
+      ]);
+      if (!released.ok) fail(`unable to release quarantined orphan Nightly lease #${orphan.number}`);
+      mkdirSync(quarantineRoot, {recursive: true});
+      writeFileSync(join(quarantineRoot, `issue-${orphan.number}.json`), `${JSON.stringify({issue: orphan.number, run_id: runId, failed_at: new Date().toISOString(), reason: "orphan Nightly execution lease recovered at startup", recovery_available: true}, null, 2)}\n`, "utf8");
+    }
+  }
   const issues = ghJson([
     "issue", "list", "--repo", "Giftia/OpenButler", "--state", "open",
     "--label", "ready-for-agent", "--limit", "100",
@@ -243,16 +260,18 @@ try {
   ]) ?? []);
 
   const evaluated = issues.map((issue) => {
+    const timeline = ghJson(["api", `repos/Giftia/OpenButler/issues/${issue.number}/timeline`, "--paginate"]);
     const evaluation = evaluateIssueEligibility(issue, {
       closedIssues: closed,
       claimedIssues: claimed,
     });
+    const freshness = evaluateSpecificationFreshness(issue, timeline);
+    evaluation.reasons.push(...freshness.reasons);
     const quarantinePath = join(quarantineRoot, `issue-${issue.number}.json`);
     let localQuarantine = existsSync(quarantinePath);
     if (localQuarantine) {
       try {
         const quarantine = JSON.parse(readFileSync(quarantinePath, "utf8"));
-        const timeline = ghJson(["api", `repos/Giftia/OpenButler/issues/${issue.number}/timeline`, "--paginate"]);
         const retriaged = shouldClearLocalQuarantine({issue, quarantine, timeline});
         if (retriaged) {
           rmSync(quarantinePath, {force: true});
@@ -403,7 +422,8 @@ async function executeIssue(issue, {tokensUsed}) {
       claimedIssues: competingPullRequests,
       ownedLease: "nightly-running",
     });
-    if (!postClaimEvaluation.eligible) {
+    const postClaimFreshness = evaluateSpecificationFreshness(claimedIssue, ghJson(["api", `repos/Giftia/OpenButler/issues/${issue.number}/timeline`, "--paginate"]));
+    if (!postClaimEvaluation.eligible || !postClaimFreshness.fresh) {
       throw new Error(`execution lease changed while claiming #${issue.number}`);
     }
     if (claimedIssue.title !== issue.title || claimedIssue.body !== issue.body) {
@@ -570,7 +590,7 @@ async function executeIssue(issue, {tokensUsed}) {
     const quarantined = ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--remove-label", "ready-for-agent", "--add-label", "nightly-failed"]);
     if (!quarantined.ok) releaseExecutionLease = false;
     log("issue_quarantined", {issue: issue.number, recovery_available: preserveWorktree});
-    throw error;
+    return {tokens: totalTokens, stop: !quarantined.ok, pullRequest: null, scenarios: []};
   } finally {
     if (leaseAcquired && releaseExecutionLease) ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--remove-label", "nightly-running"]);
     if (!preserveWorktree) {

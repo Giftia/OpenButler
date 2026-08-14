@@ -168,9 +168,16 @@ test("Cloud and Nightly dispatchers share a fail-closed execution gate", () => {
   assert.match(controller, /--label", "cloud-running"/);
   assert.match(controller, /executionClaimLockPath/);
   assert.match(controller, /an unresolved Nightly execution lease is active/);
+  assert.match(controller, /orphan Nightly execution lease recovered at startup/);
+  assert.match(controller, /evaluateSpecificationFreshness/);
   assert.match(daytime, /executionLeases/);
   assert.match(daytime, /acquireExecutionClaimLock/);
   assert.match(daytime, /another Cloud or Nightly execution lease is active/);
+});
+
+test("a quarantined Nightly failure returns control to the serial queue", () => {
+  const controller = read("tools/nightly/nightly-controller.mjs");
+  assert.match(controller, /return \{tokens: totalTokens, stop: !quarantined\.ok, pullRequest: null, scenarios: \[\]\}/);
 });
 
 test("real data smoke is isolated, bounded, and redacted", () => {
