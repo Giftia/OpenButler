@@ -53,7 +53,7 @@ updates a draft pull request and moves the Issue to review; it never merges.
 
 A pull request may be squash-merged only when its exact head SHA has:
 
-1. the six required repository checks;
+1. the eight required repository checks, including Context Engine and Nightly Controller;
 2. a code verifier approval;
 3. a product/privacy verifier approval;
 4. no requested-changes review;
