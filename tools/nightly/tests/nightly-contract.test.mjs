@@ -66,6 +66,8 @@ test("Windows scheduler supports four bounded delivery phases", () => {
   assert.match(source, /AllowStartIfOnBatteries/);
   assert.match(source, /DontStopIfGoingOnBatteries/);
   assert.match(source, /\[string\]\$Mode = "dry-run"/);
+  assert.match(source, /Get-ScheduledTaskInfo/);
+  assert.match(source, /scheduled task verification failed/);
   for (const time of ["20:00", "07:15", "08:20", "08:30"]) assert.match(source, new RegExp(time));
 });
 
@@ -84,7 +86,8 @@ test("daytime Cloud scheduling is bounded and never auto-merges", () => {
   assert.match(services, /cloud", "exec"/);
   assert.match(services, /cloud", "diff"/);
   assert.match(services, /normalizeUnifiedDiff/);
-  assert.match(services, /focused tests changed the verified Cloud diff/);
+  assert.match(services, /Cloud-authored code is never executed/);
+  assert.doesNotMatch(services, /for \(const test of requiredTestsForPaths\(paths, worktree\)\)/);
   assert.match(services, /origin\/main changed during Cloud result verification/);
   assert.match(services, /Issue specification changed during Cloud result verification/);
   assert.match(services, /--force-with-lease/);
@@ -180,7 +183,9 @@ test("Cloud and Nightly dispatchers share a fail-closed execution gate", () => {
 
 test("a quarantined Nightly failure returns control to the serial queue", () => {
   const controller = read("tools/nightly/nightly-controller.mjs");
-  assert.match(controller, /return \{tokens: totalTokens, stop: !quarantined\.ok, pullRequest: null, scenarios: \[\]\}/);
+  assert.match(controller, /blocker: `Issue #\$\{issue\.number\} 已隔离/);
+  assert.match(controller, /if \(issueResult\.blocker\) pack\.blockers\.push/);
+  assert.match(controller, /if \(issueResult\.githubMutated\) pack\.privacy\.github_mutated = true/);
   assert.match(controller, /issue_failed_before_isolation/);
   assert.match(controller, /continue;/);
 });

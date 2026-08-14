@@ -179,6 +179,16 @@ test("only the exact GitHub ready-label timestamp is accepted", () => {
   assert.equal(evaluateSpecificationFreshness({createdAt: "2026-08-13T00:00:00Z", updatedAt: "2026-08-14T02:00:03.000Z"}, timeline).fresh, false);
 });
 
+test("workflow lease churn explains updatedAt without making an unchanged Issue stale", () => {
+  const timeline = [
+    ...readyTimeline,
+    {event: "labeled", label: {name: "nightly-running"}, created_at: "2026-08-12T02:00:00Z"},
+    {event: "unlabeled", label: {name: "nightly-running"}, created_at: "2026-08-12T02:01:00Z"},
+  ];
+  const issue = readyIssue({updatedAt: "2026-08-12T02:01:00Z"});
+  assert.equal(evaluateSpecificationFreshness(issue, timeline).fresh, true);
+});
+
 test("eligible execute submission acquires one lease and persists task metadata", async () => {
   const services = mockServices();
   const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services, runId: "run-1"});
@@ -245,6 +255,11 @@ test("orphan recovery trusts only the current lease epoch and authenticated acto
   assert.match(trustedCloudTaskMarker({comments, timeline, actor: "Giftia"})?.body ?? "", /task_current/);
   assert.equal(trustedCloudTaskMarker({comments: comments.slice(0, 2), timeline, actor: "Giftia"}), null);
   assert.equal(trustedCloudTaskMarker({comments, timeline, actor: null}), null);
+  assert.equal(trustedCloudTaskMarker({
+    comments: [{createdAt: "2026-08-12T03:00:00Z", author: {login: "Giftia"}, body: "[OpenButler automation marker] Cloud task: task_same_second"}],
+    timeline,
+    actor: "Giftia",
+  }), null);
 });
 
 test("a later ready-for-agent approval invalidates older merge evidence", () => {
@@ -252,6 +267,8 @@ test("a later ready-for-agent approval invalidates older merge evidence", () => 
     {event: "labeled", label: {name: "ready-for-agent"}, created_at: "2026-08-12T01:00:00Z"},
     {event: "labeled", label: {name: "nightly-running"}, created_at: "2026-08-12T01:01:00Z"},
   ];
+  assert.equal(approvalTimelineIsCurrent(timeline, "2026-08-12T01:00:00Z"), true);
+  timeline.push({event: "unlabeled", label: {name: "ready-for-agent"}, created_at: "2026-08-12T01:30:00Z"});
   assert.equal(approvalTimelineIsCurrent(timeline, "2026-08-12T01:00:00Z"), true);
   timeline.push({event: "labeled", label: {name: "ready-for-agent"}, created_at: "2026-08-12T02:00:00Z"});
   assert.equal(approvalTimelineIsCurrent(timeline, "2026-08-12T01:00:00Z"), false);
@@ -307,15 +324,15 @@ test("a disappeared Cloud lease is restored and unresolved state is retained", a
   assert.equal(services.calls.some(([name]) => name === "complete"), false);
 });
 
-test("stale pending Cloud task is abandoned and quarantined after 14 hours", async () => {
+test("stale pending Cloud task retains its lease until termination is proven", async () => {
   const issue = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});
   const state = activeState(issue, {claimed_at: "2026-08-11T10:00:00.000Z"});
   const services = mockServices({issue, state, taskStatus: "pending"});
   const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services});
-  assert.equal(result.status, "failed");
-  assert.match(result.reason, /14-hour execution lease/);
-  assert.equal(services.calls.some(([name]) => name === "quarantine"), true);
-  assert.equal(services.calls.some(([name]) => name === "release"), true);
+  assert.equal(result.status, "cleanup-required");
+  assert.match(result.reason, /provably terminal/);
+  assert.equal(services.calls.some(([name]) => name === "quarantine"), false);
+  assert.equal(services.calls.some(([name]) => name === "release"), false);
 });
 
 test("stale ready Cloud task is never materialized after the 14-hour lease", async () => {
@@ -324,17 +341,17 @@ test("stale ready Cloud task is never materialized after the 14-hour lease", asy
   const services = mockServices({issue, state, taskStatus: "ready"});
   const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services});
   assert.equal(result.status, "failed");
-  assert.match(result.reason, /14-hour execution lease/);
+  assert.match(result.reason, /14-hour lease/);
   assert.equal(services.calls.some(([name]) => name === "materialize"), false);
 });
 
-test("an unconfirmed Cloud submission is abandoned after 14 hours", async () => {
+test("an unconfirmed Cloud submission retains its lease after 14 hours", async () => {
   const issue = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});
   const state = activeState(issue, {status: "cleanup-required", task_id: null, claimed_at: "2026-08-11T10:00:00.000Z"});
   const services = mockServices({issue, state});
   const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services});
-  assert.equal(result.status, "failed");
-  assert.equal(services.calls.some(([name]) => name === "release"), true);
+  assert.equal(result.status, "cleanup-required");
+  assert.equal(services.calls.some(([name]) => name === "release"), false);
 });
 
 test("unavailable or unknown Cloud status retains the lease", async () => {
@@ -348,13 +365,13 @@ test("unavailable or unknown Cloud status retains the lease", async () => {
   }
 });
 
-test("stale unavailable Cloud status is abandoned and quarantined", async () => {
+test("stale unavailable Cloud status remains blocked with its lease", async () => {
   const issue = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});
   const state = activeState(issue, {claimed_at: "2026-08-11T10:00:00.000Z"});
   const services = mockServices({issue, state, taskStatus: "unavailable"});
   const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services});
-  assert.equal(result.status, "failed");
-  assert.equal(services.calls.some(([name]) => name === "release"), true);
+  assert.equal(result.status, "cleanup-required");
+  assert.equal(services.calls.some(([name]) => name === "release"), false);
 });
 
 test("ready result becomes PR-ready only after materialization and label transition", async () => {

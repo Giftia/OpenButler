@@ -281,7 +281,7 @@ export function createProductionServices() {
       const actor = ghJson(["api", "user"])?.login ?? null;
       const timeline = ghJson(["api", `repos/${repo}/issues/${number}/timeline`, "--paginate"]);
       const marker = trustedCloudTaskMarker({comments: issue.comments, timeline, actor});
-      const taskId = String(marker?.body ?? "").match(/Cloud task:\s*(task_[A-Za-z0-9_-]+)/)?.[1] ?? null;
+      const taskId = parseCloudTaskId(String(marker?.body ?? ""));
       if (!taskId) return {terminal: false, reason: "current Cloud lease has no trusted task marker"};
       const statusResult = codexReadWithRetry(["cloud", "status", taskId], {timeout: 30_000});
       const status = statusResult.ok ? parseCloudTaskStatus(statusResult.stdout) : "unavailable";
@@ -317,17 +317,11 @@ export function createProductionServices() {
         const actualPaths = command("git", ["diff", "--name-only"], {cwd: worktree}).stdout.split(/\r?\n/).filter(Boolean).sort();
         if (JSON.stringify(actualPaths) !== JSON.stringify([...paths].sort())) throw new Error("applied paths do not exactly match verified Cloud paths");
 
-        for (const test of requiredTestsForPaths(paths, worktree)) {
-          const cwd = test.cwd ? join(worktree, test.cwd) : worktree;
-          if (test.install && !command("npm.cmd", ["ci", "--no-audit", "--no-fund"], {cwd, timeout: 20 * 60_000}).ok) {
-            throw new Error(`${test.name} dependency installation failed`);
-          }
-          if (!command(test.command, test.args, {cwd, env: test.env, timeout: 30 * 60_000}).ok) throw new Error(`${test.name} failed`);
-        }
-
-        const postTestDiff = command("git", ["diff", "--no-ext-diff", "--binary"], {cwd: worktree});
-        if (!postTestDiff.ok || normalizeUnifiedDiff(diffBody(postTestDiff.stdout)) !== normalizeUnifiedDiff(diff)) {
-          throw new Error("focused tests changed the verified Cloud diff");
+        // Cloud-authored code is never executed on the user's PC before an
+        // independent review. CI is the first execution surface for this PR.
+        const postApplyDiff = command("git", ["diff", "--no-ext-diff", "--binary"], {cwd: worktree});
+        if (!postApplyDiff.ok || normalizeUnifiedDiff(diffBody(postApplyDiff.stdout)) !== normalizeUnifiedDiff(diff)) {
+          throw new Error("Cloud apply changed the verified diff");
         }
         const allowedPaths = new Set(paths);
         const status = command("git", ["status", "--porcelain=v1", "--untracked-files=all"], {cwd: worktree});
@@ -358,9 +352,9 @@ export function createProductionServices() {
         verifyIssueContract();
 
         if (!command("git", ["add", "--", ...paths], {cwd: worktree}).ok) throw new Error("unable to stage verified paths");
-        if (!command("git", ["commit", "-m", `feat: implement Issue #${state.issue} with Codex Cloud`], {cwd: worktree}).ok) throw new Error("unable to commit verified Cloud diff");
-        const pushed = commandWithRetry("git", ["push", "-u", "origin", state.branch], {cwd: worktree, timeout: 10 * 60_000});
-        if (!pushed.ok && !commandWithRetry("git", ["push", "--force-with-lease", "-u", "origin", state.branch], {cwd: worktree, timeout: 10 * 60_000}).ok) {
+        if (!command("git", ["-c", "core.hooksPath=NUL", "commit", "--no-verify", "-m", `feat: implement Issue #${state.issue} with Codex Cloud`], {cwd: worktree}).ok) throw new Error("unable to commit verified Cloud diff");
+        const pushed = commandWithRetry("git", ["-c", "core.hooksPath=NUL", "push", "--no-verify", "-u", "origin", state.branch], {cwd: worktree, timeout: 10 * 60_000});
+        if (!pushed.ok && !commandWithRetry("git", ["-c", "core.hooksPath=NUL", "push", "--no-verify", "--force-with-lease", "-u", "origin", state.branch], {cwd: worktree, timeout: 10 * 60_000}).ok) {
           throw new Error("unable to push or safely update Cloud result branch");
         }
         refreshBase();

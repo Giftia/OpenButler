@@ -8,6 +8,7 @@ import {
   claimedIssueNumbers,
   evaluateCanonicalCheckout,
   evaluateIssueEligibility,
+  beforeNightlyCutoff,
   mayStartIssue,
   parseCurrentLevel,
   resolveCodexCommand,
@@ -324,7 +325,12 @@ try {
   };
 
   if (mode === "execute") {
-    runRealDataSmoke(pack);
+    if (beforeNightlyCutoff(new Date())) {
+      runRealDataSmoke(pack);
+    } else {
+      pack.real_data = {status: "skipped_outside_authorized_window", lookback_hours: 48};
+      pack.blockers.push("真实数据预览已跳过：当前不在 20:00 至 07:15 的授权窗口内。");
+    }
     let tokensUsed = 0;
     for (const issue of eligible) {
       if (existsSync(cutoffFlag) || !mayStartIssue(tokensUsed, new Date())) {
@@ -345,10 +351,13 @@ try {
       tokensUsed += issueResult.tokens;
       if (issueResult.pullRequest) pack.pull_requests.push(issueResult.pullRequest);
       pack.scenarios.push(...issueResult.scenarios);
+      if (issueResult.blocker) pack.blockers.push(issueResult.blocker);
+      if (issueResult.rejected) pack.rejected_candidates.push(issueResult.rejected);
+      if (issueResult.githubMutated) pack.privacy.github_mutated = true;
       if (issueResult.stop) break;
     }
     pack.tokens_used = tokensUsed;
-    pack.privacy.github_mutated = pack.pull_requests.length > 0;
+    pack.privacy.github_mutated = pack.privacy.github_mutated || pack.pull_requests.length > 0;
     if (pack.pull_requests.some((pullRequest) => pullRequest.status === "acceptance_ready")) {
       const preview = buildPreviewCandidate(pack);
       if (preview) {
@@ -544,6 +553,9 @@ async function executeIssue(issue, {tokensUsed}) {
     }
 
     verifyCurrentIssueContract();
+    const reviewedHead = command("git", ["rev-parse", "HEAD"], {cwd: worktree});
+    if (!reviewedHead.ok) throw new Error("unable to bind verifier evidence to the reviewed commit");
+    const reviewedHeadSha = reviewedHead.stdout.trim();
     const push = command("git", ["push", "-u", "origin", branchName], {cwd: worktree, timeout: 10 * 60 * 1000});
     if (!push.ok) throw new Error(push.stderr || "push failed");
     const createdPullRequest = ghCommand([
@@ -560,6 +572,10 @@ async function executeIssue(issue, {tokensUsed}) {
     }
     log("issue_claimed_by_pull_request", {issue: issue.number, pull_request_url: prUrl});
     const pr = ghJson(["pr", "view", prUrl, "--repo", "Giftia/OpenButler", "--json", "number,url,headRefOid,title,commits"]);
+    if (pr.headRefOid !== reviewedHeadSha) {
+      ghCommand(["pr", "close", String(pr.number), "--repo", "Giftia/OpenButler", "--delete-branch"]);
+      throw new Error("pull request head does not match the commit approved by both verifiers");
+    }
     const checks = commandWithRetry("gh", ["pr", "checks", String(pr.number), "--repo", "Giftia/OpenButler", "--watch", "--fail-fast"], {cwd: worktree, timeout: 45 * 60 * 1000});
     if (!checks.ok) {
       ghCommand(["pr", "edit", String(pr.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
@@ -590,7 +606,7 @@ async function executeIssue(issue, {tokensUsed}) {
       pullRequest: {
         number: pr.number,
         url: pr.url,
-        head_sha: pr.headRefOid,
+        head_sha: reviewedHeadSha,
         commit_shas: (pr.commits ?? []).map((commit) => commit.oid),
         title: pr.title,
         status: "acceptance_ready",
@@ -632,7 +648,16 @@ async function executeIssue(issue, {tokensUsed}) {
     const quarantined = ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--remove-label", "ready-for-agent", "--add-label", "nightly-failed"]);
     if (!quarantined.ok) releaseExecutionLease = false;
     log("issue_quarantined", {issue: issue.number, recovery_available: preserveWorktree});
-    return {tokens: totalTokens, stop: !quarantined.ok, pullRequest: null, scenarios: []};
+    const reason = String(error?.message ?? error);
+    return {
+      tokens: totalTokens,
+      stop: !quarantined.ok,
+      pullRequest: null,
+      scenarios: [],
+      githubMutated: quarantined.ok,
+      blocker: `Issue #${issue.number} 已隔离：${reason}`,
+      rejected: {issue_number: issue.number, reasons: [reason]},
+    };
   } finally {
     if (leaseAcquired && releaseExecutionLease) ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--remove-label", "nightly-running"]);
     if (!preserveWorktree) {
@@ -660,7 +685,15 @@ async function executeIssue(issue, {tokensUsed}) {
       stop = true;
     }
     log("issue_quarantined", {issue: issue.number, recovery_available: preserveWorktree});
-    return {tokens: totalTokens, stop, pullRequest: null, scenarios: []};
+    return {
+      tokens: totalTokens,
+      stop,
+      pullRequest: null,
+      scenarios: [],
+      githubMutated: quarantined.ok,
+      blocker: `Issue #${issue.number} 已隔离：${reason}`,
+      rejected: {issue_number: issue.number, reasons: [reason]},
+    };
   }
 }
 

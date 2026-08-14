@@ -52,7 +52,10 @@ export function evaluateSpecificationFreshness(issue, timeline = []) {
   const latestReadyAt = Math.max(...readyEvents.map((event) => Date.parse(event.created_at) || 0), 0);
   const labels = new Set(normalizedLabels(issue));
   const hasExecutionLease = labels.has("cloud-running") || labels.has("nightly-running");
-  const specificationTimes = [issue.createdAt, issue.created_at, ...(hasExecutionLease ? [] : [issue.updatedAt, issue.updated_at])]
+  // GitHub also changes updatedAt for workflow-label churn, so specification
+  // freshness comes from the timeline. During an active lease, an unexplained
+  // updatedAt is still treated as a possible edit and fails closed below.
+  const specificationTimes = [issue.createdAt, issue.created_at]
     .map((value) => Date.parse(value) || 0);
   for (const event of timeline) {
     if (event.event === "renamed") specificationTimes.push(Date.parse(event.created_at) || 0);
@@ -84,7 +87,7 @@ export function evaluateSpecificationFreshness(issue, timeline = []) {
   });
   if (postApprovalChanges.length) reasons.push("Issue activity changed after ready-for-agent approval");
   const issueUpdatedAt = Math.max(Date.parse(issue.updatedAt) || 0, Date.parse(issue.updated_at) || 0);
-  if (hasExecutionLease && issueUpdatedAt > latestExplainedUpdateAt) reasons.push("Issue updatedAt is not explained by an approved workflow event");
+  if (issueUpdatedAt > latestExplainedUpdateAt) reasons.push("Issue updatedAt is not explained by an approved workflow event");
   return {fresh: reasons.length === 0, reasons, latestReadyAt, latestSpecificationAt};
 }
 
@@ -97,7 +100,9 @@ export function trustedCloudTaskMarker({comments = [], timeline = [], actor}) {
   return [...comments]
     .filter((comment) => {
       const createdAt = Date.parse(comment.createdAt ?? comment.created_at) || 0;
-      return createdAt >= leaseAt
+      // GitHub timestamps have second-level resolution. Same-second markers
+      // are ambiguous across a remove/re-add lease epoch and must fail closed.
+      return createdAt > leaseAt
         && comment.author?.login === actor
         && String(comment.body ?? "").startsWith("[OpenButler automation marker]");
     })
@@ -116,6 +121,7 @@ export function approvalTimelineIsCurrent(timeline = [], approvedAtValue) {
     const at = Math.max(Date.parse(event.created_at) || 0, Date.parse(event.updated_at) || 0);
     if (at <= approvedAt) return false;
     if (event.event === "labeled" && event.label?.name === "ready-for-agent") return true;
+    if (event.event === "unlabeled" && event.label?.name === "ready-for-agent") return false;
     if (event.event === "commented" && String(event.body ?? "").startsWith("[OpenButler automation marker]")) return false;
     if (["labeled", "unlabeled"].includes(event.event) && workflowLabels.has(event.label?.name)) return false;
     return !workflowEvents.has(event.event);

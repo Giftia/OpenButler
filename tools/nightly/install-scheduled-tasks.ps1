@@ -37,5 +37,29 @@ Register-ScheduledTask -TaskName "OpenButler-Daytime-Cloud" -Action $daytimeActi
 
 Unregister-ScheduledTask -TaskName "OpenButler-Morning-Acceptance" -Confirm:$false -ErrorAction SilentlyContinue
 
+$expected = @{
+  "OpenButler-Nightly-Delivery" = @{ TriggerCount = 1; ModeArgument = "-Mode $Mode" }
+  "OpenButler-Nightly-Cutoff" = @{ TriggerCount = 1; ModeArgument = $null }
+  "OpenButler-Nightly-Finalize" = @{ TriggerCount = 1; ModeArgument = $null }
+  "OpenButler-Morning-Report" = @{ TriggerCount = 1; ModeArgument = $null }
+  "OpenButler-Daytime-Cloud" = @{ TriggerCount = 22; ModeArgument = "-Mode $Mode" }
+}
+foreach ($taskName in $expected.Keys) {
+  $task = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
+  $taskInfo = Get-ScheduledTaskInfo -TaskName $taskName -ErrorAction Stop
+  $rule = $expected[$taskName]
+  $valid = $task.State -ne "Disabled" -and $task.Triggers.Count -eq $rule.TriggerCount
+  if ($rule.ModeArgument) { $valid = $valid -and $task.Actions.Arguments.Contains($rule.ModeArgument) }
+  if (-not $valid) { throw "scheduled task verification failed for $taskName" }
+  [pscustomobject]@{
+    TaskName = $taskName
+    State = $task.State
+    LastTaskResult = $taskInfo.LastTaskResult
+    NextRunTime = $taskInfo.NextRunTime
+    TriggerCount = $task.Triggers.Count
+    Mode = $Mode
+  }
+}
+
 Get-ScheduledTask -TaskName "OpenButler-Nightly-Delivery", "OpenButler-Nightly-Cutoff", "OpenButler-Nightly-Finalize", "OpenButler-Morning-Report", "OpenButler-Daytime-Cloud" |
   Select-Object TaskName, State, Description
