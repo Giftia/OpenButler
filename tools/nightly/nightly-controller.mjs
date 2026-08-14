@@ -355,19 +355,22 @@ async function executeIssue(issue, {tokensUsed}) {
     if (!lease.ok) throw new Error(lease.stderr || `failed to acquire local lease for #${issue.number}`);
     const claimedIssue = ghJson([
       "issue", "view", String(issue.number), "--repo", "Giftia/OpenButler",
-      "--json", "number,title,body,labels,updatedAt,url",
+      "--json", "number,title,body,labels,updatedAt,state,url",
     ]);
     const claimedLabels = new Set((claimedIssue.labels ?? []).map((label) => label.name ?? label));
     const competingPullRequests = claimedIssueNumbers(ghJson([
       "pr", "list", "--repo", "Giftia/OpenButler", "--state", "open", "--limit", "200",
       "--json", "number,title,body,headRefName,url",
     ]) ?? []);
-    if (!claimedLabels.has("nightly-running")
-      || !claimedLabels.has("ready-for-agent")
-      || claimedLabels.has("cloud-running")
-      || claimedLabels.has("automation-blocked")
-      || claimedLabels.has("nightly-failed")
-      || competingPullRequests.has(issue.number)) {
+    const postClaimClosed = new Set((ghJson([
+      "issue", "list", "--repo", "Giftia/OpenButler", "--state", "closed", "--limit", "200", "--json", "number",
+    ]) ?? []).map((item) => item.number));
+    const postClaimEvaluation = evaluateIssueEligibility(claimedIssue, {
+      closedIssues: postClaimClosed,
+      claimedIssues: competingPullRequests,
+      ownedLease: "nightly-running",
+    });
+    if (!postClaimEvaluation.eligible) {
       throw new Error(`execution lease changed while claiming #${issue.number}`);
     }
     if (claimedIssue.title !== issue.title || claimedIssue.body !== issue.body) {
@@ -420,8 +423,7 @@ async function executeIssue(issue, {tokensUsed}) {
       writeFileSync(join(runDir, `issue-${issue.number}-verifier-attempt-${attempt}.jsonl`), review.stdout, "utf8");
       totalTokens += tokenUsageFromJsonl(review.stdout);
       if (totalTokens > ISSUE_TOKEN_CAP || tokensUsed + totalTokens > NIGHTLY_TOKEN_CAP) {
-        ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
-        return {tokens: totalTokens, stop: true, pullRequest: null, scenarios: []};
+        return quarantineReturn("verifier token budget exceeded", true);
       }
       const verdict = JSON.parse(readFileSync(verdictPath, "utf8"));
       if (review.ok && verdict.verdict === "APPROVE") {
@@ -431,13 +433,11 @@ async function executeIssue(issue, {tokensUsed}) {
       }
       verifierFeedback = JSON.stringify(verdict);
       if (verdict.verdict === "ESCALATE_HUMAN") {
-        ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
-        return {tokens: totalTokens, stop: true, pullRequest: null, scenarios: []};
+        return quarantineReturn("code verifier escalated to human", true);
       }
     }
     if (!approved) {
-      ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
-      return {tokens: totalTokens, stop: false, pullRequest: null, scenarios: []};
+      return quarantineReturn("code verifier rejected all attempts", false);
     }
 
     const productVerdictPath = join(runDir, `issue-${issue.number}-product-privacy-verifier.json`);
@@ -450,14 +450,12 @@ async function executeIssue(issue, {tokensUsed}) {
     writeFileSync(join(runDir, `issue-${issue.number}-product-privacy-verifier.jsonl`), productReview.stdout, "utf8");
     totalTokens += tokenUsageFromJsonl(productReview.stdout);
     if (!productReview.ok || totalTokens > ISSUE_TOKEN_CAP || tokensUsed + totalTokens > NIGHTLY_TOKEN_CAP) {
-      ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
-      return {tokens: totalTokens, stop: true, pullRequest: null, scenarios: []};
+      return quarantineReturn("product/privacy verifier failed or budget was exceeded", true);
     }
     const productVerifierVerdict = JSON.parse(readFileSync(productVerdictPath, "utf8"));
     if (productVerifierVerdict.verdict !== "APPROVE") {
       const blockLabel = productVerifierVerdict.verdict === "ESCALATE_HUMAN" ? "automation-blocked" : "nightly-failed";
-      ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", blockLabel]);
-      return {tokens: totalTokens, stop: productVerifierVerdict.verdict === "ESCALATE_HUMAN", pullRequest: null, scenarios: []};
+      return quarantineReturn(`product/privacy verifier returned ${productVerifierVerdict.verdict}`, productVerifierVerdict.verdict === "ESCALATE_HUMAN", blockLabel);
     }
 
     const push = command("git", ["push", "-u", "origin", branchName], {cwd: worktree, timeout: 10 * 60 * 1000});
@@ -532,7 +530,7 @@ async function executeIssue(issue, {tokensUsed}) {
         tokens_used: totalTokens,
       }, null, 2)}\n`, "utf8");
     }
-    ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--add-label", "nightly-failed"]);
+    ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--remove-label", "ready-for-agent", "--add-label", "nightly-failed"]);
     log("issue_quarantined", {issue: issue.number, recovery_available: preserveWorktree});
     throw error;
   } finally {
@@ -541,6 +539,23 @@ async function executeIssue(issue, {tokensUsed}) {
       command("git", ["worktree", "remove", "--force", worktree], {timeout: 120_000});
       command("git", ["branch", "-D", branchName], {timeout: 120_000});
     }
+  }
+
+  function quarantineReturn(reason, stop, label = "nightly-failed") {
+    mkdirSync(quarantineRoot, {recursive: true});
+    writeFileSync(join(quarantineRoot, `issue-${issue.number}.json`), `${JSON.stringify({
+      issue: issue.number,
+      run_id: runId,
+      failed_at: new Date().toISOString(),
+      reason,
+      recovery_available: preserveWorktree,
+    }, null, 2)}\n`, "utf8");
+    if (preserveWorktree) {
+      writeFileSync(join(runDir, "recovery-worktree.json"), `${JSON.stringify({issue: issue.number, branch: branchName, worktree, tokens_used: totalTokens}, null, 2)}\n`, "utf8");
+    }
+    ghCommand(["issue", "edit", String(issue.number), "--repo", "Giftia/OpenButler", "--remove-label", "ready-for-agent", "--add-label", label]);
+    log("issue_quarantined", {issue: issue.number, recovery_available: preserveWorktree});
+    return {tokens: totalTokens, stop, pullRequest: null, scenarios: []};
   }
 }
 

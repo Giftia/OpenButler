@@ -141,8 +141,10 @@ test("nightly retries use unique branches and clean local branch state", () => {
 test("nightly claim is revalidated before maker execution", () => {
   const controller = read("tools/nightly/nightly-controller.mjs");
   assert.match(controller, /claimedIssue = ghJson/);
-  assert.match(controller, /claimedLabels\.has\("cloud-running"\)/);
-  assert.match(controller, /competingPullRequests\.has\(issue\.number\)/);
+  assert.match(controller, /postClaimEvaluation = evaluateIssueEligibility/);
+  assert.match(controller, /ownedLease: "nightly-running"/);
+  assert.match(controller, /closedIssues: postClaimClosed/);
+  assert.match(controller, /claimedIssues: competingPullRequests/);
   assert.match(controller, /Issue specification changed while claiming/);
 });
 

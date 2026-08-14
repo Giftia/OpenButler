@@ -11,6 +11,9 @@ import {EXECUTION_LEASE_HOURS, claimedIssueNumbers, evaluateIssueEligibility} fr
 import {createProductionServices} from "./daytime-cloud-services.mjs";
 
 function terminalFailure(services, state, reason, status = "blocked") {
+  if (!services.quarantine(state.issue)) {
+    return services.saveState({...state, status: "cleanup-required", reason: `failure quarantine could not be recorded after: ${reason}`});
+  }
   if (!services.release(state.issue)) {
     return services.saveState({...state, status: "cleanup-required", reason: `cloud-running lease cleanup failed after: ${reason}`});
   }
@@ -158,14 +161,14 @@ async function runDaytimeDispatcherUnlocked({
   }
   const claimedIssue = services.issue(issue.number);
   const labels = new Set((claimedIssue.labels ?? []).map((label) => label.name ?? label));
-  if (!labels.has("cloud-running") || labels.has("nightly-running")) {
-    return terminalFailure(services, state, "competing execution lease detected while claiming");
-  }
+  const postClaimEvaluation = evaluateIssueEligibility(claimedIssue, {
+    closedIssues: services.closedIssues(),
+    claimedIssues: claimedIssueNumbers(services.openPullRequests()),
+    ownedLease: "cloud-running",
+  });
+  if (!postClaimEvaluation.eligible) return terminalFailure(services, state, `Issue became ineligible while claiming: ${postClaimEvaluation.reasons.join(", ")}`);
   if (issueSpecificationFingerprint(claimedIssue) !== state.specification_fingerprint) {
     return terminalFailure(services, state, "Issue specification changed while claiming");
-  }
-  if (claimedIssueNumbers(services.openPullRequests()).has(issue.number)) {
-    return terminalFailure(services, state, "an implementation pull request appeared while claiming");
   }
   if (services.baseSha() !== state.base_sha) {
     return terminalFailure(services, state, "origin/main changed while claiming");

@@ -127,13 +127,15 @@ export function claimedIssueNumbers(pullRequests = []) {
   return claimed;
 }
 
-export function evaluateIssueEligibility(issue, {timeline = [], closedIssues = new Set(), claimedIssues = new Set()} = {}) {
+export function evaluateIssueEligibility(issue, {timeline = [], closedIssues = new Set(), claimedIssues = new Set(), ownedLease = null} = {}) {
   const labels = new Set((issue.labels ?? []).map((label) => label.name ?? label));
   const reasons = [];
   if (!labels.has("ready-for-agent")) reasons.push("missing ready-for-agent");
   if (labels.has("automation-blocked")) reasons.push("automation-blocked");
   if (labels.has("nightly-failed")) reasons.push("nightly-failed requires retriage");
-  if (labels.has("cloud-running") || labels.has("nightly-running")) reasons.push("issue has an active execution lease");
+  if ((labels.has("cloud-running") && ownedLease !== "cloud-running")
+    || (labels.has("nightly-running") && ownedLease !== "nightly-running")) reasons.push("issue has an active execution lease");
+  if (issue.state && String(issue.state).toUpperCase() !== "OPEN") reasons.push("issue is not open");
   if (claimedIssues.has(Number(issue.number))) reasons.push("open implementation pull request already claims issue");
 
   const dependencies = parseDependencies(issue.body);

@@ -217,14 +217,16 @@ export function createProductionServices() {
       return sha.stdout.trim();
     },
     queue: () => ({
-      issues: ghJson(["issue", "list", "--repo", repo, "--state", "open", "--label", "ready-for-agent", "--limit", "100", "--json", "number,title,body,labels,createdAt,updatedAt,url"]),
+      issues: ghJson(["issue", "list", "--repo", repo, "--state", "open", "--label", "ready-for-agent", "--limit", "100", "--json", "number,title,body,labels,createdAt,updatedAt,state,url"]),
       closedIssues: new Set(ghJson(["issue", "list", "--repo", repo, "--state", "closed", "--limit", "200", "--json", "number"]).map((item) => item.number)),
       pullRequests: ghJson(["pr", "list", "--repo", repo, "--state", "open", "--limit", "200", "--json", "number,title,body,headRefName,url"]),
     }),
-    issue: (number) => ghJson(["issue", "view", String(number), "--repo", repo, "--json", "number,title,body,labels,createdAt,updatedAt,url"]),
+    issue: (number) => ghJson(["issue", "view", String(number), "--repo", repo, "--json", "number,title,body,labels,createdAt,updatedAt,state,url"]),
+    closedIssues: () => new Set(ghJson(["issue", "list", "--repo", repo, "--state", "closed", "--limit", "200", "--json", "number"]).map((item) => item.number)),
     timeline: (number) => ghJson(["api", `repos/${repo}/issues/${number}/timeline`, "--paginate"]),
     claim: (number) => ghCommand(["issue", "edit", String(number), "--repo", repo, "--add-label", "cloud-running"]).ok,
     release: (number) => ghCommand(["issue", "edit", String(number), "--repo", repo, "--remove-label", "cloud-running"]).ok,
+    quarantine: (number) => ghCommand(["issue", "edit", String(number), "--repo", repo, "--remove-label", "ready-for-agent", "--add-label", "nightly-failed"]).ok,
     transitionToReview: (number) => ghCommand(["issue", "edit", String(number), "--repo", repo, "--remove-label", "ready-for-agent", "--remove-label", "cloud-running", "--add-label", "review-pending"]).ok,
     submit: ({environmentId, prompt}) => {
       const result = codexRun(["cloud", "exec", "--env", environmentId, "--attempts", "1", "--branch", "main", prompt], {timeout: 120_000});

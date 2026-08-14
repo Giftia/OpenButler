@@ -79,9 +79,11 @@ function mockServices(options = {}) {
       pullRequests: options.pullRequests ?? [],
     }),
     issue: () => options.currentIssue ?? issue,
+    closedIssues: () => new Set(options.currentClosedIssues ?? options.closedIssues ?? []),
     timeline: () => options.timeline ?? readyTimeline,
     claim: () => { calls.push(["claim"]); if (options.claimOk === false) return false; withLease(); return true; },
     release: () => { calls.push(["release"]); if (options.releaseOk === false) return false; withoutLease(); return true; },
+    quarantine: () => { calls.push(["quarantine"]); return options.quarantineOk ?? true; },
     transitionToReview: () => { calls.push(["transition"]); withoutLease(); return options.transitionOk ?? true; },
     submit: () => { calls.push(["submit"]); return options.submitted ?? {ok: true, taskId: "task_123"}; },
     recoverTask: () => { calls.push(["recover"]); return options.recoveredTask ?? null; },
@@ -153,9 +155,23 @@ test("implementation PR appearing during claim prevents Cloud submission", async
   const services = mockServices({openPullRequests: [pr]});
   const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services, runId: "run-1"});
   assert.equal(result.status, "blocked");
-  assert.match(result.reason, /pull request appeared/);
+  assert.match(result.reason, /open implementation pull request already claims issue/);
   assert.equal(services.calls.some(([name]) => name === "submit"), false);
   assert.equal(services.calls.some(([name]) => name === "release"), true);
+});
+
+test("post-claim closure or reopened dependency prevents Cloud submission", async () => {
+  const closedIssue = readyIssue({state: "CLOSED"});
+  const closedServices = mockServices({currentIssue: {...closedIssue, labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]}});
+  const closedResult = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services: closedServices, runId: "run-closed"});
+  assert.match(closedResult.reason, /issue is not open/);
+  assert.equal(closedServices.calls.some(([name]) => name === "submit"), false);
+
+  const dependency = readyIssue({body: "Depends on #12"});
+  const dependencyServices = mockServices({issue: dependency, closedIssues: [12], currentClosedIssues: []});
+  const dependencyResult = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services: dependencyServices, runId: "run-dependency"});
+  assert.match(dependencyResult.reason, /unresolved dependencies/);
+  assert.equal(dependencyServices.calls.some(([name]) => name === "submit"), false);
 });
 
 test("pending, failed, and cancelled task states preserve or clean the lease", async () => {
@@ -215,6 +231,15 @@ test("diff privacy and forbidden path violations fail and release the lease", as
   assert.equal(result.status, "blocked");
   assert.match(result.reason, /forbidden path|privacy/);
   assert.equal(services.calls.some(([name]) => name === "release"), true);
+  assert.equal(services.calls.some(([name]) => name === "quarantine"), true);
+});
+
+test("failed Cloud quarantine retains the execution lease", async () => {
+  const issue = readyIssue({labels: [{name: "ready-for-agent"}, {name: "cloud-running"}]});
+  const services = mockServices({issue, state: activeState(issue), taskStatus: "failed", quarantineOk: false});
+  const result = await runDaytimeDispatcher({mode: "execute", now: daytime(), environmentId: "configured", services});
+  assert.equal(result.status, "cleanup-required");
+  assert.equal(services.calls.some(([name]) => name === "release"), false);
 });
 
 test("stale base SHA and changed Issue specification block ready results", async () => {
