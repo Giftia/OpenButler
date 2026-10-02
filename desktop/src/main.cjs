@@ -10,6 +10,8 @@ const {CaptureController} = require("./capture-controller.cjs");
 const {PublicWindowProvider} = require("./public-window-provider.cjs");
 const {PublicWindowController, SCOPE: PUBLIC_WINDOW_SCOPE} = require("./public-window-controller.cjs");
 const {createLocalModelDiscovery, localEndpoint, installedIds} = require("./local-model-discovery.cjs");
+const {createModelCatalog} = require("./model-catalog.cjs");
+const {createJournal} = require("./model-catalog-journal.cjs");
 const packageMetadata = require("../package.json");
 
 const desktopChannel = process.env.OPENBUTLER_DESKTOP_CHANNEL
@@ -71,6 +73,8 @@ const mineContextBaseUrl = "http://127.0.0.1:1733";
 const mineContextReleasesUrl = "https://github.com/volcengine/MineContext/releases";
 const mineContextLatestReleaseApi = "https://api.github.com/repos/volcengine/MineContext/releases/latest";
 const discoverLocalModels = createLocalModelDiscovery();
+// Construction and catalog/status reads do not probe any model endpoint.
+const builtinModelCatalog = createModelCatalog({...createJournal(userDataDir)});
 
 if (process.env.OPENBUTLER_DESKTOP_USER_DATA_DIR) {
   app.setPath("userData", process.env.OPENBUTLER_DESKTOP_USER_DATA_DIR);
@@ -794,6 +798,7 @@ async function createWindow() {
   });
 
   mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    builtinModelCatalog.close();
     if (sessionModelValidationPending) void stopOwnedSessionBackend();
     if (publicWindowController) void publicWindowController.pause("renderer_unavailable").catch(() => {});
     void loadDesktopErrorPage("页面渲染进程异常退出", details.reason || "unknown", "");
@@ -1240,6 +1245,26 @@ handleDesktopRequest("openbutler:list-builtin-local-models", async (event, input
   return result;
 });
 
+handleDesktopRequest("openbutler:get-builtin-model-catalog", () => builtinModelCatalog.getCatalog());
+handleDesktopRequest("openbutler:open-builtin-model-catalog-link", async (_event, input) => {
+  const url = builtinModelCatalog.catalogLink(input);
+  if (!url) return {ok: false, error_code: "catalog_invalid_link"};
+  try { await shell.openExternal(url); return {ok: true}; }
+  catch { return {ok: false, error_code: "catalog_link_unavailable"}; }
+});
+handleDesktopRequest("openbutler:get-builtin-model-download", (_event, input) => builtinModelCatalog.status(input));
+handleDesktopRequest("openbutler:cancel-builtin-model-download", (_event, input) => builtinModelCatalog.cancel(input));
+handleDesktopRequest("openbutler:inspect-builtin-model-host", async (event, input) => {
+  const sender = event.sender, frame = event.senderFrame, initialUrl = frame.url;
+  const isCurrent = () => sameDesktopRequest(event, sender, frame, initialUrl);
+  const result = await builtinModelCatalog.inspect(input, {isCurrent});
+  return isCurrent() ? result : {ok: false, endpoint: "", error_code: "catalog_inspection_stale"};
+});
+handleDesktopRequest("openbutler:start-builtin-model-download", (event, input) => {
+  const sender = event.sender, frame = event.senderFrame, initialUrl = frame.url;
+  return builtinModelCatalog.start(input, {isCurrent: () => sameDesktopRequest(event, sender, frame, initialUrl)});
+});
+
 handleDesktopRequest("openbutler:use-builtin-local-models-for-session", async (event, proposed) => {
   if (modelRoutesSaveInProgress) return sessionModelFailure("model_routes_save_in_progress");
   let payload;
@@ -1580,16 +1605,19 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  builtinModelCatalog.close();
   isQuitting = true;
   if (retentionTimer) clearInterval(retentionTimer);
   stopBackend();
 });
 
 app.on("will-quit", () => {
+  builtinModelCatalog.close();
   isQuitting = true;
   stopBackend();
 });
 
 process.on("exit", () => {
+  builtinModelCatalog.close();
   stopBackend();
 });

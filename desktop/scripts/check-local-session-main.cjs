@@ -9,7 +9,7 @@ const {execFileSync} = require("node:child_process");
 const localApi = require("../src/local-api.cjs");
 
 // Execute real main code with all Electron, OS, filesystem and network effects mocked.
-function mainHarness({packaged = false, spawnThrows = false, healthOk = true, fetchBehavior, discoveryImpl, platform = "win32", storage, childKillExits = true} = {}) {
+function mainHarness({packaged = false, spawnThrows = false, healthOk = true, fetchBehavior, discoveryImpl, catalogImpl, platform = "win32", storage, childKillExits = true} = {}) {
   const handlers = new Map();
   const children = [];
   const calls = [];
@@ -95,6 +95,9 @@ function mainHarness({packaged = false, spawnThrows = false, healthOk = true, fe
       if (name === "./capture-controller.cjs") return require("../src/capture-controller.cjs");
       if (name === "./public-window-controller.cjs") return require("../src/public-window-controller.cjs");
       if (name === "./public-window-provider.cjs") return require("../src/public-window-provider.cjs");
+      if (name === "./model-catalog.cjs") return catalogImpl
+        ? {createModelCatalog: () => catalogImpl} : require("../src/model-catalog.cjs");
+      if (name === "./model-catalog-journal.cjs") return {createJournal: () => ({readJournal: () => null, writeJournal() {}})};
       if (name === "./local-model-discovery.cjs") return discoveryImpl
         ? {...require("../src/local-model-discovery.cjs"), createLocalModelDiscovery: () => discoveryImpl} : require("../src/local-model-discovery.cjs");
       if (name === "./local-api.cjs") return {...localApi,
@@ -284,6 +287,19 @@ test("preload exposes only the narrow request API while preserving old bridges",
     protocol: 'ollama_native', api_key: 'private-ignored', headers: {Authorization: 'private-ignored'}});
   assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1))), ['openbutler:list-builtin-local-models',
     {endpoint: 'http://127.0.0.1:11435', protocol: 'ollama_native'}]);
+  await bridge.startBuiltinModelDownload({inspectionId: "a".repeat(32), catalogId: "fixed-model",
+    downloadConsent: true, endpoint: "http://evil.invalid", model: "evil", path: "/private", api_key: "secret"});
+  assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1))), ["openbutler:start-builtin-model-download",
+    {inspectionId: "a".repeat(32), catalogId: "fixed-model", downloadConsent: true}]);
+  await bridge.inspectBuiltinModelHost({endpoint: "http://localhost:11435", protocol: "ollama_native", headers: {secret: true}});
+  assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1))), ["openbutler:inspect-builtin-model-host",
+    {endpoint: "http://localhost:11435", protocol: "ollama_native"}]);
+  await bridge.cancelBuiltinModelDownload({jobId: "b".repeat(32), endpoint: "http://evil.invalid"});
+  assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1))), ["openbutler:cancel-builtin-model-download", {jobId: "b".repeat(32)}]);
+  await bridge.openBuiltinModelCatalogLink({catalogId: "fixed-model", kind: "license", url: "https://evil.invalid"});
+  assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1))), ["openbutler:open-builtin-model-catalog-link", {catalogId: "fixed-model", kind: "license"}]);
+  await bridge.getBuiltinModelDownload();
+  assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1))), ["openbutler:get-builtin-model-download", {}]);
   assert.equal(Object.keys(bridge).some((key) => /token|ipcRenderer/.test(key)), false);
 });
 
@@ -564,4 +580,25 @@ test("explicit revoke recovers a confirmed-stopped backend after failed validati
   valid = true;
   assert.equal((await h.invoke("use-builtin-local-models-for-session", sessionConfiguration())).ok, true);
   assert.equal(h.updates.length, 2); assert.deepEqual(h.writes, []);
+});
+
+
+test("catalog inspection discards navigation results and all catalog IPC remains main-frame guarded", async () => {
+  let release, checks, closed = 0;
+  const catalogImpl = {getCatalog: () => ({ok: true}), status: () => ({ok: true, job: null}),
+    cancel: () => ({ok: true}), start: (_input, options) => ({ok: options.isCurrent()}),
+    close: () => {closed++;}, inspect: (_input, options) => {checks = options; return new Promise(resolve => {release = resolve;});}};
+  const h = mainHarness({catalogImpl}); await h.createWindow();
+  const contents = h.getWindow().webContents;
+  const event = {sender: contents, senderFrame: contents.mainFrame};
+  for (const channel of ["get-builtin-model-catalog", "open-builtin-model-catalog-link", "inspect-builtin-model-host", "start-builtin-model-download",
+    "get-builtin-model-download", "cancel-builtin-model-download"]) {
+    assert.throws(() => h.handlers.get("openbutler:" + channel)({sender: contents, senderFrame: {url: event.senderFrame.url}}), /Desktop request denied/);
+  }
+  const pending = h.handlers.get("openbutler:inspect-builtin-model-host")(event, {});
+  assert.equal(checks.isCurrent(), true); event.senderFrame.url += "#changed";
+  assert.equal(checks.isCurrent(), false); release({ok: true, inspectionId: "a".repeat(32)});
+  assert.equal((await pending).error_code, "catalog_inspection_stale");
+  for (const name of ["before-quit", "will-quit"]) h.app.emit(name);
+  h.fakeProcess.emit("exit"); assert.equal(closed, 3);
 });

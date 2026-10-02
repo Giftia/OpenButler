@@ -212,7 +212,7 @@ async function reset(next = fixture()) { await unmount(); state = next; calls = 
 
   const app=fs.readFileSync(path.resolve(__dirname,"../src/App.tsx"),"utf8");
   assert.ok(app.includes('chat: isPreviewDesktop() ? <AgentLoopPanel /> : <Chat activationStatus={activationStatus} />'));
-  assert.ok(app.includes('先用管家对话')); assert.ok(app.includes('只保存本地文字与目标；不启用录制'));
+  assert.ok(app.includes('先聊天')); assert.ok(app.includes('文字保存在本机，不录屏'));
   // Frozen Phase 1 Chat hash; self-contained in a clean archive or CI checkout.
   const stableChat=app.slice(app.indexOf("function Chat("),app.indexOf("type PreviewMask =")).replace(/\r\n/g,"\n");
   assert.equal(createHash("sha256").update(stableChat).digest("hex"),"88bfbfb3f303148da5b2c91a78e190f7518c4ab4a4bba874c9374c95862aa298");
@@ -236,6 +236,6 @@ return PreviewActivation;`;
   const PreviewActivation=vm.runInThisContext(`(function(require,React,geometry,gate,noCapture,exports){${activationOutput}\n})`)(require,React,geometry,gate,noCapture,{});
   function ActivationHarness(){const [open,setOpen]=React.useState(true);return open?React.createElement(PreviewActivation,{status:"unseen",mandatory:true,onChooseDemo:noCapture,onChooseReal:noCapture,onDismiss:noCapture,onComplete:noCapture,onChooseLocalChat:()=>setOpen(false)}):React.createElement("p",null,"Explicit local conversation chosen");}
   root=createRoot(document.getElementById("root"));await act(async()=>{root.render(React.createElement(ActivationHarness));});await act(async()=>{await settle();});
-  await click("先用管家对话");assert.match(document.body.textContent,/Explicit local conversation chosen/);assert.equal(captureMutations,0);await unmount();check("first-run local-chat choice exits explicitly without capture, model, source grant or activation-complete side effects");
+  await click("先聊天");assert.match(document.body.textContent,/Explicit local conversation chosen/);assert.equal(captureMutations,0);await unmount();check("first-run local-chat choice exits explicitly without capture, model, source grant or activation-complete side effects");
   dom.window.close(); console.log(JSON.stringify({suite:"agent-loop-ui-synthetic",passed:checks.length,checks,rendered_browser:false,native_desktop:false},null,2));
 })().catch(async(error)=>{console.error(error);try{await unmount();}catch{}dom.window.close();process.exitCode=1;});

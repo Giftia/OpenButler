@@ -82,7 +82,7 @@ async function setup(options = {}) {
   if (!active) await change(document.querySelector("textarea"), "密码管理器");
 }
 function button(text) { const found=[...document.querySelectorAll("button")].find((item) => item.textContent.trim() === text); assert.ok(found, `Missing button: ${text}`); return found; }
-const startButton = () => button("开始本机记录");
+const startButton = () => button("开始记录");
 const confirmation = () => document.querySelector('.preview-confirm input');
 async function click(text) { await act(async () => { button(text).click(); await flush(); }); }
 async function change(input, value) {
@@ -202,7 +202,7 @@ async function settle(value, method="resolve") { await act(async () => { value[m
   check("double start dispatches once; failed start attempts pause and consumes approval");
 
   await setup(); await preview(); await confirm(); const starting=deferred(); startResponder=()=>starting.promise;
-  await click("开始本机记录"); assert.equal(button("关闭").disabled,true); assert.equal(document.querySelectorAll(".activation-choice")[1].disabled,true);
+  await click("开始记录"); assert.equal(button("关闭").disabled,true); assert.equal(document.querySelectorAll(".activation-choice")[1].disabled,true);
   await act(async()=>root.unmount()); root=null;
   await act(async()=> { starting.resolve({ok:true}); await flush(); });
   assert.equal(pauseApiCalls,1); assert.equal(pauseBridgeCalls,1); assert.equal(completed,0);

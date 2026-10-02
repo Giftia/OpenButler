@@ -29,6 +29,18 @@ contextBridge.exposeInMainWorld("openbutlerDesktop", {
   listBuiltinLocalModels: (input) => ipcRenderer.invoke("openbutler:list-builtin-local-models", {
     endpoint: input?.endpoint, protocol: input?.protocol,
   }),
+  getBuiltinModelCatalog: () => ipcRenderer.invoke("openbutler:get-builtin-model-catalog"),
+  openBuiltinModelCatalogLink: (input) => ipcRenderer.invoke("openbutler:open-builtin-model-catalog-link", {
+    catalogId: input?.catalogId, kind: input?.kind,
+  }),
+  inspectBuiltinModelHost: (input) => ipcRenderer.invoke("openbutler:inspect-builtin-model-host", {
+    endpoint: input?.endpoint, protocol: input?.protocol,
+  }),
+  startBuiltinModelDownload: (input) => ipcRenderer.invoke("openbutler:start-builtin-model-download", {
+    inspectionId: input?.inspectionId, catalogId: input?.catalogId, downloadConsent: input?.downloadConsent,
+  }),
+  getBuiltinModelDownload: (input = {}) => ipcRenderer.invoke("openbutler:get-builtin-model-download", {jobId: input?.jobId}),
+  cancelBuiltinModelDownload: (input) => ipcRenderer.invoke("openbutler:cancel-builtin-model-download", {jobId: input?.jobId}),
   useBuiltinLocalModelsForSession: (configuration) => ipcRenderer.invoke("openbutler:use-builtin-local-models-for-session", configuration),
   revokeBuiltinSessionModels: () => ipcRenderer.invoke("openbutler:revoke-builtin-session-models"),
   saveBuiltinModelRoutes: (routes) => ipcRenderer.invoke("openbutler:save-builtin-model-routes", routes),

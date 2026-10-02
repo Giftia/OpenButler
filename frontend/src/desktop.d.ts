@@ -1,3 +1,4 @@
+import type {ModelCatalogBridge} from "./lib/modelCatalog";
 import type {CaptureCapabilities, DesktopCaptureConfig, PublicWindowSource} from "./lib/captureTypes";
 export {};
 
@@ -18,7 +19,7 @@ type BuiltinModelRoutesInput = {
 
 declare global {
   interface Window {
-    openbutlerDesktop?: {
+    openbutlerDesktop?: Partial<ModelCatalogBridge> & {
       apiBase?: string;
       channel?: "stable" | "preview";
       requestApi?: (path: string, options?: {method?: string; body?: string | null}) => Promise<

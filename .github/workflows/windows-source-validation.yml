@@ -1,8 +1,8 @@
-name: OpenButler Windows Development Source Validation
+name: OpenButler Development Source Validation
 
 on:
   push:
-    branches: ["dev/windows-wgc-20261002"]
+    branches: ["dev/windows-wgc-20261002", "dev/device-model-catalog-20261002"]
 
 # Source-only validation: no installer, native desktop capture, external model,
 # screenshots, or runtime artifact uploads. Main and existing workflows unchanged.
@@ -122,6 +122,7 @@ jobs:
       - run: npm run test:agent-loop
       - run: npm run test:planner-model-settings
       - run: npm run test:natural-chat
+      - run: npm run test:model-catalog
       - name: Synthetic capture, queue, model setup and analysis UI contracts
         shell: bash
         run: |
@@ -158,7 +159,7 @@ jobs:
         shell: pwsh
         run: ./desktop/scripts/build-windows-public-window.ps1
       - name: Synthetic selected-window and Windows provenance contracts
-        run: node --test desktop/scripts/check-public-window.cjs desktop/scripts/check-windows-public-window.cjs desktop/scripts/check-local-model-discovery.cjs
+        run: node --test desktop/scripts/check-public-window.cjs desktop/scripts/check-windows-public-window.cjs desktop/scripts/check-local-model-discovery.cjs desktop/scripts/check-model-catalog.cjs
       - run: node desktop/scripts/check-capture-providers.cjs
       - run: node desktop/scripts/check-desktop-frontend-assets.mjs
 
