@@ -5,6 +5,7 @@ new captures, source imports, scheduled calls, or persistent recap table are use
 """
 
 from datetime import date, datetime, time, timedelta, timezone
+from contextlib import nullcontext
 import json
 import re
 import sqlite3
@@ -108,7 +109,7 @@ class DailyReviewService:
             "timezone": request.timezone, "generated_at": now.isoformat(),
             "boundary": BOUNDARY, "counts": {name: 0 for name in (
                 "total", "ready", "pending", "failed", "expired_evidence",
-                "missing_evidence", "invalid_records", "eligible", "included", "omitted")},
+                "missing_evidence", "invalid_records", "outside_scope", "eligible", "included", "omitted")},
             "coverage": {
                 "requested_start": start.isoformat(), "requested_end": end.isoformat(),
                 "evaluated_until": min(end, max(start, now)).isoformat(),
@@ -127,6 +128,22 @@ class DailyReviewService:
     def _snapshot(self, result, start, end, now):
         rows = self.captures.review_records(start, end)
         counts, points, eligible = result["counts"], [], []
+        source_state = self.captures.state()
+        sources = {}
+        def in_scope(row):
+            if source_state.get("source_kind") == "public_window":
+                provenance = source_state.get("provenance", {})
+                return (row["source_kind"] == "public_window"
+                    and row["consent_revision"] == source_state.get("consent_revision")
+                    and row["provenance"].get("session_id") == provenance.get("session_id")
+                    and row["provenance"].get("source_revision") == provenance.get("source_revision"))
+            return (row["source_kind"] != "public_window"
+                    or row["consent_revision"] == source_state.get("consent_revision"))
+        scoped = [row for row in rows if in_scope(row)]
+        counts["outside_scope"] = len(rows) - len(scoped)
+        rows = scoped
+        if source_state.get("source_kind") == "public_window":
+            result["boundary"] += "本次只计当前授权的专用公开窗口会话；其他来源或旧授权不计入覆盖。"
         counts["total"] = len(rows)
         for row in rows:
             state = row["state"]
@@ -157,8 +174,20 @@ class DailyReviewService:
                 continue
             row["_fingerprint"] = fingerprint
             eligible.append(row)
+            source_key = (row["source_kind"], row["provenance"].get("session_id"))
+            if source_key not in sources:
+                sources[source_key] = {"source_kind": row["source_kind"], "source_label": row["source_label"],
+                    "session_id": row["provenance"].get("session_id"), "observation_count": 0,
+                    "lock_protection_supported": row["provenance"].get("lock_protection_supported"),
+                    "coverage": "discrete_samples_only"}
+            sources[source_key]["observation_count"] += 1
         counts["eligible"] = len(eligible)
         coverage = result["coverage"]
+        coverage["sources"] = list(sources.values())
+        coverage["sampling_gaps"] = [{"observation_id": row["id"], "captured_at": row["captured_at"],
+            "sampling_gap_ms": row["provenance"].get("sampling_gap_ms"),
+            "sampling_interval_ms": row["provenance"].get("sampling_interval_ms")}
+            for row in eligible if row["source_kind"] == "public_window"][:MAX_GAPS]
         coverage["observation_count"] = len(points)
         points = sorted(set(points))
         if points:
@@ -207,7 +236,14 @@ class DailyReviewService:
                 break
             row = eligible[index]
             item = {"observation_id": row["id"], "captured_at": row["captured_at"],
-                    "title": row["title"], "summary": row["summary"], "boundary": row["boundary"]}
+                    "title": row["title"], "summary": row["summary"], "boundary": row["boundary"],
+                    "extraction_version": row.get("extraction_version", 1),
+                    "input_scope": "current_only_model_inference" if row.get("current_facts") else "legacy_unverified_summary"}
+            if row["source_kind"] == "public_window":
+                item.update(source_kind="public_window", recorded_at=row["recorded_at"],
+                    session_id=row["provenance"].get("session_id"),
+                    sampling_gap_ms=row["provenance"].get("sampling_gap_ms"),
+                    inference=True, coverage="discrete_samples_only")
             size = len(json.dumps(item, ensure_ascii=False)) + 2
             if chars + size <= MAX_PROMPT_CHARS:
                 selected.append((index, row, item))
@@ -228,10 +264,13 @@ class DailyReviewService:
         current = {row["id"]: row for row in self.captures.review_records(
             start, end, observation_ids=list(ids))}
         now = self.clock()
+        source_state = self.captures.state()
         for original in selected:
             row = current.get(original["id"])
             if row is None:
                 raise ValueError("evidence_changed")
+            if row["source_kind"] == "public_window" and row["consent_revision"] != source_state.get("consent_revision"):
+                raise PermissionError("capture_consent_revoked")
             if any(row[key] != value for key, value in original.items() if not key.startswith("_")):
                 raise ValueError("evidence_changed")
             if (_aware(row["expires_at"]) <= now
@@ -270,7 +309,11 @@ class DailyReviewService:
                 raise ValueError("invalid_model_result")
             conclusions.append({"text": item["text"].strip(), "evidence_refs": [
                 {"observation_id": known[ref]["id"], "evidence_id": known[ref]["evidence_id"],
-                 "captured_at": known[ref]["captured_at"]} for ref in refs]})
+                 "captured_at": known[ref]["captured_at"],
+                 **({"source_kind": "public_window", "source_label": known[ref]["source_label"],
+                     "recorded_at": known[ref]["recorded_at"], "provenance": known[ref]["provenance"],
+                     "evidence_kind": "privacy_masked_captured_pixels"}
+                    if known[ref]["source_kind"] == "public_window" else {})} for ref in refs]})
         return conclusions
 
     def generate(self, request: DailyReviewRequest) -> dict:
@@ -323,15 +366,20 @@ class DailyReviewService:
                     conclusions = self._parse(response, selected)
                     self._verify_selected(selected, start, end)
                     def publish():
-                        if (self.authorization() != auth
-                                or self.gateway.configuration_revision != revision):
+                        if self.gateway.configuration_revision != revision:
                             raise PermissionError("authorization_revoked")
+                        self._verify_selected(selected, start, end)
                         result.update(status="ready", reason=None, conclusions=conclusions,
                                       generated_at=self.clock().isoformat())
                         return result
-                    return self.captures.with_processing_consent(publish)
+                    # Same order as observation publication. Authorization was
+                    # checked above, outside these locks; policy serialization
+                    # and revision checks prevent superseded route publication.
+                    with getattr(self.gateway, "_dispatch_lock", nullcontext()), self.captures._lock, \
+                            self.captures._invalidation_lock, self.captures._evidence_lock:
+                        return self.captures.with_processing_consent(publish)
 
-                # revoke() raises its event before waiting for the capture lock.
+                # Every consent wrapper takes only short pre/post locks.
                 return self.captures.with_processing_consent(finish_with_consent)
 
             return self.captures.with_processing_consent(generate_with_consent)

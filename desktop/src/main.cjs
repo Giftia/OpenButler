@@ -7,6 +7,9 @@ const path = require("path");
 const {randomBytes} = require("node:crypto");
 const {SESSION_HEADER, createLocalApiRequest, isTrustedSender, restrictNavigation} = require("./local-api.cjs");
 const {CaptureController} = require("./capture-controller.cjs");
+const {PublicWindowProvider} = require("./public-window-provider.cjs");
+const {PublicWindowController, SCOPE: PUBLIC_WINDOW_SCOPE} = require("./public-window-controller.cjs");
+const {createLocalModelDiscovery, localEndpoint, installedIds} = require("./local-model-discovery.cjs");
 const packageMetadata = require("../package.json");
 
 const desktopChannel = process.env.OPENBUTLER_DESKTOP_CHANNEL
@@ -21,6 +24,7 @@ let backendProcess = null;
 let backendSessionToken = "";
 let backendStartPromise = null;
 let backendGeneration = 0;
+let backendDiagnostics = {stage: "idle", errorCode: null, exitCode: null};
 let isQuitting = false;
 let smokeQuitScheduled = false;
 let backendState = {
@@ -33,15 +37,38 @@ let selectedMineContextHome = "";
 let selectedMineContextInstaller = "";
 let staleBackendCleanupDone = false;
 let captureController = null;
+let publicWindowController = null;
+let publicWindowProvider = null;
 // Memory-only: a backend update may succeed before encrypted persistence fails.
 let modelRoutesPersistenceUncertain = false;
 let modelRoutesSaveInProgress = false;
+let sessionModelRoutes = null;
+let sessionModelEpoch = 0;
+let sessionModelValidationPending = false;
+let sessionModelStopPromise = null;
 let offlineOcr = null;
 let retentionTimer = null;
+
+// Optional, current-app-only rendering fallback for the native Linux trial.
+// This does not disable sandboxing, alter permissions or change capture sources.
+if (process.platform === "linux" && process.env.OPENBUTLER_SOFTWARE_RENDERING === "1") {
+  app.disableHardwareAcceleration();
+}
+
+function backendDiagnostic(stage, details = {}) {
+  backendDiagnostics = {stage, errorCode: details.errorCode || null,
+    exitCode: Number.isInteger(details.exitCode) ? details.exitCode : null};
+  if (process.env.OPENBUTLER_STARTUP_DIAGNOSTICS === "1") {
+    // Fixed lifecycle codes only. Never log exceptions, endpoints, tokens,
+    // request/response bodies, app titles, OCR or image bytes.
+    console.warn("OpenButler backend lifecycle " + JSON.stringify(backendDiagnostics));
+  }
+}
 
 const mineContextBaseUrl = "http://127.0.0.1:1733";
 const mineContextReleasesUrl = "https://github.com/volcengine/MineContext/releases";
 const mineContextLatestReleaseApi = "https://api.github.com/repos/volcengine/MineContext/releases/latest";
+const discoverLocalModels = createLocalModelDiscovery();
 
 if (process.env.OPENBUTLER_DESKTOP_USER_DATA_DIR) {
   app.setPath("userData", process.env.OPENBUTLER_DESKTOP_USER_DATA_DIR);
@@ -100,17 +127,31 @@ function modelRoutesPath() {
   return path.join(userDataDir(), "model-routes.enc");
 }
 
+function secureModelStorageAvailable() {
+  try {
+    if (safeStorage?.isEncryptionAvailable() !== true) return false;
+    return process.platform !== "linux" || ["gnome_libsecret", "kwallet", "kwallet5", "kwallet6"]
+      .includes(safeStorage.getSelectedStorageBackend?.());
+  } catch { return false; }
+}
+
 function readEncryptedModelRoutes() {
   try {
-    if (!safeStorage?.isEncryptionAvailable()) return null;
+    if (!secureModelStorageAvailable()) return null;
     return JSON.parse(safeStorage.decryptString(fs.readFileSync(modelRoutesPath())).toString());
   } catch {
     return null;
   }
 }
 
+const PRIVATE_API_PATHS = new Set([
+  "/api/context-engine/capture/configure", "/api/context-engine/capture/start",
+  "/api/context-engine/capture/pause", "/api/context-engine/observations",
+  "/api/context-engine/retention/run", "/api/model_settings/get", "/api/model_settings/update",
+]);
+
 async function privateApi(apiPath, body) {
-  if (!backendState.running || !backendSessionToken || !/^\/api\/[a-z0-9/-]+$/.test(apiPath)) {
+  if (!backendState.running || !backendSessionToken || !PRIVATE_API_PATHS.has(apiPath)) {
     throw new Error("local_service_unavailable");
   }
   const response = await fetch(new URL(apiPath, backendState.apiBase), {
@@ -220,6 +261,39 @@ function controller() {
     pauseBackendCapture: () => privateApi("/api/context-engine/capture/pause", {}),
   });
   return captureController;
+}
+
+function windowProvider() {
+  if (!publicWindowProvider) publicWindowProvider = new PublicWindowProvider();
+  return publicWindowProvider;
+}
+
+function publicController() {
+  if (!publicWindowController) publicWindowController = new PublicWindowController({
+    provider: windowProvider(),
+    ocr: {recognize: async buffer => {
+      if (!offlineOcr) {
+        const {createOfflineOcr} = require("./offline-ocr.cjs");
+        offlineOcr = await createOfflineOcr({resourcesPath: app.isPackaged ? process.resourcesPath : undefined});
+      }
+      return offlineOcr.recognize(buffer);
+    }},
+    postObservation: payload => privateApi("/api/context-engine/observations", payload),
+    configureBackend: payload => privateApi("/api/context-engine/capture/configure", payload),
+    startBackendCapture: () => privateApi("/api/context-engine/capture/start", {}),
+    pauseBackendCapture: () => privateApi("/api/context-engine/capture/pause", {}),
+  });
+  return publicWindowController;
+}
+
+function selectedController(config) {
+  const isPublic = config?.capture_scope === PUBLIC_WINDOW_SCOPE;
+  const other = isPublic ? captureController : publicWindowController;
+  if (other?.active || other?.busy) {
+    throw new Error("capture_already_active");
+  }
+  if (config?.capture_scope && !isPublic) throw new Error("unsupported_capture_scope");
+  return isPublic ? publicController() : controller();
 }
 
 function execFileText(command, args, timeout = 3000) {
@@ -482,6 +556,7 @@ async function probeMineContext() {
 }
 
 function startBackend() {
+  if (sessionModelStopPromise) return Promise.resolve(backendState);
   if (backendStartPromise) return backendStartPromise;
   if (backendProcess && backendState.running) return Promise.resolve(backendState);
   const generation = ++backendGeneration;
@@ -494,6 +569,7 @@ function startBackend() {
 
 async function launchBackend(generation) {
   try {
+    backendDiagnostic("starting");
     cleanupStaleBackendProcessesOnce();
     const port = await findFreePort();
     if (generation !== backendGeneration || isQuitting) return backendState;
@@ -531,7 +607,7 @@ async function launchBackend(generation) {
       args = [];
       options.cwd = path.dirname(packagedExe);
     } else {
-      command = process.platform === "win32" ? "python" : "python3";
+      command = process.platform === "win32" ? "python" : (process.env.OPENBUTLER_PYTHON || "python3");
       args = ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", String(port), "--no-proxy-headers"];
       options.cwd = path.join(repoRoot(), "backend");
     }
@@ -545,26 +621,39 @@ async function launchBackend(generation) {
     backendProcess = child;
     const clearSession = () => {
       if (backendProcess !== child) return;
+      sessionModelRoutes = null;
+      sessionModelValidationPending = false;
+      ++sessionModelEpoch;
       backendSessionToken = "";
       backendProcess = null;
       backendState = {apiBase: "", port: null, running: false, pid: null};
     };
-    child.on("exit", clearSession);
-    child.on("error", clearSession);
+    child.on("exit", code => {
+      if (backendProcess !== child) return;
+      backendDiagnostic("backend_exited", {exitCode: code});
+      clearSession();
+    });
+    child.on("error", error => {
+      if (backendProcess !== child) return;
+      backendDiagnostic("spawn_error", {errorCode: error?.code === "ENOENT" ? "python_not_found"
+        : error?.code === "EACCES" ? "python_not_executable" : "spawn_failed"});
+      clearSession();
+    });
     backendState = {
       apiBase: `http://127.0.0.1:${port}`,
       port,
       pid: child.pid ?? null,
       running: false,
     };
+    backendDiagnostic("awaiting_health");
     const isCurrent = () => generation === backendGeneration && backendProcess === child;
     const healthy = await waitForHealth(backendState.apiBase, backendSessionToken, isCurrent);
     if (isCurrent()) {
-      if (healthy) backendState = {...backendState, running: true};
-      else stopBackend();
+      if (healthy) { backendState = {...backendState, running: true}; backendDiagnostic("healthy"); }
+      else { stopBackend(); backendDiagnostic("health_timeout"); }
     }
   } catch {
-    if (generation === backendGeneration) stopBackend();
+    if (generation === backendGeneration) { stopBackend(); backendDiagnostic("startup_failed"); }
   }
   return backendState;
 }
@@ -594,7 +683,43 @@ function cleanupStaleBackendProcessesOnce() {
   killProcessByImageName(backendImageName);
 }
 
-function stopBackend() {
+function stopOwnedSessionBackend() {
+  if (sessionModelStopPromise) return sessionModelStopPromise;
+  const child = backendProcess;
+  if (!child) { stopBackend({terminateProcess: false}); return Promise.resolve(true); }
+  // Uvicorn SIGTERM can finish the current request and dispatch another probe.
+  // Explicit model revocation therefore terminates this exact owned child, not
+  // an image name or a PID looked up later, and waits for its observed exit.
+  let finish, timer;
+  const pending = new Promise(resolve => { finish = resolve; });
+  sessionModelStopPromise = pending;
+  stopBackend({terminateProcess: false});
+  const exited = () => {
+    clearTimeout(timer);
+    if (sessionModelStopPromise === pending) sessionModelStopPromise = null;
+    finish(true);
+  };
+  child.once("exit", exited);
+  timer = setTimeout(() => finish(false), 5000);
+  if (child.exitCode !== null && child.exitCode !== undefined || child.signalCode) exited();
+  else {
+    try { if (child.kill("SIGKILL") !== true) finish(false); }
+    catch { finish(false); }
+  }
+  // On failure the resolved guard remains until an exit is actually observed;
+  // no restart or later validation may proceed under an unconfirmed revoke.
+  return pending;
+}
+
+function stopBackend({terminateProcess = true} = {}) {
+  if (terminateProcess && (sessionModelRoutes || sessionModelValidationPending || sessionModelStopPromise)) {
+    return stopOwnedSessionBackend();
+  }
+  sessionModelRoutes = null;
+  sessionModelValidationPending = false;
+  ++sessionModelEpoch;
+  backendDiagnostic("stopped");
+  if (publicWindowController) void publicWindowController.pause("service_restarted").catch(() => {});
   if (captureController) {
     captureController.active = false;
     if (captureController.timer) clearInterval(captureController.timer);
@@ -608,13 +733,17 @@ function stopBackend() {
   backendProcess = null;
   backendState = {apiBase: "", port: null, running: false, pid: null};
   refreshTrayStatus();
-  if (pid) {
-    killProcessTree(pid);
+  if (terminateProcess) {
+    if (pid) killProcessTree(pid);
+    killProcessByImageName(backendImageName);
   }
-  killProcessByImageName(backendImageName);
 }
 
 async function restartBackend() {
+  if (sessionModelRoutes || sessionModelValidationPending || sessionModelStopPromise) {
+    if (!await stopOwnedSessionBackend()) return backendState;
+    return startBackend();
+  }
   if (captureController?.active) void captureController.pause("service_restarted").catch(() => {});
   stopBackend();
   return startBackend();
@@ -660,6 +789,8 @@ async function createWindow() {
   });
 
   mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    if (sessionModelValidationPending) void stopOwnedSessionBackend();
+    if (publicWindowController) void publicWindowController.pause("renderer_unavailable").catch(() => {});
     void loadDesktopErrorPage("页面渲染进程异常退出", details.reason || "unknown", "");
   });
 
@@ -767,7 +898,7 @@ function createTray() {
 
 function refreshTrayStatus() {
   if (!tray) return;
-  const recording = Boolean(captureController?.active);
+  const recording = Boolean(captureController?.active || publicWindowController?.active);
   tray.setToolTip(`OpenButler · ${recording ? "正在记录本机屏幕" : "未记录屏幕"}`);
   tray.setContextMenu(Menu.buildFromTemplate([
     {label: "打开 OpenButler", click: showMainWindow},
@@ -945,34 +1076,58 @@ handleDesktopRequest("openbutler:get-runtime", async () => ({
   backend: {
     pid: backendState.pid,
     running: backendState.running,
+    diagnostics: {...backendDiagnostics},
   },
   userDataReady: fs.existsSync(userDataDir()),
 }));
 
 handleDesktopRequest("openbutler:get-capture-displays", async () => captureDisplays());
 
+handleDesktopRequest("openbutler:get-capture-capabilities", async () => ({
+  public_window: {supported: windowProvider().available(), platform: "linux-x11",
+    lock_state: "unknown", lock_protection_supported: false,
+    reason: windowProvider().available() ? "requires_verified_window_preview" : "public_window_platform_unsupported"},
+  full_desktop: {supported: process.platform === "win32", reason:
+    process.platform === "win32" ? "requires_existing_privacy_checks" : "lock_state_unknown"},
+}));
+
+handleDesktopRequest("openbutler:get-capture-windows", async () => {
+  try { return {ok: true, sources: await windowProvider().listSources()}; }
+  catch (error) { return {ok: false, sources: [], error: error.message || "window_source_unavailable"}; }
+});
+
 handleDesktopRequest("openbutler:get-masked-capture-preview", async (_event, config) => {
+  if (modelRoutesSaveInProgress) return {ok: false, error_code: "model_routes_save_in_progress",
+    error: "模型配置正在验证，请完成后重新查看隐私预览。"};
   try {
-    return await controller().previewMasked(config);
-  } catch {
-    return {ok: false, error: "隐私预览失败。请检查本机识字组件或选择其他显示器。"};
+    return await selectedController(config).previewMasked(config);
+  } catch (error) {
+    const code = /^[a-z_]{1,80}$/.test(error?.message || "") ? error.message : "privacy_processing_failed";
+    return {ok: false, error_code: code, error: config?.capture_scope === PUBLIC_WINDOW_SCOPE
+      ? `专用窗口预览已安全停止（${code}）。请重新检查窗口身份、前台排除和本机识字组件。`
+      : "隐私预览失败。请检查本机识字组件或选择其他显示器。"};
   }
 });
 
 handleDesktopRequest("openbutler:start-builtin-capture", async (_event, config) => {
+  if (modelRoutesSaveInProgress) return {ok: false, error_code: "model_routes_save_in_progress",
+    error: "模型配置正在验证，记录保持暂停。"};
   try {
-    const state = await controller().start(config);
+    const state = await selectedController(config).start(config);
     refreshTrayStatus();
     return {ok: true, ...state};
   } catch (error) {
-    return {ok: false, error: error?.message === "privacy_preview_required"
+    const code = /^[a-z_]{1,80}$/.test(error?.message || "") ? error.message : "capture_start_failed";
+    return {ok: false, error_code: code, error: error?.message === "privacy_preview_required"
       ? "请先查看遮挡预览，再开始记录。" : "未能开始记录。请检查本机服务和授权。"};
   }
 });
 
 handleDesktopRequest("openbutler:pause-builtin-capture", async () => {
   try {
-    const state = await controller().pause();
+    const target = publicWindowController && (publicWindowController.active || publicWindowController.preview
+      || publicWindowController.busy) ? publicWindowController : controller();
+    const state = await target.pause();
     refreshTrayStatus();
     return {ok: true, ...state};
   } catch {
@@ -981,14 +1136,68 @@ handleDesktopRequest("openbutler:pause-builtin-capture", async () => {
 });
 
 handleDesktopRequest("openbutler:get-capture-state", async () =>
-  captureController?.state() || {active: false, intervalSeconds: 60, lastResult: "idle"});
+  (captureController?.active ? captureController.state() : null)
+    || publicWindowController?.state() || captureController?.state()
+    || {active: false, intervalSeconds: 60, lastResult: "idle"});
 
 handleDesktopRequest("openbutler:get-masked-evidence", async (_event, evidenceId) =>
   privateEvidence(evidenceId));
 
-handleDesktopRequest("openbutler:get-builtin-model-routes", async () => {
+// Session-only local model routes never enter the encrypted file or desktop state.
+function keylessSessionConfiguration(proposed) {
+  const record = (item, keys) => item && typeof item === "object" && !Array.isArray(item)
+    && Object.keys(item).every(key => keys.includes(key));
+  if (!record(proposed, ["image", "text", "external_consent", "masked_data_consent"])
+      || ![undefined, false].includes(proposed.external_consent)
+      || ![undefined, false].includes(proposed.masked_data_consent)) throw new Error("session_models_invalid_configuration");
+  const payload = {external_consent: false, masked_data_consent: false};
+  for (const target of ["image", "text"]) {
+    const route = proposed[target];
+    if (!record(route, ["mode", "protocol", "endpoint", "model", "api_key", "thinking"])
+        || route.mode !== "local" || route.protocol !== "ollama_native"
+        || ![undefined, null, ""].includes(route.api_key)
+        || (route.thinking !== undefined && typeof route.thinking !== "boolean")) {
+      throw new Error("session_models_invalid_configuration");
+    }
+    const endpoint = localEndpoint(route.endpoint).endpoint;
+    // Reject noncanonical alternate host/port spellings, never silently retarget.
+    if (new URL(endpoint).origin !== endpoint) throw new Error("session_models_invalid_configuration");
+    installedIds({models: [{name: route.model}]});
+    payload[target] = {mode: "local", protocol: "ollama_native", endpoint,
+      model: route.model, thinking: route.thinking === true};
+  }
+  return payload;
+}
+
+function sessionModelMetadata(configuration) {
+  const safe = route => ({mode: route.mode, protocol: route.protocol, endpoint: route.endpoint,
+    model: route.model, thinking: route.thinking === true, apiKeyConfigured: false});
+  return {image: safe(configuration.image), text: safe(configuration.text)};
+}
+
+function sessionModelFailure(error_code) {
+  return {ok: false, ready: false, persistence: "session_only", savedConfigurationAvailable: false,
+    persistenceUncertain: false, requiresRevalidation: true, error_code,
+    error: "本次临时模型配置未启用，请检查本机服务并重新验证。"};
+}
+
+function sameDesktopRequest(event, sender, frame, initialUrl) {
+  try { return event.sender === sender && event.senderFrame === frame && frame.url === initialUrl
+    && isTrustedSender(event, mainWindow, frontendIndexPath()); } catch { return false; }
+}
+
+handleDesktopRequest("openbutler:get-builtin-model-routes", async (event) => {
+  const sender = event.sender, frame = event.senderFrame;
+  let initialUrl;
+  try { initialUrl = frame.url; } catch { return sessionModelFailure("session_models_cancelled"); }
+  const epoch = sessionModelEpoch;
   try {
     const state = await privateApi("/api/model_settings/get");
+    if (epoch !== sessionModelEpoch || !sameDesktopRequest(event, sender, frame, initialUrl))
+      return sessionModelFailure("session_models_cancelled");
+    if (sessionModelRoutes) return {...state, persistence: "session_only", routes: sessionModelMetadata(sessionModelRoutes),
+      savedConfigurationAvailable: false, persistenceUncertain: false,
+      requiresRevalidation: state.ready !== true, external_consent: false, masked_data_consent: false};
     const saved = readEncryptedModelRoutes();
     const safeRoute = (route) => route ? {
       mode: route.mode, protocol: route.protocol, endpoint: route.endpoint,
@@ -1003,10 +1212,102 @@ handleDesktopRequest("openbutler:get-builtin-model-routes", async () => {
         external_consent: saved.external_consent === true,
         masked_data_consent: saved.masked_data_consent === true} : {})};
   } catch {
+    if (!sameDesktopRequest(event, sender, frame, initialUrl)) return sessionModelFailure("session_models_cancelled");
+    if (sessionModelRoutes) return {...sessionModelFailure("local_service_unavailable"),
+      routes: sessionModelMetadata(sessionModelRoutes)};
     return {ready: false, error_code: "local_service_unavailable",
       persistenceUncertain: modelRoutesPersistenceUncertain,
       requiresRevalidation: modelRoutesPersistenceUncertain};
   }
+});
+
+handleDesktopRequest("openbutler:list-builtin-local-models", async (event, input) => {
+  const sender = event.sender, frame = event.senderFrame, initialUrl = frame.url;
+  const result = await discoverLocalModels(input);
+  let current = false;
+  try { current = event.sender === sender && event.senderFrame === frame && frame.url === initialUrl
+    && isTrustedSender(event, mainWindow, frontendIndexPath()); } catch {}
+  if (!current) {
+    return {ok: false, models: [], endpoint: '', error_code: 'local_discovery_cancelled'};
+  }
+  return result;
+});
+
+handleDesktopRequest("openbutler:use-builtin-local-models-for-session", async (event, proposed) => {
+  if (modelRoutesSaveInProgress) return sessionModelFailure("model_routes_save_in_progress");
+  let payload;
+  try { payload = keylessSessionConfiguration(proposed); }
+  catch { return sessionModelFailure("session_models_invalid_configuration"); }
+  const sender = event.sender, frame = event.senderFrame;
+  let initialUrl;
+  try { initialUrl = frame.url; } catch { return sessionModelFailure("session_models_cancelled"); }
+  const epoch = ++sessionModelEpoch, backend = backendGeneration;
+  modelRoutesSaveInProgress = true;
+  sessionModelValidationPending = true;
+  let dispatched = false;
+  const current = () => epoch === sessionModelEpoch && backend === backendGeneration
+    && sameDesktopRequest(event, sender, frame, initialUrl);
+  const cancelOwnedBackend = async () => {
+    if (dispatched && backend === backendGeneration) return stopOwnedSessionBackend();
+    return true;
+  };
+  try {
+    // Consume all previews as well as active sampling; enabling never resumes capture.
+    if (captureController) await captureController.pause("model_reconfigured");
+    if (!current()) return sessionModelFailure("session_models_cancelled");
+    if (publicWindowController) await publicWindowController.pause("model_reconfigured");
+    if (!current()) return sessionModelFailure("session_models_cancelled");
+    refreshTrayStatus();
+    if (!backendState.running) return sessionModelFailure("local_service_unavailable");
+    dispatched = true;
+    const result = await privateApi("/api/model_settings/update", payload);
+    if (!current()) {
+      const stopped = await cancelOwnedBackend();
+      return sessionModelFailure(stopped ? "session_models_cancelled" : "session_models_stop_unconfirmed");
+    }
+    if (result?.ok !== true || result?.ready !== true) {
+      const stopped = await cancelOwnedBackend();
+      return sessionModelFailure(stopped ? "session_models_validation_failed" : "session_models_stop_unconfirmed");
+    }
+    sessionModelRoutes = payload;
+    // A prior uncertain encrypted save cannot label a deliberately unsaved RAM pair.
+    modelRoutesPersistenceUncertain = false;
+    const routes = sessionModelMetadata(payload);
+    const status = {ready: true, image: routes.image, text: routes.text,
+      external_consent: false, masked_data_consent: false};
+    for (const [key, maximum] of [["local_total_timeout_seconds", 120], ["external_total_timeout_seconds", 10]]) {
+      if (typeof result[key] === "number" && Number.isFinite(result[key]) && result[key] > 0 && result[key] <= maximum) {
+        status[key] = result[key];
+      }
+    }
+    return {ok: true, ...status, status, routes, persistence: "session_only",
+      savedConfigurationAvailable: false, persistenceUncertain: false, requiresRevalidation: false};
+  } catch {
+    const errorCode = current() ? "session_models_validation_failed" : "session_models_cancelled";
+    const stopped = await cancelOwnedBackend();
+    return sessionModelFailure(stopped ? errorCode : "session_models_stop_unconfirmed");
+  } finally {
+    sessionModelValidationPending = false;
+    modelRoutesSaveInProgress = false;
+  }
+});
+
+handleDesktopRequest("openbutler:revoke-builtin-session-models", async (event) => {
+  const sender = event.sender, frame = event.senderFrame;
+  let initialUrl;
+  try { initialUrl = frame.url; } catch { return sessionModelFailure("session_models_cancelled"); }
+  if (sessionModelRoutes || sessionModelValidationPending || sessionModelStopPromise) {
+    // Terminating only our backend also cancels an unconfirmed in-flight update.
+    // The fresh backend has no routes; no stored configuration is restored.
+    if (!await stopOwnedSessionBackend()) return sessionModelFailure("session_models_stop_unconfirmed");
+  }
+  if (!sameDesktopRequest(event, sender, frame, initialUrl)) return sessionModelFailure("session_models_cancelled");
+  // Explicit recovery is also useful after a failed attempt already cleared RAM.
+  if (!backendState.running) await startBackend();
+  if (!sameDesktopRequest(event, sender, frame, initialUrl)) return sessionModelFailure("session_models_cancelled");
+  return {ok: true, ready: false, persistence: "session_only", sessionRevoked: true,
+    savedConfigurationAvailable: false, persistenceUncertain: false, requiresRevalidation: true,
+    backendRunning: backendState.running};
 });
 
 handleDesktopRequest("openbutler:save-builtin-model-routes", async (_event, proposed) => {
@@ -1016,7 +1317,7 @@ handleDesktopRequest("openbutler:save-builtin-model-routes", async (_event, prop
   }
   modelRoutesSaveInProgress = true;
   try {
-    if (!safeStorage?.isEncryptionAvailable()) {
+    if (!secureModelStorageAvailable()) {
       return {ok: false, error: "本机密钥存储不可用，配置未保存。"};
     }
     if (!proposed || typeof proposed !== "object" || !proposed.image || !proposed.text) {
@@ -1029,6 +1330,9 @@ handleDesktopRequest("openbutler:save-builtin-model-routes", async (_event, prop
       } catch {
         return {ok: false, error: "录制尚未安全暂停，模型配置未更改。"};
       }
+    }
+    if (publicWindowController?.active || publicWindowController?.busy || publicWindowController?.preview) {
+      await publicWindowController.pause("model_reconfigured");
     }
     const saved = readEncryptedModelRoutes();
     const current = {};
@@ -1069,14 +1373,19 @@ handleDesktopRequest("openbutler:save-builtin-model-routes", async (_event, prop
       const encrypted = safeStorage.encryptString(JSON.stringify(payload));
       const previousUncertainty = modelRoutesPersistenceUncertain;
       modelRoutesPersistenceUncertain = true;
+      const priorSession = sessionModelRoutes;
+      sessionModelRoutes = null;
       const result = await privateApi("/api/model_settings/update", payload);
       if (result?.ok === false) {
         // An explicit validation rejection leaves the previously active pair unchanged.
         modelRoutesPersistenceUncertain = previousUncertainty;
+        sessionModelRoutes = priorSession;
         return {ok: false, error: "模型验证未通过，请检查连接和授权。",
           error_code: result.error_code};
       }
       if (result?.ok !== true) throw new Error("model_update_result_unconfirmed");
+      sessionModelRoutes = null;
+      ++sessionModelEpoch;
       const temp = modelRoutesPath() + ".tmp";
       fs.writeFileSync(temp, encrypted, {mode: 0o600});
       fs.renameSync(temp, modelRoutesPath());
@@ -1211,7 +1520,7 @@ handleDesktopRequest("openbutler:show-main-window", async () => {
 
 handleDesktopRequest("openbutler:quit-app", async () => {
   isQuitting = true;
-  stopBackend();
+  await stopBackend();
   app.exit(0);
   return {ok: true};
 });
@@ -1239,6 +1548,9 @@ app.whenReady().then(createTray);
 app.whenReady().then(() => {
   for (const eventName of ["lock-screen", "suspend"]) {
     powerMonitor.on(eventName, () => {
+      if (publicWindowController?.active || publicWindowController?.busy || publicWindowController?.preview) {
+        void publicWindowController.pause(eventName).catch(() => {}).finally(refreshTrayStatus);
+      }
       if (captureController?.active) {
         void captureController.pause(eventName).catch(() => {}).finally(refreshTrayStatus);
       }

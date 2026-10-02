@@ -1,3 +1,4 @@
+import type {PublicWindowIdentity} from "./captureTypes";
 import type { EventItem, PluginManifest, PrivacyMode } from "../types";
 
 export type CaptureConfig = {
@@ -12,6 +13,9 @@ export type RecordingState = {
   authorized: boolean;
   active: boolean;
   record_count: number;
+  processing_queue?: {capacity: number; queued: number; running: 0 | 1; backpressured: number; accepting: boolean};
+  source_kind?: "public_window" | "full_screen";
+  provenance?: CaptureProvenance;
 };
 
 export type ContextEngineStatus = {
@@ -22,16 +26,45 @@ export type ContextEngineStatus = {
   recording: RecordingState;
 };
 
+export type CaptureProvenance = {
+  observation_mode?: "vision" | "masked_ocr_text";
+  source_kind?: "public_window" | "full_screen"; capture_scope?: string; session_id?: string; source_revision?: string;
+  source_identity?: PublicWindowIdentity; session_expires_at?: string; lock_state?: string; lock_protection_supported?: boolean;
+  capture_method?: string; sampling_interval_ms?: number; sampling_sequence?: number; sampling_gap_ms?: number | null;
+  source_verified_before?: boolean; source_verified_after?: boolean;
+};
+
 export type ContextObservation = {
+  extraction_version?: 1 | 2;
+  current_facts?: {version: 2; inference: true; input_scope: "current_observation_only";
+    observation_id: string; evidence_id: string; image_digest: string; captured_at: string;
+    observation_route: "post_mask_ocr_to_text_model" | "masked_image_to_vision_to_text";
+    title: string; summary: string; boundary: string} | null;
   id: string;
   captured_at: string;
   state: "recorded_pending" | "processing" | "ready" | "model_unavailable";
   title: string | null;
   summary: string | null;
+  processing_reason?: string | null;
   boundary: string;
   evidence_available: boolean;
   evidence_id: string | null;
-  source_label: "本机记录";
+  source_label: string;
+  source_kind?: "public_window" | "full_screen";
+  recorded_at?: string;
+  consent_revision?: string;
+  evidence_kind?: "privacy_masked_captured_pixels";
+  observation_mode?: "vision" | "masked_ocr_text";
+  observation_route?: "post_mask_ocr_to_text_model" | "masked_image_to_vision_to_text";
+  ocr_provenance?: {engine: string; stage: "post_mask"; image_digest: string; layout: "text_only_no_layout_guarantee"};
+  provenance?: CaptureProvenance;
+  temporal_context?: {prior_observation_ids?: string[] | null; inference?: boolean; coverage?: string; note?: string | null;
+    association_state?: "skipped" | "pending" | "running" | "ready" | "failed";
+    association_reason?: string | null;
+    relations?: Array<{prior_observation_id: string; relation: "same_topic" | "different_topic" | "uncertain";
+      current_quote: string; prior_quote: string}> | null;
+    prior_candidate_count?: number; prior_selected_count?: number; prior_omitted_count?: number;
+    comparison?: {performed: boolean; prior_observation_ids: string[]; current_quote?: string; prior_quote?: string}} | null;
 };
 
 const API_BASE =
@@ -126,7 +159,7 @@ export function generateDailyReview(day: string, timezone: string) {
 
 export function retryContextObservation(id: string) {
   if (!/^[0-9a-f-]{36}$/.test(id)) throw new Error("Invalid observation ID");
-  return request<{ok: boolean; reason?: string}>(`/api/context-engine/observations/${id}/retry`, {method: "POST"});
+  return request<{ok: boolean; queued?: boolean; reason?: string}>(`/api/context-engine/observations/${id}/retry`, {method: "POST"});
 }
 
 export function deleteContextObservation(id: string) {

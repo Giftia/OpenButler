@@ -9,7 +9,7 @@ const {execFileSync} = require("node:child_process");
 const localApi = require("../src/local-api.cjs");
 
 // Execute real main code with all Electron, OS, filesystem and network effects mocked.
-function mainHarness({packaged = false, spawnThrows = false, healthOk = true, fetchBehavior} = {}) {
+function mainHarness({packaged = false, spawnThrows = false, healthOk = true, fetchBehavior, discoveryImpl, platform = "win32", storage, childKillExits = true} = {}) {
   const handlers = new Map();
   const children = [];
   const calls = [];
@@ -23,7 +23,7 @@ function mainHarness({packaged = false, spawnThrows = false, healthOk = true, fe
     assert.equal("Origin" in options.headers, false);
     if (fetchBehavior) return fetchBehavior(url, options, requests.length);
     return {ok: healthOk, status: healthOk ? 200 : 503, redirected: false,
-      text: async () => '{"synthetic":true}'};
+      text: async () => '{"synthetic":true}', json: async () => ({synthetic: true})};
   };
   let now = 0;
   let port = 8200;
@@ -45,7 +45,7 @@ function mainHarness({packaged = false, spawnThrows = false, healthOk = true, fe
     async loadFile(file) { this.webContents.mainFrame.url = pathToFileURL(file).href; }
   }
   const fakeProcess = Object.assign(new EventEmitter(), {
-    platform: "win32", env: {}, resourcesPath: path.resolve(__dirname, "synthetic-resources"),
+    platform, env: {}, resourcesPath: path.resolve(__dirname, "synthetic-resources"),
   });
   const fakeFs = {
     existsSync: () => true, mkdirSync() {},
@@ -55,7 +55,10 @@ function mainHarness({packaged = false, spawnThrows = false, healthOk = true, fe
   const childProcess = {
     spawn(command, args, options) {
       if (spawnThrows) throw new Error("synthetic spawn failure");
-      const child = Object.assign(new EventEmitter(), {pid: children.length + 200});
+      const child = Object.assign(new EventEmitter(), {pid: children.length + 200, exitCode: null, killSignals: [],
+        kill(signal) {this.killSignals.push(signal); if (childKillExits) queueMicrotask(() => {
+          this.signalCode = signal; this.emit("exit", null, signal);
+        }); return true;}});
       children.push(child);
       calls.push({command, args, options: {...options, env: {...options.env}}, originalEnv: options.env});
       return child;
@@ -71,16 +74,17 @@ function mainHarness({packaged = false, spawnThrows = false, healthOk = true, fe
   }};
   const context = vm.createContext({
     __dirname: path.resolve(__dirname, "../src"), process: fakeProcess,
-    console: {warn: (...args) => logs.push(args)}, AbortController,
+    console: {warn: (...args) => logs.push(args)}, AbortController, AbortSignal, URL,
     Date: {now: () => now},
     setTimeout(callback, delay) {
       if (delay === 300) queueMicrotask(() => { now += delay; callback(); });
+      if (delay === 5000) setImmediate(callback);
       return 1;
     },
     clearTimeout() {},
     fetch: fakeFetch,
     require(name) {
-      if (name === "electron") return {app, BrowserWindow, ipcMain: {
+      if (name === "electron") return {app, BrowserWindow, safeStorage: storage, ipcMain: {
         handle(channel, handler) { handlers.set(channel, handler); },
       }};
       if (name === "child_process") return childProcess;
@@ -89,6 +93,10 @@ function mainHarness({packaged = false, spawnThrows = false, healthOk = true, fe
       if (name === "path") return path;
       if (name === "node:crypto") return require(name);
       if (name === "./capture-controller.cjs") return require("../src/capture-controller.cjs");
+      if (name === "./public-window-controller.cjs") return require("../src/public-window-controller.cjs");
+      if (name === "./public-window-provider.cjs") return require("../src/public-window-provider.cjs");
+      if (name === "./local-model-discovery.cjs") return discoveryImpl
+        ? {...require("../src/local-model-discovery.cjs"), createLocalModelDiscovery: () => discoveryImpl} : require("../src/local-model-discovery.cjs");
       if (name === "./local-api.cjs") return {...localApi,
         createLocalApiRequest: (options) => localApi.createLocalApiRequest({...options, fetchImpl: fakeFetch})};
       if (name === "../package.json") return {productName: "OpenButler Preview", openbutlerChannel: "preview"};
@@ -97,8 +105,8 @@ function mainHarness({packaged = false, spawnThrows = false, healthOk = true, fe
   });
   const source = fs.readFileSync(path.resolve(__dirname, "../src/main.cjs"), "utf8");
   const controls = vm.runInContext(source +
-    "\n({startBackend, stopBackend, restartBackend, createWindow," +
-    "getWindow: () => mainWindow, getState: () => backendState, getToken: () => backendSessionToken})", context);
+    "\n({startBackend, stopBackend, restartBackend, createWindow, privateApi," +
+    "getWindow: () => mainWindow, getState: () => backendState, getToken: () => backendSessionToken, getSessionRoutes: () => sessionModelRoutes, stopOwnedSessionBackend, secureModelStorageAvailable, readEncryptedModelRoutes, setControllers: (a,b) => {captureController=a; publicWindowController=b;}})", context);
   return {...controls, app, fakeProcess, handlers, children, calls, writes, logs, requests};
 }
 
@@ -134,6 +142,40 @@ test("main lifecycle generates per-spawn tokens, deduplicates startup, rotates a
     assert.equal(h.getToken(), "");
     assert.deepEqual(h.writes, []);
     assert.deepEqual(h.logs, []);
+  }
+});
+
+test("trusted private model-settings underscore routes dispatch; unknown private paths remain blocked", async () => {
+  const h = mainHarness();
+  await h.startBackend();
+  assert.equal((await h.privateApi('/api/model_settings/get')).synthetic, true);
+  const last = h.requests.at(-1);
+  assert.ok(String(last.url).endsWith('/api/model_settings/get'));
+  assert.equal(last.options.method, 'GET');
+  const count = h.requests.length;
+  await assert.rejects(h.privateApi('/api/unknown_settings/get'), /local_service_unavailable/);
+  await assert.rejects(h.privateApi('/api/model_settings/get/../update'), /local_service_unavailable/);
+  assert.equal(h.requests.length, count);
+  h.stopBackend();
+});
+
+test("local discovery discards results after navigation or detached sender frame", async () => {
+  for (const detach of [false, true]) {
+    let finish, calls = 0;
+    const result = new Promise(resolve => { finish = resolve; });
+    const h = mainHarness({discoveryImpl: async () => { calls++; return result; }});
+    await h.createWindow();
+    const window = h.getWindow(), frame = window.webContents.mainFrame;
+    const pending = h.handlers.get('openbutler:list-builtin-local-models')({sender: window.webContents,
+      senderFrame: frame}, {endpoint: 'http://127.0.0.1:11435', protocol: 'ollama_native'});
+    if (detach) Object.defineProperty(frame, 'url', {get() { throw new Error('detached private detail'); }});
+    else frame.url += '#/different-page';
+    finish({ok: true, endpoint: 'http://127.0.0.1:11435', models: ['qwen3.5:2b']});
+    const response = await pending;
+    assert.equal(calls, 1); assert.equal(response.error_code, 'local_discovery_cancelled');
+    assert.equal(response.models.length, 0); assert.equal(response.endpoint, '');
+    assert.equal(JSON.stringify(response).includes('private'), false);
+    h.stopBackend();
   }
 });
 
@@ -238,6 +280,10 @@ test("preload exposes only the narrow request API while preserving old bridges",
   assert.equal(calls[1][0], "openbutler:get-runtime");
   assert.equal(typeof bridge.applyMineContextModelConfig, "function");
   assert.equal(typeof bridge.installMineContextWithApproval, "function");
+  await bridge.listBuiltinLocalModels({endpoint: 'http://127.0.0.1:11435',
+    protocol: 'ollama_native', api_key: 'private-ignored', headers: {Authorization: 'private-ignored'}});
+  assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1))), ['openbutler:list-builtin-local-models',
+    {endpoint: 'http://127.0.0.1:11435', protocol: 'ollama_native'}]);
   assert.equal(Object.keys(bridge).some((key) => /token|ipcRenderer/.test(key)), false);
 });
 
@@ -298,4 +344,224 @@ test("Python entry forces loopback and disables proxy headers without starting A
   const result = execFileSync(process.env.PYTHON || (process.platform === "win32" ? "python" : "python3"),
     ["-B", "-c", script, path.resolve(__dirname, "../backend_entry.py")], {encoding: "utf8", windowsHide: true});
   assert.match(result, /synthetic backend entry ok/);
+});
+
+const sessionConfiguration = () => ({image: {mode: "local", protocol: "ollama_native",
+  endpoint: "http://127.0.0.1:11435", model: "qwen3.5:0.8b"},
+  text: {mode: "local", protocol: "ollama_native", endpoint: "http://127.0.0.1:11435", model: "qwen3.5:0.8b"},
+  external_consent: false, masked_data_consent: false});
+async function sessionHarness(update = async () => ({ok: true, ready: true}), options = {}) {
+  const updates = [];
+  const h = mainHarness({...options, fetchBehavior: async (url, options) => {
+    if (String(url).endsWith("/health")) return {ok: true, redirected: false};
+    if (String(url).endsWith("/api/model_settings/update")) {
+      updates.push(JSON.parse(options.body));
+      const result = await update();
+      return {ok: true, json: async () => result};
+    }
+    assert.ok(String(url).endsWith("/api/model_settings/get"));
+    return {ok: true, json: async () => ({ready: Boolean(h.getSessionRoutes())})};
+  }});
+  await h.createWindow();
+  const event = {sender: h.getWindow().webContents, senderFrame: h.getWindow().webContents.mainFrame};
+  const invoke = (name, ...args) => h.handlers.get("openbutler:" + name)(event, ...args);
+  return {...h, event, updates, invoke};
+}
+
+test("session-only keyless models validate once, pause previews and never use encrypted storage", async () => {
+  const h = await sessionHarness(async () => ({ok: true, ready: true, local_total_timeout_seconds: 90,
+    external_total_timeout_seconds: 10, api_key: "must-not-reflect", unrelated: "must-not-reflect"})); const pauses = [];
+  h.setControllers({pause: async reason => pauses.push("screen:" + reason)},
+    {pause: async reason => pauses.push("window:" + reason)});
+  const result = await h.invoke("use-builtin-local-models-for-session", sessionConfiguration());
+  assert.equal(result.ok, true); assert.equal(result.status.ready, true); assert.equal(result.ready, true);
+  assert.equal(result.persistence, "session_only"); assert.equal(result.savedConfigurationAvailable, false);
+  assert.equal(result.local_total_timeout_seconds, 90); assert.equal(result.status.external_total_timeout_seconds, 10);
+  assert.ok(!JSON.stringify(result).includes("must-not-reflect"));
+  assert.equal(result.persistenceUncertain, false); assert.equal(result.routes.image.apiKeyConfigured, false);
+  assert.deepEqual(pauses, ["screen:model_reconfigured", "window:model_reconfigured"]);
+  assert.equal(h.updates.length, 1); assert.equal(h.updates[0].image.api_key, undefined);
+  assert.equal(h.requests.filter(item => !String(item.url).endsWith("/health")).length, 1);
+  const state = await h.invoke("get-builtin-model-routes");
+  assert.equal(state.persistence, "session_only"); assert.equal(state.ready, true);
+  assert.equal(state.savedConfigurationAvailable, false); assert.equal(state.routes.text.model, "qwen3.5:0.8b");
+  assert.deepEqual(h.writes, []);
+});
+
+test("session-only strict preflight rejects secrets, custom routes, consent and noncanonical endpoints without requests", async () => {
+  const h = await sessionHarness();
+  const changes = [c => c.image.api_key = "secret", c => c.image.headers = {Authorization: "secret"},
+    c => c.image.auth = "secret", c => c.api_key = "secret", c => c.external_consent = true,
+    c => c.masked_data_consent = true, c => c.image.mode = "custom", c => c.text.protocol = "openai_compatible",
+    c => c.image.model = "../private", c => c.image.model = "model name", c => c.image.thinking = "true"];
+  for (const endpoint of ["http://127.1:11435", "http://2130706433:11435", "http://0x7f000001:11435",
+    "http://127.0.0.1:11435/", "http://127.0.0.1:11435?q=x", "http://secret@127.0.0.1:11435",
+    "http://example.com:11435", "http://192.168.0.1:11435", "https://127.0.0.1:11435",
+    "http://LOCALHOST:11435", "http://localhost:080", "http://[0:0:0:0:0:0:0:1]:11435"]) {
+    changes.push(c => c.image.endpoint = endpoint);
+  }
+  for (const change of changes) {
+    const config = sessionConfiguration(); change(config);
+    const result = await h.invoke("use-builtin-local-models-for-session", config);
+    assert.equal(result.error_code, "session_models_invalid_configuration");
+    assert.ok(!JSON.stringify(result).includes("secret"));
+  }
+  assert.equal(h.updates.length, 0); assert.deepEqual(h.writes, []);
+});
+
+test("session-only accepts canonical localhost and IPv6, remains RAM-only across backend restart", async () => {
+  const h = await sessionHarness(); const config = sessionConfiguration();
+  config.image.endpoint = "http://localhost:11435"; config.text.endpoint = "http://[::1]:11435";
+  assert.equal((await h.invoke("use-builtin-local-models-for-session", config)).ok, true);
+  await h.restartBackend(); assert.equal(h.getSessionRoutes(), null);
+  const state = await h.invoke("get-builtin-model-routes"); assert.equal(state.ready, false);
+  assert.equal(state.savedConfigurationAvailable, false); assert.deepEqual(h.writes, []);
+  assert.equal(h.updates.length, 1);
+  const fresh = await sessionHarness(); assert.equal(fresh.getSessionRoutes(), null);
+  assert.equal((await fresh.invoke("get-builtin-model-routes")).ready, false);
+});
+
+test("session validation reserves shared lock and blocks concurrent enable, encrypted save and capture start", async () => {
+  let release; const h = await sessionHarness(() => new Promise(resolve => {release = resolve;}));
+  const pending = h.invoke("use-builtin-local-models-for-session", sessionConfiguration());
+  await new Promise(resolve => setImmediate(resolve));
+  for (const name of ["use-builtin-local-models-for-session", "save-builtin-model-routes", "start-builtin-capture", "get-masked-capture-preview"]) {
+    assert.equal((await h.invoke(name, sessionConfiguration())).error_code, "model_routes_save_in_progress");
+  }
+  assert.equal(h.updates.length, 1); release({ok: true, ready: true});
+  assert.equal((await pending).ok, true); assert.deepEqual(h.writes, []);
+});
+
+test("failed or uncertain session publication stops owned backend, leaves no active RAM configuration", async () => {
+  for (const behavior of [async () => ({ok: false, ready: false}), async () => ({}),
+    async () => ({ok: true, ready: false}), async () => {throw new Error("private secret transport details");}]) {
+    const h = await sessionHarness(behavior);
+    const result = await h.invoke("use-builtin-local-models-for-session", sessionConfiguration());
+    assert.equal(result.ok, false); assert.equal(result.ready, false); assert.equal(h.getState().running, false);
+    assert.equal(h.getSessionRoutes(), null); assert.equal(result.persistenceUncertain, false);
+    assert.ok(!JSON.stringify(result).includes("private secret")); assert.deepEqual(h.writes, []);
+  }
+});
+
+test("revocation during pending validation prevents late activation and preserves the fresh backend", async () => {
+  let release; const h = await sessionHarness(() => new Promise(resolve => {release = resolve;}));
+  const pending = h.invoke("use-builtin-local-models-for-session", sessionConfiguration());
+  await new Promise(resolve => setImmediate(resolve));
+  const revoked = await h.invoke("revoke-builtin-session-models");
+  assert.equal(revoked.sessionRevoked, true); assert.equal(revoked.ready, false);
+  assert.deepEqual(h.children[0].killSignals, ["SIGKILL"]);
+  assert.equal(h.getSessionRoutes(), null); const newToken = h.getToken();
+  release({ok: true, ready: true});
+  assert.equal((await pending).error_code, "session_models_cancelled");
+  assert.equal(h.getToken(), newToken); assert.equal(h.getState().running, true);
+  assert.equal(h.getSessionRoutes(), null); assert.deepEqual(h.writes, []);
+});
+
+test("session publication checks original sender after pauses and update, including detached frame", async () => {
+  for (const detached of [false, true]) {
+    let release; const h = await sessionHarness(() => new Promise(resolve => {release = resolve;}));
+    const pending = h.invoke("use-builtin-local-models-for-session", sessionConfiguration());
+    await new Promise(resolve => setImmediate(resolve));
+    if (detached) Object.defineProperty(h.event.senderFrame, "url", {get() {throw new Error("detached");}});
+    else h.event.senderFrame.url += "#new-intent";
+    release({ok: true, ready: true});
+    assert.equal((await pending).error_code, "session_models_cancelled");
+    assert.equal(h.getSessionRoutes(), null); assert.equal(h.getState().running, false);
+  }
+  const h = await sessionHarness();
+  h.setControllers({pause: async () => {h.event.senderFrame.url += "#new-intent";}}, null);
+  assert.equal((await h.invoke("use-builtin-local-models-for-session", sessionConfiguration())).error_code,
+    "session_models_cancelled");
+  assert.equal(h.updates.length, 0);
+});
+
+
+test("Linux weak or unknown storage fails closed before read, encryption, update or write", async () => {
+  for (const provider of ["basic_text", "unknown", "future_unverified", undefined]) {
+    let encryptions = 0, decryptions = 0;
+    const storage = {isEncryptionAvailable: () => true, getSelectedStorageBackend: () => provider,
+      encryptString() {encryptions++;}, decryptString() {decryptions++;}};
+    const h = mainHarness({platform: "linux", storage}); await h.createWindow();
+    assert.equal(h.secureModelStorageAvailable(), false); assert.equal(h.readEncryptedModelRoutes(), null);
+    const event = {sender: h.getWindow().webContents, senderFrame: h.getWindow().webContents.mainFrame};
+    const result = await h.handlers.get("openbutler:save-builtin-model-routes")(event, sessionConfiguration());
+    assert.equal(result.ok, false); assert.equal(encryptions, 0); assert.equal(decryptions, 0);
+    assert.equal(h.requests.length, 1); assert.deepEqual(h.writes, []);
+  }
+  for (const provider of ["gnome_libsecret", "kwallet", "kwallet5", "kwallet6"]) {
+    assert.equal(mainHarness({platform: "linux", storage: {isEncryptionAvailable: () => true,
+      getSelectedStorageBackend: () => provider}}).secureModelStorageAvailable(), true);
+  }
+  for (const platform of ["darwin", "win32"]) {
+    assert.equal(mainHarness({platform, storage: {isEncryptionAvailable: () => true}}).secureModelStorageAvailable(), true);
+  }
+  assert.equal(mainHarness({platform: "linux", storage: {isEncryptionAvailable: () => true,
+    getSelectedStorageBackend() {throw new Error("private provider failure");}}}).secureModelStorageAvailable(), false);
+});
+
+
+test("unconfirmed exact-child exit blocks backend restart until exit is observed", async () => {
+  const h = mainHarness({childKillExits: false}); await h.createWindow();
+  const stopped = h.stopOwnedSessionBackend();
+  assert.equal(h.getState().running, false); assert.equal(h.getToken(), "");
+  assert.deepEqual(h.children[0].killSignals, ["SIGKILL"]);
+  assert.equal(await stopped, false);
+  await h.restartBackend(); assert.equal(h.children.length, 1); assert.equal(h.getState().running, false);
+  h.children[0].emit("exit", null, "SIGKILL");
+  await h.startBackend(); assert.equal(h.children.length, 2); assert.equal(h.getState().running, true);
+});
+
+
+test("manual restart and app quit hard-stop a pending temporary validation before late response", async () => {
+  for (const action of ["restart", "before-quit", "will-quit", "exit"]) {
+    let release; const h = await sessionHarness(() => new Promise(resolve => {release = resolve;}));
+    const pending = h.invoke("use-builtin-local-models-for-session", sessionConfiguration());
+    await new Promise(resolve => setImmediate(resolve));
+    if (action === "restart") await h.restartBackend();
+    else if (action === "exit") h.fakeProcess.emit("exit");
+    else h.app.emit(action);
+    assert.deepEqual(h.children[0].killSignals, ["SIGKILL"]);
+    release({ok: true, ready: true});
+    assert.equal((await pending).error_code, "session_models_cancelled");
+    assert.equal(h.getSessionRoutes(), null);
+    assert.equal(h.getState().running, action === "restart");
+    assert.equal(h.children.length, action === "restart" ? 2 : 1);
+    assert.deepEqual(h.writes, []);
+  }
+});
+
+
+test("session receipt forwards only finite bounded observed timeout numbers", async () => {
+  for (const [local, external] of [["90", "10"], [Infinity, NaN], [121, 11], [0, -1]]) {
+    const h = await sessionHarness(async () => ({ok: true, ready: true,
+      local_total_timeout_seconds: local, external_total_timeout_seconds: external}));
+    const result = await h.invoke("use-builtin-local-models-for-session", sessionConfiguration());
+    assert.equal(result.ok, true); assert.equal(result.status.local_total_timeout_seconds, undefined);
+    assert.equal(result.status.external_total_timeout_seconds, undefined);
+  }
+});
+
+
+test("navigation cancellation reports unconfirmed exact-child stop truthfully", async () => {
+  let release; const h = await sessionHarness(() => new Promise(resolve => {release = resolve;}), {childKillExits: false});
+  const pending = h.invoke("use-builtin-local-models-for-session", sessionConfiguration());
+  await new Promise(resolve => setImmediate(resolve)); h.event.senderFrame.url += "#cancelled";
+  release({ok: true, ready: true});
+  assert.equal((await pending).error_code, "session_models_stop_unconfirmed");
+  assert.equal(h.getState().running, false); assert.equal(h.getSessionRoutes(), null);
+  await h.restartBackend(); assert.equal(h.children.length, 1);
+});
+
+
+test("explicit revoke recovers a confirmed-stopped backend after failed validation without restoring routes", async () => {
+  let valid = false; const h = await sessionHarness(async () => ({ok: valid, ready: valid}));
+  assert.equal((await h.invoke("use-builtin-local-models-for-session", sessionConfiguration())).ok, false);
+  assert.equal(h.getState().running, false); assert.equal(h.getSessionRoutes(), null);
+  const result = await h.invoke("revoke-builtin-session-models");
+  assert.equal(result.sessionRevoked, true); assert.equal(result.backendRunning, true);
+  assert.equal(result.ready, false); assert.equal(h.getSessionRoutes(), null); assert.equal(h.updates.length, 1);
+  assert.equal((await h.invoke("get-builtin-model-routes")).ready, false);
+  valid = true;
+  assert.equal((await h.invoke("use-builtin-local-models-for-session", sessionConfiguration())).ok, true);
+  assert.equal(h.updates.length, 2); assert.deepEqual(h.writes, []);
 });

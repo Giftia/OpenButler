@@ -134,8 +134,16 @@ class LocalHttpTests(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertTrue(saved["recorded"])
         self.assertFalse(saved["organized"])
-        record = self.fetch("/api/context-engine/observations", headers)[1]["items"][0]
+        # Ingestion returns before model work. Wait only for this bounded test's terminal record.
+        import time
+        deadline = time.monotonic() + 3
+        while True:
+            record = self.fetch("/api/context-engine/observations", headers)[1]["items"][0]
+            if record["state"] == "model_unavailable" or time.monotonic() >= deadline:
+                break
+            time.sleep(.01)
         self.assertEqual(record["state"], "model_unavailable")
+        self.assertEqual(record["processing_reason"], "model_unavailable")
         self.assertNotIn(self.tmp.name, json.dumps(record))
         self.assertEqual(self.fetch("/api/context-engine/capture/pause", headers, b"{}")[0], 200)
         self.assertFalse(self.fetch("/api/context-engine/status", headers)[1]["recording"]["active"])

@@ -9,7 +9,7 @@ const declaration = source.match(/^let modelRoutesPersistenceUncertain = false;$
 const lockDeclaration = source.match(/^let modelRoutesSaveInProgress = false;$/m)?.[0];
 assert.ok(declaration, "desktop session uncertainty flag exists");
 assert.ok(lockDeclaration, "desktop session save lock exists");
-const handlersSource = source.slice(source.indexOf('handleDesktopRequest("openbutler:get-builtin-model-routes"'), source.indexOf('handleDesktopRequest("openbutler:get-acceptance-pack"'));
+const handlersSource = source.slice(source.indexOf('function keylessSessionConfiguration('), source.indexOf('handleDesktopRequest("openbutler:get-acceptance-pack"'));
 const route = {mode: "custom", protocol: "openai_compatible", endpoint: "https://example.com/v1", model: "synthetic-model", api_key: "synthetic-old-key"};
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const config = () => ({image: {...route}, text: {...route}, external_consent: true, masked_data_consent: true});
@@ -41,10 +41,10 @@ function fixture() {
     writeFileSync: (_path, value, options) => {assert.equal(options.mode, 0o600); if (control.failWrite) throw new Error("synthetic disk full"); temporary = value;},
     renameSync: () => {if (control.failRename) throw new Error("synthetic rename failure"); disk = JSON.parse(temporary); control.persists++;},
   };
-  new Function("handleDesktopRequest", "privateApi", "readEncryptedModelRoutes", "safeStorage", "captureController", "refreshTrayStatus", "dialog", "mainWindow", "modelRoutesPath", "fs", `${declaration}\n${lockDeclaration}\n${handlersSource}`)(
-    (name, handler) => handlers.set(name, handler), privateApi, () => clone(disk), safeStorage, null, () => {}, {showMessageBox: async () => control.dialogWait ? await control.dialogWait : {response: 0}}, null, () => "/synthetic/model-routes.enc", fs,
+  new Function("handleDesktopRequest", "privateApi", "readEncryptedModelRoutes", "safeStorage", "captureController", "publicWindowController", "refreshTrayStatus", "dialog", "mainWindow", "modelRoutesPath", "fs", "secureModelStorageAvailable", "isTrustedSender", "frontendIndexPath", `${declaration}\n${lockDeclaration}\nlet sessionModelRoutes = null; let sessionModelEpoch = 0; let sessionModelValidationPending = false;\n${handlersSource}`)(
+    (name, handler) => handlers.set(name, handler), privateApi, () => clone(disk), safeStorage, null, null, () => {}, {showMessageBox: async () => control.dialogWait ? await control.dialogWait : {response: 0}}, null, () => "/synthetic/model-routes.enc", fs, () => true, () => true, () => "/synthetic/index.html",
   );
-  const get = () => handlers.get("openbutler:get-builtin-model-routes")();
+  const get = () => handlers.get("openbutler:get-builtin-model-routes")({sender: {}, senderFrame: {url: "file:///synthetic/index.html"}});
   const save = (value = config()) => handlers.get("openbutler:save-builtin-model-routes")(null, value);
   return {control, get, save, active: () => clone(active), disk: () => clone(disk)};
 }

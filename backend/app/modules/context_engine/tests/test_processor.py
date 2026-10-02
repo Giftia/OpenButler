@@ -24,7 +24,7 @@ class ClosingConnection(sqlite3.Connection):
 
 
 class FakeGateway:
-    def __init__(self, *, ready=True, text='{"title":"工作记录","summary":"画面显示正在编辑文档。","boundary":"只能说明截图时刻。"}'):
+    def __init__(self, *, ready=True, text='{"title":"工作记录","summary":"画面显示正在编辑文档。","boundary":"只能说明截图时刻。","comparison":{"performed":false,"prior_observation_ids":[],"current_quote":"","prior_quote":""}}'):
         self.ready = ready
         self.text = text
         self.calls = []
@@ -36,7 +36,7 @@ class FakeGateway:
         self.calls.append(("image", image, auth))
         return "画面显示正在编辑文档。"
 
-    def call_text(self, prompt, auth):
+    def call_text(self, prompt, auth, **options):
         self.calls.append(("text", prompt, auth))
         return self.text
 
@@ -99,7 +99,7 @@ class ProcessorTests(unittest.TestCase):
         self.assertTrue(processor.process(self.event_id, image))
         self.assertEqual(self.store.list_records()[0]["state"], "ready")
 
-    def test_revoke_waits_for_inflight_request_and_prevents_next_route(self):
+    def test_revoke_returns_during_inflight_request_and_prevents_next_route(self):
         entered = Event()
         release = Event()
         revoked = Event()
@@ -121,7 +121,7 @@ class ProcessorTests(unittest.TestCase):
         self.assertTrue(entered.wait(3))
         revoke_thread.start()
         try:
-            self.assertFalse(revoked.wait(0.05))
+            self.assertTrue(revoked.wait(0.5))
         finally:
             release.set()
             process_thread.join(3)

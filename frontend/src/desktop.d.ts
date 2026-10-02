@@ -1,3 +1,4 @@
+import type {CaptureCapabilities, DesktopCaptureConfig, PublicWindowSource} from "./lib/captureTypes";
 export {};
 
 type BuiltinModelRoute = {
@@ -52,17 +53,24 @@ declare global {
       quitApp: () => Promise<{ok: boolean}>;
       getAcceptancePack: () => Promise<Record<string, any> | null>;
       saveAcceptanceFeedback: (feedback: Record<string, unknown>) => Promise<{ok: boolean; savedAt?: string; message?: string}>;
+      getCaptureWindows?: () => Promise<{ok: true; sources: PublicWindowSource[]} | {ok: false; error: string}>;
+      getCaptureCapabilities?: () => Promise<CaptureCapabilities>;
       getCaptureDisplays?: () => Promise<Array<{id: string; label: string}>>;
-      getMaskedCapturePreview?: (config: {display_id: string; excluded_apps: string[]; masks: Array<{x: number; y: number; width: number; height: number}>; confirmed: true}) => Promise<
-        {ok: true; previewDataUrl: string; masked_regions?: number; maskedRegions?: number} | {ok: false; error: string}
+      getMaskedCapturePreview?: (config: DesktopCaptureConfig) => Promise<
+        {ok: true; previewDataUrl: string; masked_regions?: number; maskedRegions?: number; source_revision?: string; lock_state?: string;
+          observation_mode?: "vision" | "masked_ocr_text"; post_mask_ocr_complete?: boolean;
+          post_mask_ocr_text?: string; post_mask_ocr_image_digest?: string} | {ok: false; error: string; error_code?: string}
       >;
-      startBuiltinCapture?: (config: {display_id: string; excluded_apps: string[]; masks: Array<{x: number; y: number; width: number; height: number}>; confirmed: true}) => Promise<{ok: boolean; error?: string}>;
-      pauseBuiltinCapture?: () => Promise<{ok: boolean; error?: string}>;
+      startBuiltinCapture?: (config: DesktopCaptureConfig) => Promise<{ok: boolean; error?: string; error_code?: string}>;
+      pauseBuiltinCapture?: () => Promise<{ok: boolean; active?: boolean; error?: string}>;
       getCaptureState?: () => Promise<Record<string, unknown>>;
       getMaskedEvidence?: (evidenceId: string) => Promise<
         {ok: true; dataUrl: string} | {ok: false; error: string}
       >;
+      listBuiltinLocalModels?: (input: {endpoint: string; protocol: "ollama_native"}) => Promise<{ok: boolean; models: string[]; endpoint: string; error_code?: string}>;
       getBuiltinModelRoutes?: () => Promise<Record<string, unknown>>;
+      useBuiltinLocalModelsForSession?: (routes: BuiltinModelRoutesInput) => Promise<Record<string, unknown> & {ok: boolean; persistence?: "session_only"; ready?: boolean; status?: Record<string, unknown>; error_code?: string}>;
+      revokeBuiltinSessionModels?: () => Promise<{ok: boolean; ready?: boolean; sessionRevoked?: boolean; backendRunning?: boolean; error_code?: string}>;
       saveBuiltinModelRoutes?: (routes: BuiltinModelRoutesInput) => Promise<{ok: boolean; status?: Record<string, unknown>; error?: string}>;
     };
   }

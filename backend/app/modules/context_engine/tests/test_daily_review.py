@@ -474,7 +474,7 @@ class DailyReviewTests(unittest.TestCase):
         revoke_thread.start()
         try:
             self.assertTrue(self.store._revocation_requested.wait(3))
-            self.assertFalse(revoked.wait(.05))
+            self.assertTrue(revoked.wait(.5))
         finally:
             release.set()
             request_thread.join(3)

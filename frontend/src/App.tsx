@@ -1,4 +1,9 @@
 import {useEffect, useMemo, useRef, useState} from "react";
+import {PublicWindowCaptureSetup} from "./components/PublicWindowCaptureSetup";
+import {CaptureObservationProvenance} from "./components/CaptureObservationProvenance";
+import {CaptureObservationAnalysis, observationCurrentContent, observationStateLabel} from "./components/CaptureObservationAnalysis";
+import {CaptureSessionSummary, capturePauseMessage} from "./components/CaptureSessionSummary";
+import type {CaptureCapabilities} from "./lib/captureTypes";
 import {MaskEditor} from "./components/MaskEditor";
 import type {MaskedEditingCanvas} from "./components/MaskEditor";
 import {clampMask, sameMask, validImageBounds} from "./lib/maskGeometry";
@@ -2874,13 +2879,32 @@ ${sampleLine}
 
 type PreviewMask = CaptureConfig["masks"][number];
 
-function observationStateLabel(state: ContextObservation["state"]) {
-  return {
-    recorded_pending: "已记录，待整理",
-    processing: "整理中",
-    ready: "已整理",
-    model_unavailable: "整理失败，记录仍在本机"
-  }[state];
+function observationProcessingReason(reason?: string | null): string {
+  const labels: Record<string, string> = {
+    queued: "已进入整理队列，尚未生成结论。", running: "正在调用模型整理；截图已保留，结论尚未就绪。",
+    queue_full: "整理队列已满，截图已保存；未自动补跑，请稍后手动重试。",
+    process_restarted: "服务重启中断了整理，截图仍保留；需要手动重试。",
+    capture_paused: "采集已暂停，待处理截图保留；不会自动补跑。",
+    authorization_revoked: "相关授权已撤销，整理已停止；不能继续使用旧授权。",
+    source_reconfigured: "采集来源已重新配置，这条截图未继续整理。",
+    session_expired: "本次采集授权已到期，未继续整理；不会自动续期。",
+    model_unavailable: "模型暂不可用，截图仍保留，没有生成结论。",
+    invalid_model_result: "模型返回格式未通过检查，未采用整理结论。",
+    invalid_temporal_comparison: "跨记录比较未通过依据检查，未采用变化结论。",
+    evidence_changed: "截图依据已改变，原整理结果不能继续采用。",
+    temporal_context_changed: "历史上下文已改变，原比较结果不能继续采用。",
+    record_or_evidence_unavailable: "记录或截图依据已过期、删除或暂不可用。",
+    observation_not_pending: "这条记录当前不处于可排队状态，请刷新后检查。",
+    prompt_limit_exceeded: "输入超过本次处理上限，未生成结论。",
+    description_limit_exceeded: "图像描述超过处理上限，未生成结论。",
+    provider_connection_failed: "无法连接模型服务，截图仍保留。",
+    provider_http_error: "模型服务返回错误，未生成可用结论。",
+    route_not_ready: "当前模型配置尚未就绪，请先手动验证。",
+    strict_mode_forbidden: "当前隐私方式不允许此模型调用，整理已停止。",
+    privacy_audit_unavailable: "隐私审计暂不可用，整理已安全停止。",
+  };
+  return typeof reason === "string" && Object.prototype.hasOwnProperty.call(labels, reason) ? labels[reason]
+    : reason ? "处理原因暂不可确认；请查看本机服务状态，不能视为已整理。" : "";
 }
 
 function PreviewObservationRow({item, onChanged}: {item: ContextObservation; onChanged?: () => void}) {
@@ -2889,18 +2913,21 @@ function PreviewObservationRow({item, onChanged}: {item: ContextObservation; onC
   const [evidenceMessage, setEvidenceMessage] = useState("");
   const [retryMessage, setRetryMessage] = useState("");
   const [retryBusy, setRetryBusy] = useState(false);
+  const retryActive = useRef(false);
 
   async function retry() {
+    if (retryActive.current) return;
+    retryActive.current = true;
     setRetryBusy(true);
     setRetryMessage("");
     try {
       const result = await retryContextObservation(item.id);
-      setRetryMessage(result.ok ? "已重新整理。" : result.reason === "model_unavailable"
-        ? "整理模型尚不可用，请先检查配置。" : "图片依据已过期或暂不可用。");
+      setRetryMessage(result.ok ? result.queued ? "已加入整理队列，尚未生成结论。" : "请求已接收，请刷新查看处理状态。" : observationProcessingReason(result.reason) || "本次未排入整理队列，请检查模型与截图依据。");
       onChanged?.();
     } catch {
       setRetryMessage("重新整理失败，请检查本机服务后重试。");
     } finally {
+      retryActive.current = false;
       setRetryBusy(false);
     }
   }
@@ -2945,17 +2972,18 @@ function PreviewObservationRow({item, onChanged}: {item: ContextObservation; onC
   return <article className="preview-observation-row">
     <time dateTime={item.captured_at}>{Number.isNaN(date.getTime()) ? "时间未知" : date.toLocaleString("zh-CN")}</time>
     <div className="preview-observation-body">
-      <div className="moment-title-row"><strong>{item.title || "本机画面记录"}</strong><span className="moment-state">{observationStateLabel(item.state)}</span></div>
-      <p>{item.summary || (item.state === "model_unavailable" ? "智能整理不可用；本机记录仍保留，未生成结论。" : "已保存遮挡后画面，尚未生成整理结论。")}</p>
-      <small>来源：{item.source_label}</small>
+      <div className="moment-title-row"><strong>{observationCurrentContent(item)?.title || "本机画面记录"}</strong><span className="moment-state">{observationStateLabel(item.state)}</span></div>
+      <CaptureObservationAnalysis item={item} />
+      <CaptureObservationProvenance item={item} />
+      {item.processing_reason && <small role="status">{observationProcessingReason(item.processing_reason)}</small>}
       <button className="ghost timeline-evidence-button" onClick={() => void toggleEvidence()}>{open ? "收起依据" : "查看依据"}</button>
-      {item.state === "model_unavailable" && <button className="secondary" disabled={retryBusy || !item.evidence_available} onClick={() => void retry()}>重新整理</button>}
+      {(item.state === "model_unavailable" || (item.state === "recorded_pending" && item.processing_reason && !["queued", "running"].includes(item.processing_reason))) && <button className="secondary" disabled={retryBusy || !item.evidence_available} onClick={() => void retry()}>重新整理</button>}
       {retryMessage && <small role="status">{retryMessage}</small>}
       {open && <div className="moment-evidence evidence-drawer">
         <strong>依据与边界</strong><p>{item.boundary}</p>
-        {evidence && <img className="preview-evidence-image" src={evidence} alt="本机遮挡后图片依据" />}
+        {evidence && <img className="preview-evidence-image" src={evidence} alt="实际采集且经隐私遮挡的窗口或屏幕截图依据" />}
         {evidenceMessage && <small role="status">{evidenceMessage}</small>}
-        <small>仅显示经遮挡处理的本机图片，不显示原始路径。</small>
+        <small>实际采集的截图经隐私遮挡后保留；不是未遮挡原图，也不是生成图片。不显示原始路径。</small>
         <button className="ghost" onClick={() => void removeRecord()}>删除这条记录</button>
       </div>}
     </div>
@@ -2965,34 +2993,43 @@ function PreviewObservationRow({item, onChanged}: {item: ContextObservation; onC
 function PreviewToday({onOpenGuide}: {onOpenGuide: () => void}) {
   const [status, setStatus] = useState<ContextEngineStatus | null>(null);
   const [observations, setObservations] = useState<ContextObservation[]>([]);
+  const [desktopCapture, setDesktopCapture] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const refreshRevision = useRef(0);
+  const controlBusy = useRef(false);
+  const [stateMismatch, setStateMismatch] = useState(false);
 
   async function refreshPreviewToday() {
+    const request = ++refreshRevision.current;
     try {
       const [nextStatus, nextObservations, captureState] = await Promise.all([
         getContextEngineStatus(), getContextObservations(),
         window.openbutlerDesktop?.getCaptureState?.().catch(() => null) ?? Promise.resolve(null)
       ]);
+      if (request !== refreshRevision.current) return;
+      setDesktopCapture(captureState ? {...captureState, source_kind: nextStatus.recording.source_kind} : null);
       const desktopActive = typeof captureState?.active === "boolean" ? captureState.active : null;
-      setStatus(desktopActive === null ? nextStatus : {...nextStatus, recording: {...nextStatus.recording, active: nextStatus.recording.active && desktopActive}});
+      setStatus(desktopActive === null ? nextStatus : {...nextStatus, recording: {...nextStatus.recording, active: nextStatus.recording.active || desktopActive}});
+      setStateMismatch(desktopActive !== null && desktopActive !== nextStatus.recording.active);
       setObservations(nextObservations.items);
-      setError(captureState?.lastResult === "privacy_processing_failed"
-        ? "本地遮挡处理失败，记录已暂停。请检查本机文字识别后重新预览并启动。"
-        : desktopActive !== null && desktopActive !== nextStatus.recording.active
-          ? "桌面采集与本机服务状态不一致，请检查隐私预览后重新启动。" : "");
+      setError(capturePauseMessage(typeof captureState?.lastResult === "string" ? captureState.lastResult : null) || (desktopActive !== null && desktopActive !== nextStatus.recording.active
+          ? "桌面采集与本机服务状态不一致，请检查隐私预览后重新启动。" : ""));
     } catch {
+      if (request !== refreshRevision.current) return;
       setError("本机记录暂时无法读取，请确认本机服务正在运行。");
     }
   }
 
   useEffect(() => {
     void refreshPreviewToday();
-    const timer = window.setInterval(() => void refreshPreviewToday(), 30_000);
-    return () => window.clearInterval(timer);
+    const timer = window.setInterval(() => { if (!controlBusy.current) void refreshPreviewToday(); }, 5_000);
+    return () => { refreshRevision.current++; window.clearInterval(timer); };
   }, []);
 
   async function stopRecording(revoke: boolean) {
+    if (controlBusy.current) return;
+    controlBusy.current = true; refreshRevision.current++;
     setBusy(true);
     try {
       const bridge = await window.openbutlerDesktop?.pauseBuiltinCapture?.();
@@ -3003,11 +3040,14 @@ function PreviewToday({onOpenGuide}: {onOpenGuide: () => void}) {
     } catch {
       setError("操作未完成，请检查本机记录状态后重试。");
     } finally {
+      controlBusy.current = false;
       setBusy(false);
     }
   }
 
   async function openRecordingSetup() {
+    if (controlBusy.current) return;
+    controlBusy.current = true; refreshRevision.current++;
     if (status?.recording.active) {
       setBusy(true);
       try {
@@ -3017,11 +3057,12 @@ function PreviewToday({onOpenGuide}: {onOpenGuide: () => void}) {
         await refreshPreviewToday();
       } catch {
         setError("未能暂停当前录制，请先确认录制状态。");
-        setBusy(false);
+        setBusy(false); controlBusy.current = false;
         return;
       }
       setBusy(false);
     }
+    controlBusy.current = false;
     onOpenGuide();
   }
 
@@ -3032,20 +3073,27 @@ function PreviewToday({onOpenGuide}: {onOpenGuide: () => void}) {
       <div className="today-hero-copy">
         <span className="privacy-chip">0.2.0 Preview · 本机记录</span>
         <h1>今日</h1>
-        <p className="hero-summary">{status?.recording.active ? "正在记录已授权的屏幕。" : "本机记录已暂停。"} {pending ? `${pending} 条记录等待整理。` : "暂无待整理记录。"}</p>
+        <p className="hero-summary">{stateMismatch ? "录制状态需要核对，请先暂停。" : status?.recording.active ? "正在自动采样已授权的范围。" : "本机记录已暂停。"} {pending ? `${pending} 条记录等待整理。` : "暂无待整理记录。"}</p>
         <div className="home-status-strip">
           <article><strong>{status?.recording.record_count ?? 0}</strong><span>本机记录</span><small>仅计数，不代表已整理</small></article>
           <article><strong>{pending}</strong><span>待整理</span><small>尚未生成结论</small></article>
           <article><strong>{failed}</strong><span>整理失败</span><small>记录仍可查看</small></article>
         </div>
         <div className="hero-actions primary-action-row">
-          {status?.recording.active ? <button className="secondary" disabled={busy} onClick={() => void stopRecording(false)}>暂停录制</button> : <button className="primary" onClick={() => void openRecordingSetup()}>检查隐私预览并开始</button>}
+          {status?.recording.active ? <button className="secondary" disabled={busy} onClick={() => void stopRecording(false)}>暂停录制</button> : <button className="primary" disabled={busy} onClick={() => void openRecordingSetup()}>设置自动截图记录</button>}
+          {status?.recording.active && <button className="secondary" disabled={busy} onClick={() => void stopRecording(true)}>停止并撤销授权</button>}
           <button className="secondary" onClick={() => navigateClient("/timeline")}>查看时间线</button>
           <a className="secondary preview-model-shortcut" href="#preview-model-settings" onClick={(event) => { event.preventDefault(); document.getElementById("preview-model-settings")?.scrollIntoView({behavior: "smooth", block: "start"}); document.getElementById("preview-model-settings")?.focus(); }}>配置整理模型</a>
           <button className="ghost" disabled={busy} onClick={() => void refreshPreviewToday()}>刷新</button>
         </div>
       </div>
-      <div className="today-hero-status command-suggestion-card"><span className="privacy-chip">记录状态</span><strong>{status?.recording.active ? "记录中" : "未录制"}</strong><span>录制与智能整理分开运行；没有可用模型时，记录只会标为待整理或整理失败。</span></div>
+      <div className="today-hero-status command-suggestion-card"><span className="privacy-chip">记录状态</span><strong>{stateMismatch ? "状态待核对" : status?.recording.active ? "记录中" : "未录制"}</strong><span>录制与智能整理分开运行；没有可用模型时，记录只会标为待整理或整理失败。</span></div>
+    </section>
+    <section className="today-panel"><CaptureSessionSummary state={desktopCapture} />
+      {status?.recording.processing_queue && <div aria-label="本机整理队列" role="status">
+        <strong>整理队列</strong><p>正在处理 {status.recording.processing_queue.running} 条 · 等待 {status.recording.processing_queue.queued} / {status.recording.processing_queue.capacity} 条 · 队列满而未入队 {status.recording.processing_queue.backpressured} 条</p>
+        <small>{status.recording.processing_queue.accepting ? "当前接受新的整理任务。" : "当前暂停接收整理任务。"}队列数量不代表模型已成功；未入队或中断记录的截图仍保留，需要手动重试，不会自动补跑。</small>
+      </div>}
     </section>
     {error && <p className="policy-note" role="alert">{error}</p>}
     <PreviewDailyReview authorized={status?.recording.authorized === true} recordRevision={observations.map((item) => `${item.id}:${item.state}:${item.evidence_available}`).join("|")} />
@@ -3054,7 +3102,7 @@ function PreviewToday({onOpenGuide}: {onOpenGuide: () => void}) {
       {observations.length ? observations.slice(0, 3).map((item) => <PreviewObservationRow key={item.id} item={item} onChanged={() => void refreshPreviewToday()} />) : <div className="friendly-empty"><strong>还没有本机记录</strong><span>完成隐私预览并开始录制后，记录会出现在这里。</span></div>}
     </section>
     <section className="today-panel preview-recording-controls"><div className="section-title"><div><h2>录制授权</h2><p>重新开始前需要再次检查隐私预览。</p></div></div>
-      <div className="desktop-action-row"><button className="secondary" disabled={busy || !status?.recording.active} onClick={() => void stopRecording(false)}>暂停</button><button className="secondary" disabled={busy || !status?.recording.authorized} onClick={() => void stopRecording(true)}>撤销授权</button><button className="secondary" disabled={busy} onClick={() => void openRecordingSetup()}>更改录制范围</button></div>
+      <div className="desktop-action-row"><button className="secondary" disabled={busy || !status?.recording.active} onClick={() => void stopRecording(false)}>暂停</button><button className="secondary" disabled={busy || !status?.recording.authorized} onClick={() => void stopRecording(true)}>停止并撤销授权</button><button className="secondary" disabled={busy} onClick={() => void openRecordingSetup()}>更改录制范围</button></div>
     </section>
     <PreviewModelSettings onSaved={refreshPreviewToday} />
   </div>;
@@ -3095,6 +3143,34 @@ function PreviewPrivacy({mode, onChange, onOpenGuide}: {mode: PrivacyMode; onCha
 }
 
 type PreviewModelRoute = {protocol: "openai_compatible" | "ollama_native"; mode: "local" | "custom"; endpoint: string; model: string; api_key: string; apiKeyConfigured: boolean};
+type LocalModelDiscovery = {status: "idle" | "loading" | "ready" | "empty" | "unavailable"; models: string[]; endpoint: string; selected: string | null; message: string};
+const emptyLocalModelDiscovery = (): LocalModelDiscovery => ({status: "idle", models: [], endpoint: "", selected: null, message: ""});
+function validLocalModelDiscoveryEndpoint(endpoint: string): boolean {
+  if (!/^http:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::[1-9]\d{0,4})?$/.test(endpoint)) return false;
+  try { const url = new URL(endpoint); return !url.username && !url.password && !url.search && !url.hash; } catch { return false; }
+}
+function readLocalModelDiscovery(result: unknown, endpoint: string): string[] | null {
+  if (!result || typeof result !== "object") return null;
+  const value = result as Record<string, unknown>;
+  if (value.ok !== true || value.endpoint !== endpoint || !Array.isArray(value.models) || value.models.length > 128
+    || value.models.some((model) => typeof model !== "string" || !model.length || model.length > 200 || model.trim() !== model || !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/.test(model) || model.includes("//") || model.split("/").some((part) => part === "." || part === ".."))) return null;
+  return [...new Set(value.models as string[])];
+}
+function localModelDiscoveryFailure(code: unknown): string {
+  const messages: Record<string, string> = {
+    invalid_local_endpoint: "请填写不含路径或末尾斜线的本机 HTTP 地址，例如 http://127.0.0.1:11434。",
+    unsupported_discovery_protocol: "仅支持读取本机 Ollama 的已安装模型列表。",
+    local_discovery_busy: "本机模型列表正在读取，请稍后再试。",
+    local_discovery_timeout: "读取本机模型列表超时，请检查此地址的 Ollama 服务。",
+    local_discovery_unavailable: "此地址的本机模型列表暂不可用，请确认 Ollama 正在运行。",
+    local_discovery_http_error: "本机服务未返回可用的模型列表，请检查服务地址。",
+    local_discovery_response_too_large: "本机模型列表超出安全读取上限，未采用返回内容。",
+    invalid_local_model_response: "本机模型列表格式无法验证，未采用返回内容。",
+    local_discovery_cancelled: "本次列表读取已取消，请重新读取。",
+  };
+  return typeof code === "string" && Object.prototype.hasOwnProperty.call(messages, code) ? messages[code]
+    : "读取本机模型列表未完成，请检查服务地址后重试。已有模型配置未改变。";
+}
 type PreviewModelConfiguration = {image: PreviewModelRoute; text: PreviewModelRoute; external_consent: boolean; masked_data_consent: boolean};
 type PreviewModelConfigurationState = "unconfigured" | "saved-needs-validation" | "ready" | "unavailable";
 const emptyPreviewRoute = (): PreviewModelRoute => ({protocol: "ollama_native", mode: "local", endpoint: "http://127.0.0.1:11434", model: "", api_key: "", apiKeyConfigured: false});
@@ -3116,6 +3192,30 @@ function readPreviewModelConfiguration(result: Record<string, unknown>): Preview
   return image.model && text.model ? {image, text, external_consent: result.external_consent === true, masked_data_consent: result.masked_data_consent === true} : null;
 }
 
+function readSessionModelConfiguration(result: Record<string, unknown>): PreviewModelConfiguration | null {
+  if (result.persistence !== "session_only" || result.savedConfigurationAvailable !== false) return null;
+  const configuration = readPreviewModelConfiguration(result);
+  if (!configuration || configuration.external_consent || configuration.masked_data_consent) return null;
+  const routes = result.routes && typeof result.routes === "object" ? result.routes as Record<string, unknown> : {};
+  for (const target of ["image", "text"] as const) {
+    const raw = routes[target] && typeof routes[target] === "object" ? routes[target] as Record<string, unknown> : {};
+    if (raw.mode !== "local" || raw.protocol !== "ollama_native" || raw.apiKeyConfigured === true || (raw.api_key != null && raw.api_key !== "")
+      || !validLocalModelDiscoveryEndpoint(configuration[target].endpoint) || !configuration[target].model.trim() || configuration[target].model.length > 200) return null;
+  }
+  return configuration;
+}
+function sessionModelFailure(code: unknown): string {
+  const labels: Record<string, string> = {
+    session_models_invalid_configuration: "仅本次使用只支持无密钥的本机 Ollama；请检查两个服务地址和模型名称。",
+    session_models_validation_failed: "本次会话模型未通过验证，不能作为可用配置。",
+    session_models_cancelled: "本次会话验证已取消，没有启用新的内存配置。",
+    session_models_stop_unconfirmed: "本机模型服务是否已停止尚未确认。当前配置不可视为已撤销或可用，请重新检查服务状态。",
+    local_service_unavailable: "本机服务暂不可用，本次会话配置未确认。",
+    model_routes_save_in_progress: "另一次模型配置仍在处理，请等待后重新检查状态。",
+  };
+  return typeof code === "string" && Object.prototype.hasOwnProperty.call(labels, code) ? labels[code]
+    : "本次会话配置未确认，请重新检查本机服务。没有确认写入磁盘或模型可用。";
+}
 function previewModelFailure(result: unknown): string {
   const item = result && typeof result === "object" ? result as Record<string, unknown> : {};
   const messages: Record<string, string> = {
@@ -3153,22 +3253,40 @@ function previewModelFailurePreservesConfiguration(result: unknown): boolean {
   ]).has(typeof item.error === "string" ? item.error : "");
 }
 
-function PreviewModelSettings({onSaved}: {onSaved: () => Promise<void>}) {
+function PreviewModelSettings({onSaved, sectionId = "preview-model-settings"}: {onSaved: () => Promise<void>; sectionId?: string}) {
   const [imageRoute, setImageRoute] = useState<PreviewModelRoute>(emptyPreviewRoute);
+  const [localDiscoveries, setLocalDiscoveries] = useState<{image: LocalModelDiscovery; text: LocalModelDiscovery}>(() => ({image: emptyLocalModelDiscovery(), text: emptyLocalModelDiscovery()}));
+  const [discoveringTarget, setDiscoveringTarget] = useState<"image" | "text" | null>(null);
   const [textRoute, setTextRoute] = useState<PreviewModelRoute>(emptyPreviewRoute);
   const [externalConsent, setExternalConsent] = useState(false);
   const [maskedDataConsent, setMaskedDataConsent] = useState(false);
   const [savedConfiguration, setSavedConfiguration] = useState<PreviewModelConfiguration | null>(null);
   const [configurationState, setConfigurationState] = useState<PreviewModelConfigurationState>("unconfigured");
+  const [sessionOnly, setSessionOnly] = useState(false);
+  const [localTimeoutSeconds, setLocalTimeoutSeconds] = useState<number | null>(null);
   const [dirty, setDirty] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [request] = useState(() => ({active: false, reading: false, pending: false, readVersion: 0, editVersion: 0, persistenceUncertain: false}));
+  const [request] = useState(() => ({active: false, reading: false, pending: false, readVersion: 0, editVersion: 0, persistenceUncertain: false, sessionPending: false, sessionRevoking: false, sessionVersion: 0, discoveryBusy: false, discoveryVersion: {image: 0, text: 0}, discoverySelection: {image: null as {model: string; endpoint: string} | null, text: null as {model: string; endpoint: string} | null}}));
   const bridgeAvailable = Boolean(window.openbutlerDesktop?.getBuiltinModelRoutes && window.openbutlerDesktop?.saveBuiltinModelRoutes);
   const hasExternalRoute = imageRoute.mode === "custom" || textRoute.mode === "custom";
+  const sessionEligible = [imageRoute, textRoute].every((route) => route.mode === "local" && route.protocol === "ollama_native" && !route.api_key);
+  const sessionBridgeAvailable = Boolean(window.openbutlerDesktop?.useBuiltinLocalModelsForSession && window.openbutlerDesktop?.revokeBuiltinSessionModels);
+  function readModelBudget(result: Record<string, unknown>) {
+    const nested = result.status && typeof result.status === "object" ? result.status as Record<string, unknown> : {};
+    const seconds = result.local_total_timeout_seconds ?? nested.local_total_timeout_seconds;
+    setLocalTimeoutSeconds(typeof seconds === "number" && Number.isFinite(seconds) && seconds > 0 && seconds <= 3600 ? seconds : null);
+  }
+
+  function invalidateLocalModels(target: "image" | "text") {
+    request.discoveryVersion[target]++;
+    request.discoverySelection[target] = null;
+    setLocalDiscoveries((current) => ({...current, [target]: emptyLocalModelDiscovery()}));
+  }
 
   function restoreFields(configuration: PreviewModelConfiguration) {
+    invalidateLocalModels("image"); invalidateLocalModels("text");
     setImageRoute({...configuration.image, api_key: ""});
     setTextRoute({...configuration.text, api_key: ""});
     setExternalConsent(configuration.external_consent);
@@ -3188,7 +3306,10 @@ function PreviewModelSettings({onSaved}: {onSaved: () => Promise<void>}) {
       if (!request.active || readVersion !== request.readVersion) return;
       if (result.persistenceUncertain === true) request.persistenceUncertain = true;
       if (result.error_code === "local_service_unavailable") throw new Error("local_service_unavailable");
-      const configuration = readPreviewModelConfiguration(result);
+      const isSession = result.persistence === "session_only";
+      setSessionOnly(isSession); readModelBudget(result);
+      const configuration = isSession ? readSessionModelConfiguration(result) : readPreviewModelConfiguration(result);
+      if (isSession && !configuration && result.ready === true) throw new Error("invalid_session_status");
       const activeConfiguration = readPreviewModelConfiguration({...result, routes: null});
       if (result.ready === true && configuration && activeConfiguration && (["image", "text"] as const).some((target) => !samePreviewModelDestination(configuration[target], activeConfiguration[target]) || configuration[target].model !== activeConfiguration[target].model)) {
         request.persistenceUncertain = true;
@@ -3214,13 +3335,45 @@ function PreviewModelSettings({onSaved}: {onSaved: () => Promise<void>}) {
     request.active = true;
     request.reading = false;
     void loadRoutes();
-    return () => { request.active = false; request.readVersion += 1; };
+    return () => {
+      request.active = false; request.readVersion += 1; request.discoveryVersion.image++; request.discoveryVersion.text++; request.sessionVersion++;
+      if (request.sessionPending) {
+        request.sessionPending = false;
+        void window.openbutlerDesktop?.revokeBuiltinSessionModels?.().catch(() => undefined);
+      }
+    };
   }, []);
 
   function markEdited() {
     request.editVersion += 1;
     setDirty(true);
     setMessage("");
+  }
+
+  async function discoverLocalModels(target: "image" | "text", route: PreviewModelRoute) {
+    if (request.pending || request.discoveryBusy || route.mode !== "local" || route.protocol !== "ollama_native") return;
+    const endpoint = route.endpoint.trim();
+    const version = ++request.discoveryVersion[target];
+    const fail = (code: unknown) => setLocalDiscoveries((current) => ({...current, [target]: {...emptyLocalModelDiscovery(), status: "unavailable", endpoint, message: localModelDiscoveryFailure(code)}}));
+    if (!validLocalModelDiscoveryEndpoint(endpoint)) { fail("invalid_local_endpoint"); return; }
+    const read = window.openbutlerDesktop?.listBuiltinLocalModels;
+    if (!read) { fail("local_discovery_unavailable"); return; }
+    request.discoveryBusy = true; setDiscoveringTarget(target);
+    setLocalDiscoveries((current) => ({...current, [target]: {...emptyLocalModelDiscovery(), status: "loading", endpoint}}));
+    try {
+      const result = await read({endpoint, protocol: "ollama_native"});
+      if (!request.active || version !== request.discoveryVersion[target]) return;
+      if (!result.ok) { fail(result.error_code); return; }
+      const models = readLocalModelDiscovery(result, endpoint);
+      if (!models) { fail("invalid_local_model_response"); return; }
+      setLocalDiscoveries((current) => ({...current, [target]: {status: models.length ? "ready" : "empty", models, endpoint, selected: null,
+        message: models.length ? "已读取此地址的已安装模型；选择后仍需手动验证并保存。" : "此地址没有已安装模型。没有下载模型，也未更改已保存配置。"}}));
+    } catch {
+      if (request.active && version === request.discoveryVersion[target]) fail(null);
+    } finally {
+      request.discoveryBusy = false;
+      if (request.active) setDiscoveringTarget(null);
+    }
   }
 
   function routeFields(label: string, target: "image" | "text", value: PreviewModelRoute) {
@@ -3230,7 +3383,13 @@ function PreviewModelSettings({onSaved}: {onSaved: () => Promise<void>}) {
       if (!samePreviewModelDestination(next, value)) {
         setExternalConsent(false);
         setMaskedDataConsent(false);
-        next = {...next, api_key: ""};
+        const pickedModel = request.discoverySelection[target]?.model;
+        invalidateLocalModels(target);
+        next = {...next, api_key: "", model: pickedModel && value.model === pickedModel ? "" : next.model};
+      }
+      if (next.model !== value.model) {
+        request.discoverySelection[target] = null;
+        setLocalDiscoveries((current) => ({...current, [target]: {...current[target], selected: null}}));
       }
       markEdited();
       (target === "image" ? setImageRoute : setTextRoute)(next);
@@ -3240,6 +3399,21 @@ function PreviewModelSettings({onSaved}: {onSaved: () => Promise<void>}) {
       <label><span>接口类型</span><select name={`${target}-protocol`} value={value.protocol} onChange={(event) => change({...value, protocol: event.target.value as PreviewModelRoute["protocol"]})}><option value="ollama_native">Ollama</option><option value="openai_compatible">OpenAI 兼容接口</option></select></label>
       <label><span>服务地址</span><input name={`${target}-endpoint`} value={value.endpoint} onChange={(event) => change({...value, endpoint: event.target.value})} placeholder={value.mode === "local" ? "http://127.0.0.1:11434" : "https://example.com/v1"} autoComplete="off" spellCheck={false} /></label>
       <label><span>模型名称</span><input name={`${target}-model`} value={value.model} onChange={(event) => change({...value, model: event.target.value})} placeholder="填写模型名称" autoComplete="off" /></label>
+      {value.mode === "local" && value.protocol === "ollama_native" && <div className="preview-local-model-discovery" style={{display: "grid", gap: 8}} aria-label={label + "本机已安装模型"}>
+        <button className="secondary" type="button" disabled={busy || loading || discoveringTarget !== null || !window.openbutlerDesktop?.listBuiltinLocalModels}
+          onClick={() => void discoverLocalModels(target, value)}>{discoveringTarget === target ? "正在读取本机模型…" : "读取本机已安装模型"}</button>
+        <small>仅在点击后读取当前填写地址的 Ollama 模型列表；不扫描端口、不下载、不推理，也不自动保存配置。</small>
+        {!window.openbutlerDesktop?.listBuiltinLocalModels && <small>当前桌面版暂不支持读取模型列表，仍可手动填写名称。</small>}
+        {localDiscoveries[target].status === "ready" && <label><span>此地址已安装的模型</span><select name={`${target}-installed-model`} value={localDiscoveries[target].selected ?? ""} disabled={busy || discoveringTarget !== null}
+          onChange={(event) => {
+            const model = event.target.value, discovery = localDiscoveries[target];
+            if (request.pending || discovery.endpoint !== value.endpoint.trim() || !discovery.models.includes(model)) return;
+            request.discoverySelection[target] = {model, endpoint: discovery.endpoint};
+            markEdited(); (target === "image" ? setImageRoute : setTextRoute)({...value, model});
+            setLocalDiscoveries((current) => ({...current, [target]: {...current[target], selected: model}}));
+          }}><option value="" disabled>请选择已安装模型</option>{localDiscoveries[target].models.map((model) => <option key={model} value={model}>{model}</option>)}</select></label>}
+        {localDiscoveries[target].message && <small role="status">{localDiscoveries[target].message}</small>}
+      </div>}
       {value.mode === "custom" && <label><span>API Key（仅保存在本机加密存储）</span><input name={`${target}-api-key`} type="password" autoComplete="off" value={value.api_key} onChange={(event) => change({...value, api_key: event.target.value})} placeholder={savedKeyAvailable ? "已保存，留空可复用" : "服务需要时填写"} /><small>{savedKeyAvailable ? "同一地址、接口类型和运行位置可复用已保存密钥；密钥不会回显。" : "更换地址、接口类型或运行位置后，不会沿用旧密钥。"}</small></label>}
     </fieldset>;
   }
@@ -3261,6 +3435,60 @@ function PreviewModelSettings({onSaved}: {onSaved: () => Promise<void>}) {
     if (request.active) setMessage(reread
       ? "保存结果未确认，已重新读取本机存档。当前运行配置可能与存档不同，请重新验证并保存，确认后再继续录制；录制不会自动恢复。"
       : "保存结果未确认，且无法读取本机存档。当前运行配置可能已改变，请检查本机服务后重新读取并验证；录制不会自动恢复。");
+  }
+
+  async function revokeSessionModels() {
+    if (request.sessionRevoking || (request.pending && !request.sessionPending)) return;
+    const revoke = window.openbutlerDesktop?.revokeBuiltinSessionModels;
+    if (!revoke) return;
+    request.sessionVersion++; request.sessionPending = false; request.sessionRevoking = true; request.pending = true;
+    setBusy(true); setMessage("正在撤销本次内存配置并取消待完成验证…");
+    try {
+      const result = await revoke();
+      if (!request.active) return;
+      if (!result.ok || result.sessionRevoked !== true) throw new Error("session_revocation_unconfirmed");
+      request.persistenceUncertain = false; setSessionOnly(false); setSavedConfiguration(null); setConfigurationState("unconfigured"); setDirty(true);
+      setMessage("本次内存配置已撤销，录制保持暂停。再次使用需手动验证；没有自动恢复模型配置。");
+      try { await onSaved(); } catch { /* The explicit native revocation receipt remains authoritative. */ }
+    } catch {
+      if (request.active) { request.persistenceUncertain = true; setSessionOnly(true); setConfigurationState("unavailable"); setMessage("本次配置的撤销尚未确认，请重新读取状态或重试撤销；不要视为仍可用。"); }
+    } finally { request.sessionRevoking = false; request.pending = false; if (request.active) setBusy(false); }
+  }
+
+  async function useSessionModels() {
+    if (request.pending || request.reading || !sessionEligible || !sessionBridgeAvailable) return;
+    if (![imageRoute, textRoute].every((route) => validLocalModelDiscoveryEndpoint(route.endpoint.trim()) && route.model.trim() && route.model.trim().length <= 200)) {
+      setMessage("请填写两个无密钥本机 Ollama 的有效回环地址和模型名称。"); return;
+    }
+    const clean = (route: PreviewModelRoute) => ({mode: "local" as const, protocol: "ollama_native", endpoint: route.endpoint.trim(), model: route.model.trim()});
+    const payload = {image: clean(imageRoute), text: clean(textRoute), external_consent: false, masked_data_consent: false};
+    const version = ++request.sessionVersion;
+    request.pending = true; request.sessionPending = true; setBusy(true); setMessage("正在验证仅本次使用的本机模型；尚未确认可用，也不会开始录制。");
+    try {
+      const result = await window.openbutlerDesktop!.useBuiltinLocalModelsForSession!(payload);
+      if (!request.active || version !== request.sessionVersion) return;
+      const configuration = readSessionModelConfiguration(result);
+      const exact = configuration && (["image", "text"] as const).every((target) => configuration[target].endpoint === payload[target].endpoint && configuration[target].model === payload[target].model);
+      if (!result.ok || result.ready !== true || result.status?.ready !== true || !exact) {
+        if (result.ok) await window.openbutlerDesktop?.revokeBuiltinSessionModels?.().catch(() => undefined);
+        if (!request.active || version !== request.sessionVersion) return;
+        setSessionOnly(true); setSavedConfiguration(null); setConfigurationState("unavailable");
+        setMessage(sessionModelFailure(result.error_code)); return;
+      }
+      request.persistenceUncertain = false; setSessionOnly(true); setSavedConfiguration(configuration); restoreFields(configuration);
+      readModelBudget(result); setConfigurationState("ready");
+      setMessage("图像和文字模型已验证，仅本次会话可用。配置只在内存中，未写入磁盘；退出或重启应用后需要重新配置。录制不会自动开始或恢复。");
+    } catch {
+      if (request.active && version === request.sessionVersion) {
+        await window.openbutlerDesktop?.revokeBuiltinSessionModels?.().catch(() => undefined);
+        if (request.active && version === request.sessionVersion) { setSessionOnly(true); setSavedConfiguration(null); setConfigurationState("unavailable"); setMessage("本次验证结果未确认，已请求撤销可能的内存配置。请重新读取状态；未确认模型可用。"); }
+      }
+    } finally {
+      if (version === request.sessionVersion) {
+        request.sessionPending = false; request.pending = false;
+        if (request.active) { setBusy(false); try { await onSaved(); } catch { /* No automatic validation or capture follows. */ } }
+      }
+    }
   }
 
   async function saveRoutes() {
@@ -3293,7 +3521,7 @@ function PreviewModelSettings({onSaved}: {onSaved: () => Promise<void>}) {
         if (previewModelFailurePreservesConfiguration(result)) {
           // Explicit validation/preflight rejections precede publishing either proposed route.
           if (configurationState !== "ready") setConfigurationState("unavailable");
-          setMessage(`${previewModelFailure(result)}${savedConfiguration ? " 上次保存的配置仍保留。" : " 本次配置未保存。"}录制不会自动恢复。`);
+          setMessage(`${previewModelFailure(result)}${savedConfiguration ? sessionOnly ? " 之前的本次会话配置须以服务状态为准。" : " 上次保存的配置仍保留。" : " 本次配置未保存。"}录制不会自动恢复。`);
         } else {
           // A disk write can fail after the backend switched routes; !ok alone is not rollback proof.
           await reconcileUncertainSave();
@@ -3302,6 +3530,7 @@ function PreviewModelSettings({onSaved}: {onSaved: () => Promise<void>}) {
       }
       const savedRoute = (target: "image" | "text"): PreviewModelRoute => ({...payload[target], api_key: "", apiKeyConfigured: Boolean(payload[target].api_key || (samePreviewModelDestination(configuration[target], savedConfiguration?.[target]) && savedConfiguration?.[target].apiKeyConfigured))});
       const next = {...configuration, image: savedRoute("image"), text: savedRoute("text")};
+      setSessionOnly(false); readModelBudget(result);
       request.persistenceUncertain = false;
       setSavedConfiguration(next);
       restoreFields(next);
@@ -3329,15 +3558,22 @@ function PreviewModelSettings({onSaved}: {onSaved: () => Promise<void>}) {
     ready: "上次验证已通过。更改表单不会立即替换正在使用的配置，需重新验证并保存。",
     unavailable: "暂时无法确认模型可用。检查本机服务和配置后重试；已保存配置不会因验证失败被清除。",
   };
-  return <section id="preview-model-settings" className="today-panel preview-model-settings" tabIndex={-1} aria-labelledby="preview-model-settings-title" aria-busy={busy || loading}>
-    <div className="section-title preview-model-heading"><div><p className="eyebrow"><KeyRound size={16} /> 智能整理</p><h2 id="preview-model-settings-title">模型配置</h2></div><span className={`preview-model-state ${configurationState}`} role="status">{loading ? "读取中" : `${dirty && configurationState === "ready" ? "上次配置" : ""}${stateLabels[configurationState]}`}</span></div>
-    <p>{stateDescriptions[configurationState]}</p>
+  return <section id={sectionId} className="today-panel preview-model-settings" tabIndex={-1} aria-labelledby={`${sectionId}-title`} aria-busy={busy || loading}>
+    <div className="section-title preview-model-heading"><div><p className="eyebrow"><KeyRound size={16} /> 智能整理</p><h2 id={`${sectionId}-title`}>模型配置</h2></div><span className={`preview-model-state ${configurationState}`} role="status">{loading ? "读取中" : sessionOnly ? (dirty ? "草稿待验证" : configurationState === "ready" ? "本次会话可用" : "本次会话未确认") : `${dirty && configurationState === "ready" ? "上次配置" : ""}${stateLabels[configurationState]}`}</span></div>
+    <p>{sessionOnly ? (dirty ? "当前草稿尚未验证，不代表运行中的模型配置。请手动验证后再使用。" : "仅本次会话的无密钥本机配置；重新进入页面只读取状态，不自动验证或恢复录制。") : stateDescriptions[configurationState]}</p>
+    {sessionOnly && <p className="preview-model-notice" role="status">仅本次使用模式 · 配置不写入磁盘；成功启用后只在内存中，退出或重启应用后丢失。</p>}
+    {localTimeoutSeconds !== null && <small>本机模型每次调用上限：{localTimeoutSeconds} 秒（当前服务配置）。图像理解与文字整理是两次独立调用，整条处理流程可能更久；这不是响应速度保证。</small>}
     {!bridgeAvailable && <p className="preview-model-notice">网页预览无法读取或保存模型密钥，请在 OpenButler 桌面版连接本机服务后配置。</p>}
-    {dirty && <p className="preview-model-notice" role="status">当前修改尚未保存，也未验证。{savedConfiguration ? "上次保存的配置仍保留。" : "填写完成后请验证并保存。"}</p>}
+    {dirty && <p className="preview-model-notice" role="status">当前修改尚未保存，也未验证。{savedConfiguration ? sessionOnly ? "上次本次会话配置仍须以服务状态为准。" : "上次保存的配置仍保留。" : "填写完成后请手动验证。"}</p>}
     <div className="preview-model-grid">{routeFields("图像整理", "image", imageRoute)}{routeFields("文字整理", "text", textRoute)}</div>
     {hasExternalRoute && <div className="preview-model-consent"><p>外部服务需单独授权。更换接收地址、接口类型或运行位置后，需要重新确认。</p><label className="preview-confirm"><input name="external-model-consent" type="checkbox" disabled={busy} checked={externalConsent} onChange={(event) => {markEdited(); setExternalConsent(event.target.checked);}} /> 我同意在使用自定义外部服务时发起联网模型调用</label><label className="preview-confirm"><input name="masked-model-consent" type="checkbox" disabled={busy} checked={maskedDataConsent} onChange={(event) => {markEdited(); setMaskedDataConsent(event.target.checked);}} /> 我同意将遮挡后的数据发送给所选外部服务</label></div>}
     <p className="preview-model-validation-note">点击验证会向所选模型发送合成测试图和测试文字，不发送本机记录；自定义服务可能产生调用费用。验证可能暂停录制，不会自动开始或恢复录制。</p>
-    <div className="desktop-action-row"><button className="primary" disabled={busy || loading || !bridgeAvailable} onClick={() => void saveRoutes()}>{busy ? "正在验证，请稍候" : savedConfiguration && !dirty ? "验证已保存配置" : "验证并保存配置"}</button>{dirty && savedConfiguration && <button className="secondary" disabled={busy || loading} onClick={() => {request.editVersion += 1; restoreFields(savedConfiguration); setMessage("已恢复上次保存的非密钥字段；尚未发起模型调用。");}}>恢复已保存配置</button>}<button className="secondary" disabled={busy || loading || !bridgeAvailable} onClick={() => void loadRoutes()}>重新读取状态</button></div>
+    <div className="desktop-action-row"><button className="primary" disabled={busy || loading || !bridgeAvailable} onClick={() => void saveRoutes()}>{busy ? "正在验证，请稍候" : savedConfiguration && !dirty && !sessionOnly ? "验证已保存配置" : "验证并保存配置"}</button>{dirty && savedConfiguration && <button className="secondary" disabled={busy || loading} onClick={() => {request.editVersion += 1; restoreFields(savedConfiguration); setMessage(sessionOnly ? "已恢复上次本次会话的非密钥字段；尚未发起模型调用。" : "已恢复上次保存的非密钥字段；尚未发起模型调用。");}}>{sessionOnly ? "恢复本次配置" : "恢复已保存配置"}</button>}<button className="secondary" disabled={busy || loading || !bridgeAvailable} onClick={() => void loadRoutes()}>重新读取状态</button></div>
+    {sessionEligible && <div className="preview-model-session-controls" style={{display: "grid", gap: 8}}>
+      <button className="secondary" disabled={busy || loading || !sessionBridgeAvailable} onClick={() => void useSessionModels()}>验证并仅本次使用</button>
+      <small>仅适用于无密钥的本机 Ollama。点击会发送合成测试图与文字，配置只留在内存，退出或重启应用后丢失；不需要本机加密存储，也不会自动录制。关闭此面板会取消尚未完成的本次验证。</small>
+    </div>}
+    {(sessionOnly || request.sessionPending) && <button className="secondary" disabled={loading || request.sessionRevoking || !sessionBridgeAvailable || (busy && !request.sessionPending)} onClick={() => void revokeSessionModels()}>{request.sessionPending ? "取消本次验证" : "撤销本次模型配置"}</button>}
     {message && <p className="policy-note" role="status">{message}</p>}
   </section>;
 }
@@ -3351,7 +3587,10 @@ function PreviewActivation({status, mandatory, onChooseDemo, onChooseReal, onDis
   onDismiss: () => void;
   onComplete: () => void;
 }) {
+  const [modelSetupOpen, setModelSetupOpen] = useState(false);
   const [localSetup, setLocalSetup] = useState(status === "real_setup_started" || status === "completed");
+  const [captureScope, setCaptureScope] = useState<"screen" | "public_window">(() => window.openbutlerDesktop?.getCaptureWindows ? "public_window" : "screen");
+  const [capabilities, setCapabilities] = useState<CaptureCapabilities | null>(null);
   const [displays, setDisplays] = useState<Array<{id: string; label: string}>>([]);
   const [displayId, setDisplayId] = useState("");
   const [exclusions, setExclusions] = useState("");
@@ -3374,17 +3613,18 @@ function PreviewActivation({status, mandatory, onChooseDemo, onChooseReal, onDis
   useEffect(() => {
     if (!localSetup) return;
     let cancelled = false;
-    void Promise.all([getContextEngineStatus(), window.openbutlerDesktop?.getCaptureDisplays?.() ?? Promise.resolve([])])
-      .then(([current, available]) => {
+    void Promise.all([getContextEngineStatus(), (captureScope === "screen" ? window.openbutlerDesktop?.getCaptureDisplays?.() : undefined) ?? Promise.resolve([]), window.openbutlerDesktop?.getCaptureCapabilities?.() ?? Promise.resolve(null)])
+      .then(([current, available, capability]) => {
         if (cancelled) return;
         setStatusData(current);
+        setCapabilities(capability);
         setLocalPrivacyMode(current.privacy_mode);
         setDisplays(available);
         setDisplayId((previous) => previous || available[0]?.id || "");
       })
       .catch(() => { if (!cancelled) setMessage("本机录制服务暂不可用，请稍后重试。"); });
     return () => { cancelled = true; };
-  }, [localSetup]);
+  }, [localSetup, captureScope]);
 
   function invalidatePreview() {
     previewGate.current.invalidate();
@@ -3420,7 +3660,7 @@ function PreviewActivation({status, mandatory, onChooseDemo, onChooseReal, onDis
   const editDisabled = !statusData || busy === "start" || busy === "privacy" || !!statusData.recording.active;
 
   async function checkPreview() {
-    if (operation.current || editing || statusData?.recording.active || !statusData?.capture_available) return;
+    if (operation.current || editing || statusData?.recording.active || !(statusData?.capture_available && (capabilities?.full_desktop.supported ?? true))) return;
     const config = captureConfig();
     if (!config || !window.openbutlerDesktop?.getMaskedCapturePreview) return;
     invalidatePreview();
@@ -3475,7 +3715,7 @@ function PreviewActivation({status, mandatory, onChooseDemo, onChooseReal, onDis
   }
 
   async function beginRecording() {
-    if (operation.current || editing || statusData?.recording.active || !statusData?.capture_available) return;
+    if (operation.current || editing || statusData?.recording.active || !(statusData?.capture_available && (capabilities?.full_desktop.supported ?? true))) return;
     const config = captureConfig();
     if (!config || !previewCurrent || !preview || !previewGate.current.isCurrent(preview.ticket) || !confirmed || !window.openbutlerDesktop?.startBuiltinCapture) return;
     // Consume this approval before awaiting the bridge so a double-click cannot reuse it.
@@ -3534,7 +3774,7 @@ function PreviewActivation({status, mandatory, onChooseDemo, onChooseReal, onDis
         <div className="first-run-copy">
           <p className="eyebrow">0.2.0 Preview · 首次激活</p>
           <h2 id="preview-activation-title">开始使用本机记录</h2>
-          <p>选择要记录的屏幕和隐私范围。录制前你会看到经本机识别与遮挡处理的预览；智能整理可以稍后配置。</p>
+          <p>选择专用公开窗口或受支持的屏幕范围。检查一次遮挡后预览并明确开始，之后自动采样；智能整理可以稍后配置。</p>
           <div className="activation-choice-grid">
             {onChooseLocalChat && <button className="activation-choice" disabled={busy === "start"} onClick={() => leaveSetup(onChooseLocalChat)}>
               <MessageSquareText size={17} /><strong>先用管家对话</strong><span>只保存本地文字与目标；不启用录制。</span>
@@ -3546,10 +3786,22 @@ function PreviewActivation({status, mandatory, onChooseDemo, onChooseReal, onDis
               <Eye size={17} /><strong>先看样例</strong><span>不读取真实数据。</span>
             </button>
           </div>
+          <button className="secondary first-run-model-entry" aria-expanded={modelSetupOpen} aria-controls="activation-model-settings" disabled={busy === "start"}
+            onClick={() => setModelSetupOpen((open) => !open)}>{modelSetupOpen ? "收起本地整理模型配置" : "先配置本地整理模型"}</button>
+          <small>无需先开启录制。打开只读取已保存状态；由你手动验证并保存，不会自动调用模型或开始采集。</small>
+          {modelSetupOpen && <PreviewModelSettings sectionId="activation-model-settings" onSaved={async () => {
+            const current = await getContextEngineStatus(); setStatusData(current);
+          }} />}
           {!localSetup && <p className="policy-note">只有 Preview 桌面版能启用本机录制。公开网页仍为样例体验。</p>}
         </div>
         {localSetup && <div className="first-run-local-setup preview-capture-setup">
           <div className="local-setup-head"><strong>录制范围</strong><p>更改任何设置后，必须重新检查隐私预览。</p></div>
+          <div className="capture-source-choice" role="group" aria-label="选择自动记录来源">
+            <button className="secondary" aria-pressed={captureScope === "public_window"} disabled={!!busy || editing || !!statusData?.recording.active || !window.openbutlerDesktop?.getCaptureWindows} onClick={() => { invalidatePreview(); setPreview(null); setCaptureScope("public_window"); }}>专用公开窗口</button>
+            <button className="secondary" aria-pressed={captureScope === "screen"} disabled={!!busy || editing || !!statusData?.recording.active || capabilities?.full_desktop.supported === false} onClick={() => { invalidatePreview(); setPreview(null); setCaptureScope("screen"); }}>整个屏幕{capabilities?.full_desktop.supported === false ? "（当前不可用）" : ""}</button>
+          </div>
+          {capabilities?.full_desktop.supported === false && <p className="capture-capability-warning">完整桌面采集当前不可用：{capabilities.full_desktop.reason === "lock_state_unknown" ? "无法验证锁屏状态" : "当前平台尚未通过采集与锁屏保护检查"}。专用公开窗口需单独确认范围。</p>}
+          {captureScope === "public_window" ? <PublicWindowCaptureSetup active={!!statusData?.recording.active} capabilities={capabilities} onComplete={onComplete} onStartingChange={(starting) => setBusy(starting ? "start" : null)} /> : <>
           <div className="local-setup-status">
             <StatusItem label="录制能力" value={statusData?.capture_available ? "可用" : "待连接"} />
             <StatusItem label="当前状态" value={statusData?.recording.active ? "记录中" : "未录制"} />
@@ -3566,16 +3818,17 @@ function PreviewActivation({status, mandatory, onChooseDemo, onChooseReal, onDis
           </fieldset>
           <p className="policy-note">当前只启用本机记录。选择基础隐私也不会自动调用外部模型。</p>
           {statusData?.recording.active && <p className="policy-note">录制正在运行。请先返回今日暂停，再更改范围。</p>}
-          <button className="secondary" onClick={() => void checkPreview()} disabled={!!busy || editing || statusData?.recording.active || !statusData?.capture_available || !window.openbutlerDesktop?.getMaskedCapturePreview}>检查隐私预览</button>
+          <button className="secondary" onClick={() => void checkPreview()} disabled={!!busy || editing || statusData?.recording.active || !(statusData?.capture_available && (capabilities?.full_desktop.supported ?? true)) || !window.openbutlerDesktop?.getMaskedCapturePreview}>检查隐私预览</button>
           <MaskEditor key={preview?.ticket.requestId ?? "no-preview"} masks={masks} canvas={preview} disabled={editDisabled} editing={editing}
             onChange={(next) => changeConfig(() => setMasks(next))} onEditStart={invalidatePreview} onEditingChange={setEditing}
             onImageLoad={(bounds) => { if (preview) loadedPreview(preview.ticket, bounds); }}
             onImageError={() => { invalidatePreview(); setPreview(null); setMessage("隐私预览图片无法显示，请重新预览；录制尚未开始。"); }} />
           <label className="preview-confirm"><input type="checkbox" checked={confirmed} disabled={!previewCurrent || !!busy || editing || !!statusData?.recording.active}
             onChange={(event) => { if (previewCurrent && preview && previewGate.current.isCurrent(preview.ticket) && !busy && !editing) setConfirmed(event.target.checked); }} /> 我已检查最新预览，确认按上述范围开始录制</label>
-          <button className="primary" onClick={() => void beginRecording()} disabled={!!busy || editing || statusData?.recording.active || !previewCurrent || !confirmed || !statusData?.capture_available || !window.openbutlerDesktop?.startBuiltinCapture}>开始本机记录</button>
+          <button className="primary" onClick={() => void beginRecording()} disabled={!!busy || editing || statusData?.recording.active || !previewCurrent || !confirmed || !(statusData?.capture_available && (capabilities?.full_desktop.supported ?? true)) || !window.openbutlerDesktop?.startBuiltinCapture}>开始本机记录</button>
           {statusData?.recording.active && <button className="secondary" onClick={() => leaveSetup(onComplete)}>返回今日</button>}
           {message && <p className="policy-note" role="status">{message}</p>}
+          </>}
         </div>}
         {!mandatory && <button className="first-run-close" disabled={busy === "start"} onClick={() => leaveSetup(onDismiss)}>关闭</button>}
       </section>

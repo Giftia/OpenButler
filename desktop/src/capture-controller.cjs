@@ -65,7 +65,9 @@ function maskedPng(raw, ocr, fixedMasks) {
     const {x0, y0, x1, y1} = word.bbox;
     paintRect(png, {x: x0 - 5, y: y0 - 5, width: x1 - x0 + 10, height: y1 - y0 + 10});
   }
-  return {buffer: PNG.sync.write(png), maskedRegions: fixedMasks.length + maskWords.length};
+  try {
+    return {buffer: PNG.sync.write(png), maskedRegions: fixedMasks.length + maskWords.length};
+  } finally { png.data.fill(0); }
 }
 
 class CaptureController {

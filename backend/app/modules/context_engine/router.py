@@ -9,6 +9,7 @@ from .capture import CaptureSettings, CaptureStore, MaskedObservation
 from .foundation import ContextEngineStatusService
 from .daily_review import DailyReviewRequest, DailyReviewService
 from .processor import ObservationProcessor
+from .organization_queue import ObservationQueue
 
 
 def create_context_engine_router(connection_factory, privacy_mode_getter, data_dir: Path,
@@ -18,6 +19,20 @@ def create_context_engine_router(connection_factory, privacy_mode_getter, data_d
     captures = CaptureStore(connection_factory, data_dir, privacy_mode_getter)
     processor = (ObservationProcessor(captures, model_gateway, model_authorization)
                  if model_gateway is not None and model_authorization is not None else None)
+
+    queue = ObservationQueue(captures, processor) if processor is not None else None
+    router.organization_queue = queue
+
+    @router.on_event("shutdown")
+    def shutdown_organization():
+        if queue is not None and not queue.close():
+            raise RuntimeError("observation_worker_shutdown_timeout")
+
+    def recording_state():
+        result = captures.state()
+        result["processing_queue"] = queue.state() if queue is not None else {
+            "capacity": 0, "queued": 0, "running": 0, "backpressured": 0, "accepting": False}
+        return result
 
     reviews = DailyReviewService(captures, model_gateway, model_authorization)
 
@@ -37,16 +52,18 @@ def create_context_engine_router(connection_factory, privacy_mode_getter, data_d
             "capture_available": True,
             "model_routes_available": bool(model_gateway),
             "audit_retention_days": RETENTION_DAYS,
-            "recording": captures.state(),
+            "recording": recording_state(),
         }
 
     @router.post("/api/context-engine/capture/configure")
     def configure_capture(settings: CaptureSettings):
         try:
-            captures.configure(settings)
+            result = captures.configure(settings)
         except PermissionError as error:
             raise HTTPException(status_code=403, detail=str(error)) from None
-        return {"configured": True, "active": False}
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from None
+        return result
 
     @router.post("/api/context-engine/capture/start")
     def start_capture():
@@ -54,25 +71,29 @@ def create_context_engine_router(connection_factory, privacy_mode_getter, data_d
             captures.start()
         except PermissionError as error:
             raise HTTPException(status_code=403, detail=str(error)) from None
-        return captures.state()
+        return recording_state()
 
     @router.post("/api/context-engine/capture/pause")
     def pause_capture():
         captures.pause()
-        return captures.state()
+        return recording_state()
 
     @router.post("/api/context-engine/capture/revoke")
     def revoke_capture():
         captures.revoke()
-        return captures.state()
+        return recording_state()
 
     @router.post("/api/context-engine/observations")
     def ingest_observation(observation: MaskedObservation):
         try:
             result = captures.ingest(observation)
-            if result["recorded"] and processor is not None:
-                raw = captures._validate_png(observation.masked_png_base64)
-                result["organized"] = processor.process(result["id"], raw)
+            generation = result.pop("_generation", None)
+            if result["recorded"]:
+                result["organized"] = False
+                result["organization"] = (queue.submit(result["id"], generation=generation)
+                    if queue is not None else {"accepted": False, "reason": "model_unavailable"})
+                if queue is None:
+                    captures.set_result(result["id"], state="model_unavailable", processing_reason="model_unavailable")
             return result
         except PermissionError as error:
             raise HTTPException(status_code=403, detail=str(error)) from None
@@ -86,12 +107,10 @@ def create_context_engine_router(connection_factory, privacy_mode_getter, data_d
 
     @router.post("/api/context-engine/observations/{event_id}/retry")
     def retry_observation(event_id: str):
-        if processor is None or not model_gateway.status().ready:
-            return {"ok": False, "reason": "model_unavailable"}
-        image = captures.prepare_retry(event_id)
-        if image is None:
-            return {"ok": False, "reason": "record_or_evidence_unavailable"}
-        return {"ok": processor.process(event_id, image)}
+        if queue is None:
+            return {"ok": False, "queued": False, "reason": "model_unavailable"}
+        result = queue.submit(event_id, retry=True)
+        return {"ok": result["accepted"], "queued": result["accepted"], "reason": result["reason"]}
 
     @router.post("/api/context-engine/observations/{event_id}/delete")
     def delete_observation(event_id: str):

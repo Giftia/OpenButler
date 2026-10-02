@@ -82,6 +82,13 @@ jobs:
           node desktop/scripts/check-capture-providers.cjs
           node desktop/scripts/check-desktop-frontend-assets.mjs
           node --test desktop/scripts/check-macos-capabilities.test.cjs
+      - name: Selected public-window and local-model synthetic regressions
+        run: |
+          node --test desktop/scripts/check-public-window.cjs desktop/scripts/check-local-model-discovery.cjs
+          python desktop/scripts/check-x11-public-window.py
+          for suite in activation-model-settings session-local-model local-model-discovery public-window context-queue observation-analysis; do
+            node "frontend/scripts/check-$suite-dom.cjs"
+          done
       - name: Synthetic offline OCR with network denial in worker
         run: npm run check:offline-ocr --prefix desktop
       - name: Inspect Electron macOS capability without capture or permission prompts
@@ -97,7 +104,7 @@ jobs:
           {
             printf '### macOS validation boundary\n\n'
             printf 'Commit: `%s`\n\n' "$GITHUB_SHA"
-            printf 'This run checks source tests, frontend build, synthetic offline OCR, and native Electron capability metadata.\n\n'
+            printf 'This run checks source tests, frontend build, synthetic selected-window/OCR contracts, and native Electron capability metadata.\n\n'
             printf 'Interactive screen capture, real TCC approval/denial flows, a packaged macOS app, signing, notarization, and a macOS installer remain unverified.\n\n'
             printf 'No desktop image is captured. No permission is requested or modified. No model endpoint is called.\n'
           } >> "$GITHUB_STEP_SUMMARY"

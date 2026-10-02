@@ -1,5 +1,6 @@
 """Desktop session protected model settings; keys exist in process memory only."""
 
+import os
 from threading import RLock
 from typing import Literal
 
@@ -8,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.context_engine.audit import PrivacyAuditLedger
 from app.modules.context_engine.privacy import AuditedPrivacyGuard
-from .gateway import CallAuthorization, Gateway, ModelRoute, RouteError
+from .gateway import CallAuthorization, Gateway, HttpTransport, ModelRoute, RouteError
 
 
 class RouteInput(BaseModel):
@@ -42,7 +43,14 @@ class ValidateEndpointInput(BaseModel):
 def create_model_settings_router(connection_factory, get_privacy_mode, set_privacy_mode, *, dispatch_lock=None):
     router = APIRouter()
     policy_lock = dispatch_lock if dispatch_lock is not None else RLock()
+    # This budget is trusted process configuration, never a request/model field.
+    # Invalid values fail startup rather than silently creating an unbounded call.
+    try:
+        local_timeout = float(os.environ.get("OPENBUTLER_LOCAL_MODEL_TOTAL_TIMEOUT_SECONDS", "10"))
+    except (TypeError, ValueError):
+        raise ValueError("invalid_local_transport_deadline") from None
     gateway = Gateway(AuditedPrivacyGuard(PrivacyAuditLedger(connection_factory)),
+                      transport=HttpTransport(local_total_timeout=local_timeout),
                       privacy_mode_getter=get_privacy_mode, dispatch_lock=policy_lock)
     lock = RLock()
     active: dict = {"image": None, "text": None, "external_consent": False,
@@ -58,6 +66,8 @@ def create_model_settings_router(connection_factory, get_privacy_mode, set_priva
                     "endpoint": route.endpoint, "model": route.model,
                     "apiKeyConfigured": bool(route.api_key), "thinking": route.thinking}
         return {"ready": state.ready, "last_attempt": state.last_attempt,
+                "local_total_timeout_seconds": state.local_total_timeout_seconds,
+                "external_total_timeout_seconds": state.external_total_timeout_seconds,
                 "error_code": state.error_code, "image": route_status("image"),
                 "text": route_status("text"),
                 "external_consent": active["external_consent"],
