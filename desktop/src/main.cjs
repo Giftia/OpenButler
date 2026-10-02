@@ -1,8 +1,12 @@
-const {app, BrowserWindow, dialog, ipcMain, shell, Tray, Menu, nativeImage} = require("electron");
+const {app, BrowserWindow, dialog, ipcMain, shell, Tray, Menu, nativeImage,
+  desktopCapturer, powerMonitor, screen, safeStorage} = require("electron");
 const {spawn, execFile, spawnSync} = require("child_process");
 const fs = require("fs");
 const net = require("net");
 const path = require("path");
+const {randomBytes} = require("node:crypto");
+const {SESSION_HEADER, createLocalApiRequest, isTrustedSender, restrictNavigation} = require("./local-api.cjs");
+const {CaptureController} = require("./capture-controller.cjs");
 const packageMetadata = require("../package.json");
 
 const desktopChannel = process.env.OPENBUTLER_DESKTOP_CHANNEL
@@ -14,6 +18,9 @@ const backendImageName = isPreviewChannel ? "openbutler-backend-preview.exe" : "
 let mainWindow = null;
 let tray = null;
 let backendProcess = null;
+let backendSessionToken = "";
+let backendStartPromise = null;
+let backendGeneration = 0;
 let isQuitting = false;
 let smokeQuitScheduled = false;
 let backendState = {
@@ -25,6 +32,12 @@ let backendState = {
 let selectedMineContextHome = "";
 let selectedMineContextInstaller = "";
 let staleBackendCleanupDone = false;
+let captureController = null;
+// Memory-only: a backend update may succeed before encrypted persistence fails.
+let modelRoutesPersistenceUncertain = false;
+let modelRoutesSaveInProgress = false;
+let offlineOcr = null;
+let retentionTimer = null;
 
 const mineContextBaseUrl = "http://127.0.0.1:1733";
 const mineContextReleasesUrl = "https://github.com/volcengine/MineContext/releases";
@@ -81,6 +94,132 @@ function writeDesktopState(patch) {
   const next = {...current, ...patch};
   fs.writeFileSync(desktopStatePath(), JSON.stringify(next, null, 2), "utf8");
   return next;
+}
+
+function modelRoutesPath() {
+  return path.join(userDataDir(), "model-routes.enc");
+}
+
+function readEncryptedModelRoutes() {
+  try {
+    if (!safeStorage?.isEncryptionAvailable()) return null;
+    return JSON.parse(safeStorage.decryptString(fs.readFileSync(modelRoutesPath())).toString());
+  } catch {
+    return null;
+  }
+}
+
+async function privateApi(apiPath, body) {
+  if (!backendState.running || !backendSessionToken || !/^\/api\/[a-z0-9/-]+$/.test(apiPath)) {
+    throw new Error("local_service_unavailable");
+  }
+  const response = await fetch(new URL(apiPath, backendState.apiBase), {
+    method: body === undefined ? "GET" : "POST",
+    headers: {"Content-Type": "application/json", [SESSION_HEADER]: backendSessionToken},
+    body: body === undefined ? undefined : JSON.stringify(body),
+    redirect: "error",
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) throw new Error("local_operation_failed");
+  return response.json();
+}
+
+async function privateEvidence(evidenceId) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(evidenceId || "")
+      || !backendState.running || !backendSessionToken) return {ok: false, error: "evidence_unavailable"};
+  try {
+    const response = await fetch(new URL(`/api/context-engine/evidence/${evidenceId}`, backendState.apiBase), {
+      headers: {[SESSION_HEADER]: backendSessionToken}, redirect: "error",
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok || response.headers.get("content-type")?.split(";")[0] !== "image/png"
+        || Number(response.headers.get("content-length") || 0) > 8 * 1024 * 1024) {
+      return {ok: false, error: "evidence_expired_or_unavailable"};
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length > 8 * 1024 * 1024 || !buffer.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"))) {
+      return {ok: false, error: "evidence_unavailable"};
+    }
+    return {ok: true, dataUrl: `data:image/png;base64,${buffer.toString("base64")}`};
+  } catch {
+    return {ok: false, error: "evidence_unavailable"};
+  }
+}
+
+function powershellScript(name) {
+  const script = path.join(__dirname, name);
+  return app.isPackaged ? script.replace("app.asar" + path.sep, "app.asar.unpacked" + path.sep) : script;
+}
+
+async function foregroundApplication() {
+  if (process.platform !== "win32") return "";
+  const result = await execFileText("powershell.exe", [
+    "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
+    powershellScript("active-app.ps1"),
+  ], 5000);
+  return result.ok ? result.stdout.trim().slice(0, 120) : "";
+}
+
+async function visibleApplications(displayId) {
+  if (process.platform !== "win32") return null;
+  const sources = await desktopCapturer.getSources({
+    types: ["screen"], thumbnailSize: {width: 0, height: 0},
+  });
+  const source = sources.find(item => item.id === displayId);
+  const display = screen.getAllDisplays().find(item => String(item.id) === source?.display_id);
+  if (!display) return null;
+  const bounds = display.bounds;
+  const result = await execFileText("powershell.exe", [
+    "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
+    powershellScript("visible-apps.ps1"), "-X", String(bounds.x), "-Y", String(bounds.y),
+    "-Width", String(bounds.width), "-Height", String(bounds.height),
+  ], 8000);
+  return result.ok ? result.stdout.split(/\r?\n/).map(item => item.trim()).filter(Boolean) : null;
+}
+
+async function captureDisplays() {
+  const sources = await desktopCapturer.getSources({
+    types: ["screen"], thumbnailSize: {width: 0, height: 0},
+  });
+  return sources.map((source, index) => ({id: source.id, label: `显示器 ${index + 1}`}));
+}
+
+async function captureSelectedDisplay(displayId) {
+  const metadata = await desktopCapturer.getSources({
+    types: ["screen"], thumbnailSize: {width: 0, height: 0},
+  });
+  const selected = metadata.find(item => item.id === displayId);
+  if (!selected) throw new Error("display_unavailable");
+  const display = screen.getAllDisplays().find(item => String(item.id) === selected.display_id);
+  const width = Math.max(1, Math.min(4096, display?.size.width || 1920));
+  const height = Math.max(1, Math.min(4096, display?.size.height || 1080));
+  const sources = await desktopCapturer.getSources({
+    types: ["screen"], thumbnailSize: {width, height},
+  });
+  const chosen = sources.find(item => item.id === displayId);
+  if (!chosen || chosen.thumbnail.isEmpty()) throw new Error("screen_capture_unavailable");
+  return chosen.thumbnail.toPNG();
+}
+
+function controller() {
+  if (captureController) return captureController;
+  captureController = new CaptureController({
+    captureScreen: captureSelectedDisplay,
+    foregroundApp: foregroundApplication,
+    windowNames: visibleApplications,
+    ocr: {recognize: async buffer => {
+      if (!offlineOcr) {
+        const {createOfflineOcr} = require("./offline-ocr.cjs");
+        offlineOcr = await createOfflineOcr({resourcesPath: app.isPackaged ? process.resourcesPath : undefined});
+      }
+      return offlineOcr.recognize(buffer);
+    }},
+    postObservation: payload => privateApi("/api/context-engine/observations", payload),
+    configureBackend: payload => privateApi("/api/context-engine/capture/configure", payload),
+    startBackendCapture: () => privateApi("/api/context-engine/capture/start", {}),
+    pauseBackendCapture: () => privateApi("/api/context-engine/capture/pause", {}),
+  });
+  return captureController;
 }
 
 function execFileText(command, args, timeout = 3000) {
@@ -239,20 +378,19 @@ function findFreePort() {
   });
 }
 
-async function waitForHealth(apiBase, timeoutMs = 15000) {
+async function waitForHealth(apiBase, token, isCurrent, timeoutMs = 15000) {
   const startedAt = Date.now();
-  let lastError = null;
-  while (Date.now() - startedAt < timeoutMs) {
+  while (isCurrent() && Date.now() - startedAt < timeoutMs) {
     try {
-      const response = await fetch(`${apiBase}/health`);
-      if (response.ok) return true;
-    } catch (error) {
-      lastError = error;
+      const response = await fetchWithTimeout(`${apiBase}/health`, {
+        headers: {[SESSION_HEADER]: token}, redirect: "error", credentials: "omit",
+      }, Math.min(2500, timeoutMs - (Date.now() - startedAt)));
+      if (response.ok && !response.redirected && isCurrent()) return true;
+    } catch {
+      // Retry readiness without logging transport errors or session credentials.
     }
+    if (!isCurrent()) return false;
     await new Promise((resolve) => setTimeout(resolve, 300));
-  }
-  if (lastError) {
-    console.warn("Backend health check did not become ready:", lastError.message);
   }
   return false;
 }
@@ -343,56 +481,91 @@ async function probeMineContext() {
   };
 }
 
-async function startBackend() {
-  if (backendProcess && backendState.running) return backendState;
-  cleanupStaleBackendProcessesOnce();
-
-  const port = await findFreePort();
-  const dataDir = userDataDir();
-  const env = {
-    ...process.env,
-    OPENBUTLER_DESKTOP: "1",
-    OPENBUTLER_HOST: "127.0.0.1",
-    OPENBUTLER_PORT: String(port),
-    OPENBUTLER_DATA_DIR: dataDir,
-    OPENBUTLER_DEFAULT_PRIVACY_MODE: "strict",
-    OPENBUTLER_DISABLE_SEED_EVENTS: "1",
-    OPENBUTLER_COPY_SCREENSHOTS: "0",
-    OPENBUTLER_EXTERNAL_MODEL_ALLOWED: "0",
-    OPENBUTLER_EXTERNAL_WEBHOOK_ALLOWED: "0",
-    PYTHONPATH: path.join(repoRoot(), "backend"),
-  };
-  if (selectedMineContextHome) {
-    env.MINECONTEXT_HOME = selectedMineContextHome;
-  }
-
-  const packagedExe = packagedBackendPath();
-  let command;
-  let args;
-  let options = {env, windowsHide: true};
-
-  if (app.isPackaged && fs.existsSync(packagedExe)) {
-    command = packagedExe;
-    args = [];
-    options.cwd = path.dirname(packagedExe);
-  } else {
-    command = process.platform === "win32" ? "python" : "python3";
-    args = ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", String(port)];
-    options.cwd = path.join(repoRoot(), "backend");
-  }
-
-  backendProcess = spawn(command, args, options);
-  backendProcess.on("exit", () => {
-    backendState = {...backendState, running: false, pid: null};
-    backendProcess = null;
+function startBackend() {
+  if (backendStartPromise) return backendStartPromise;
+  if (backendProcess && backendState.running) return Promise.resolve(backendState);
+  const generation = ++backendGeneration;
+  const pending = launchBackend(generation).finally(() => {
+    if (backendStartPromise === pending) backendStartPromise = null;
   });
-  backendState = {
-    apiBase: `http://127.0.0.1:${port}`,
-    port,
-    pid: backendProcess.pid ?? null,
-    running: true,
-  };
-  await waitForHealth(backendState.apiBase);
+  backendStartPromise = pending;
+  return pending;
+}
+
+async function launchBackend(generation) {
+  try {
+    cleanupStaleBackendProcessesOnce();
+    const port = await findFreePort();
+    if (generation !== backendGeneration || isQuitting) return backendState;
+    const dataDir = userDataDir();
+    backendSessionToken = randomBytes(32).toString("hex");
+    const env = {
+      ...process.env,
+      OPENBUTLER_DESKTOP: "1",
+      OPENBUTLER_HOST: "127.0.0.1",
+      OPENBUTLER_PORT: String(port),
+      OPENBUTLER_SESSION_TOKEN: backendSessionToken,
+      OPENBUTLER_DATA_DIR: dataDir,
+      OPENBUTLER_DEFAULT_PRIVACY_MODE: "strict",
+      OPENBUTLER_DISABLE_SEED_EVENTS: "1",
+      OPENBUTLER_COPY_SCREENSHOTS: "0",
+      OPENBUTLER_EXTERNAL_MODEL_ALLOWED: "0",
+      OPENBUTLER_EXTERNAL_WEBHOOK_ALLOWED: "0",
+      PYTHONPATH: path.join(repoRoot(), "backend"),
+    };
+    if (isPreviewChannel) {
+      env.OPENBUTLER_PREVIEW_BUILTIN = "1";
+      delete env.MINECONTEXT_HOME;
+      delete env.OPENBUTLER_MINECONTEXT_HOME;
+    } else if (selectedMineContextHome) {
+      env.MINECONTEXT_HOME = selectedMineContextHome;
+    }
+
+    const packagedExe = packagedBackendPath();
+    let command;
+    let args;
+    const options = {env, windowsHide: true, stdio: "ignore"};
+
+    if (app.isPackaged && fs.existsSync(packagedExe)) {
+      command = packagedExe;
+      args = [];
+      options.cwd = path.dirname(packagedExe);
+    } else {
+      command = process.platform === "win32" ? "python" : "python3";
+      args = ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", String(port), "--no-proxy-headers"];
+      options.cwd = path.join(repoRoot(), "backend");
+    }
+
+    let child;
+    try {
+      child = spawn(command, args, options);
+    } finally {
+      delete env.OPENBUTLER_SESSION_TOKEN;
+    }
+    backendProcess = child;
+    const clearSession = () => {
+      if (backendProcess !== child) return;
+      backendSessionToken = "";
+      backendProcess = null;
+      backendState = {apiBase: "", port: null, running: false, pid: null};
+    };
+    child.on("exit", clearSession);
+    child.on("error", clearSession);
+    backendState = {
+      apiBase: `http://127.0.0.1:${port}`,
+      port,
+      pid: child.pid ?? null,
+      running: false,
+    };
+    const isCurrent = () => generation === backendGeneration && backendProcess === child;
+    const healthy = await waitForHealth(backendState.apiBase, backendSessionToken, isCurrent);
+    if (isCurrent()) {
+      if (healthy) backendState = {...backendState, running: true};
+      else stopBackend();
+    }
+  } catch {
+    if (generation === backendGeneration) stopBackend();
+  }
   return backendState;
 }
 
@@ -422,16 +595,27 @@ function cleanupStaleBackendProcessesOnce() {
 }
 
 function stopBackend() {
+  if (captureController) {
+    captureController.active = false;
+    if (captureController.timer) clearInterval(captureController.timer);
+    captureController.timer = null;
+    captureController.preview = null;
+  }
   const pid = backendProcess?.pid ?? backendState.pid;
+  ++backendGeneration;
+  backendStartPromise = null;
+  backendSessionToken = "";
+  backendProcess = null;
+  backendState = {apiBase: "", port: null, running: false, pid: null};
+  refreshTrayStatus();
   if (pid) {
     killProcessTree(pid);
   }
   killProcessByImageName(backendImageName);
-  backendProcess = null;
-  backendState = {...backendState, running: false, pid: null};
 }
 
 async function restartBackend() {
+  if (captureController?.active) void captureController.pause("service_restarted").catch(() => {});
   stopBackend();
   return startBackend();
 }
@@ -449,7 +633,7 @@ async function createWindow() {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       additionalArguments: [
         `--openbutler-api-base=${state.apiBase}`,
         `--openbutler-app-version=${app.getVersion()}`,
@@ -457,6 +641,8 @@ async function createWindow() {
       ],
     },
   });
+
+  restrictNavigation(mainWindow.webContents, frontendIndexPath());
 
   mainWindow.on("close", (event) => {
     if (isQuitting) return;
@@ -479,7 +665,7 @@ async function createWindow() {
 
   mainWindow.webContents.on("console-message", (_event, level, message) => {
     if (level >= 2) {
-      console.warn("OpenButler renderer:", message);
+      console.warn("OpenButler renderer reported an error.");
     }
   });
 
@@ -574,17 +760,24 @@ function createTray() {
     void loadDesktopErrorPage("OpenButler 托盘图标加载失败", "没有找到可用的桌面图标资源。", desktopAssetPath("openbutler.ico"));
   }
   tray = new Tray(image);
-  tray.setToolTip("OpenButler");
+  refreshTrayStatus();
+  tray.on("click", showMainWindow);
+  return tray;
+}
+
+function refreshTrayStatus() {
+  if (!tray) return;
+  const recording = Boolean(captureController?.active);
+  tray.setToolTip(`OpenButler · ${recording ? "正在记录本机屏幕" : "未记录屏幕"}`);
   tray.setContextMenu(Menu.buildFromTemplate([
     {label: "打开 OpenButler", click: showMainWindow},
+    {label: `本机记录：${recording ? "进行中" : "已暂停"}`, enabled: false},
     {label: `本机服务：${backendState.running ? "运行中" : "未运行"}`, enabled: false},
     {label: "重启本机服务", click: async () => { await restartBackend(); showMainWindow(); }},
     {label: "打开本地数据文件夹", click: async () => { await shell.openPath(userDataDir()); }},
     {type: "separator"},
     {label: "退出", click: () => { isQuitting = true; stopBackend(); app.exit(0); }},
   ]));
-  tray.on("click", showMainWindow);
-  return tray;
 }
 
 async function startMineContextFromScan() {
@@ -723,7 +916,26 @@ async function installMineContextWithApproval() {
   };
 }
 
-ipcMain.handle("openbutler:get-runtime", async () => ({
+function handleDesktopRequest(channel, handler) {
+  ipcMain.handle(channel, (event, ...args) => {
+    if (!isTrustedSender(event, mainWindow, frontendIndexPath())) {
+      throw new Error("Desktop request denied.");
+    }
+    if (isPreviewChannel && channel.includes("minecontext")) {
+      throw new Error("Legacy source is unavailable in Preview.");
+    }
+    return handler(event, ...args);
+  });
+}
+
+ipcMain.handle("openbutler:request-api", createLocalApiRequest({
+  getWindow: () => mainWindow,
+  getFrontendIndexPath: frontendIndexPath,
+  getBackendState: () => backendState,
+  getSessionToken: () => backendSessionToken,
+}));
+
+handleDesktopRequest("openbutler:get-runtime", async () => ({
   apiBase: backendState.apiBase,
   mode: "desktop",
   platform: process.platform,
@@ -737,9 +949,150 @@ ipcMain.handle("openbutler:get-runtime", async () => ({
   userDataReady: fs.existsSync(userDataDir()),
 }));
 
-ipcMain.handle("openbutler:get-acceptance-pack", async () => readAcceptancePack());
+handleDesktopRequest("openbutler:get-capture-displays", async () => captureDisplays());
 
-ipcMain.handle("openbutler:save-acceptance-feedback", async (_event, feedback) => {
+handleDesktopRequest("openbutler:get-masked-capture-preview", async (_event, config) => {
+  try {
+    return await controller().previewMasked(config);
+  } catch {
+    return {ok: false, error: "隐私预览失败。请检查本机识字组件或选择其他显示器。"};
+  }
+});
+
+handleDesktopRequest("openbutler:start-builtin-capture", async (_event, config) => {
+  try {
+    const state = await controller().start(config);
+    refreshTrayStatus();
+    return {ok: true, ...state};
+  } catch (error) {
+    return {ok: false, error: error?.message === "privacy_preview_required"
+      ? "请先查看遮挡预览，再开始记录。" : "未能开始记录。请检查本机服务和授权。"};
+  }
+});
+
+handleDesktopRequest("openbutler:pause-builtin-capture", async () => {
+  try {
+    const state = await controller().pause();
+    refreshTrayStatus();
+    return {ok: true, ...state};
+  } catch {
+    return {ok: false, error: "本机服务不可用，记录已在桌面端停止。"};
+  }
+});
+
+handleDesktopRequest("openbutler:get-capture-state", async () =>
+  captureController?.state() || {active: false, intervalSeconds: 60, lastResult: "idle"});
+
+handleDesktopRequest("openbutler:get-masked-evidence", async (_event, evidenceId) =>
+  privateEvidence(evidenceId));
+
+handleDesktopRequest("openbutler:get-builtin-model-routes", async () => {
+  try {
+    const state = await privateApi("/api/model_settings/get");
+    const saved = readEncryptedModelRoutes();
+    const safeRoute = (route) => route ? {
+      mode: route.mode, protocol: route.protocol, endpoint: route.endpoint,
+      model: route.model, thinking_mode: route.thinking_mode,
+      thinking_transport: route.thinking_transport,
+      apiKeyConfigured: Boolean(route.api_key),
+    } : null;
+    return {...state, savedConfigurationAvailable: Boolean(saved),
+      persistenceUncertain: modelRoutesPersistenceUncertain,
+      requiresRevalidation: Boolean(modelRoutesPersistenceUncertain || (saved && !state.ready)),
+      ...(saved ? {routes: {image: safeRoute(saved.image), text: safeRoute(saved.text)},
+        external_consent: saved.external_consent === true,
+        masked_data_consent: saved.masked_data_consent === true} : {})};
+  } catch {
+    return {ready: false, error_code: "local_service_unavailable",
+      persistenceUncertain: modelRoutesPersistenceUncertain,
+      requiresRevalidation: modelRoutesPersistenceUncertain};
+  }
+});
+
+handleDesktopRequest("openbutler:save-builtin-model-routes", async (_event, proposed) => {
+  if (modelRoutesSaveInProgress) {
+    return {ok: false, error: "模型配置正在验证或保存，请等待完成后重试。",
+      error_code: "model_routes_save_in_progress"};
+  }
+  modelRoutesSaveInProgress = true;
+  try {
+    if (!safeStorage?.isEncryptionAvailable()) {
+      return {ok: false, error: "本机密钥存储不可用，配置未保存。"};
+    }
+    if (!proposed || typeof proposed !== "object" || !proposed.image || !proposed.text) {
+      return {ok: false, error: "模型配置不完整。"};
+    }
+    if (captureController?.active) {
+      try {
+        await captureController.pause("model_reconfigured");
+        refreshTrayStatus();
+      } catch {
+        return {ok: false, error: "录制尚未安全暂停，模型配置未更改。"};
+      }
+    }
+    const saved = readEncryptedModelRoutes();
+    const current = {};
+    for (const target of ["image", "text"]) {
+      const item = proposed[target];
+      const old = saved?.[target];
+      if (!item || typeof item !== "object") return {ok: false, error: "模型配置不完整。"};
+      const sameEndpoint = old && old.endpoint === item.endpoint && old.protocol === item.protocol
+        && old.mode === item.mode;
+      current[target] = {...item, api_key: item.api_key || (sameEndpoint ? old.api_key : null) || null};
+    }
+    const payload = {
+      image: current.image, text: current.text,
+      external_consent: proposed.external_consent === true,
+      masked_data_consent: proposed.masked_data_consent === true,
+    };
+    const destinations = (routes) => ["image", "text"].map((target) => {
+      const route = routes?.[target];
+      return route?.mode === "custom" ? `${target}:${route.endpoint}` : `${target}:local`;
+    }).join("|");
+    const external = [current.image, current.text].some((route) => route.mode === "custom");
+    if (external && (!payload.external_consent || !payload.masked_data_consent)) {
+      return {ok: false, error: "外部模型需要明确同意联网调用和发送遮挡后数据。"};
+    }
+    if (external && (destinations(saved) !== destinations(current)
+        || !saved?.external_consent || !saved?.masked_data_consent)) {
+      const confirmation = await dialog.showMessageBox(mainWindow, {
+        type: "warning", title: "确认外部模型接收方",
+        message: "要把遮挡后的本机记录发送给以下模型服务吗？",
+        detail: [current.image, current.text].filter((route) => route.mode === "custom")
+          .map((route) => route.endpoint).join("\n")
+          + "\n已发送的请求无法撤回。只有确认后才保存这次接收方授权。",
+        buttons: ["确认接收方", "取消"], defaultId: 1, cancelId: 1,
+      });
+      if (confirmation.response !== 0) return {ok: false, error: "已取消外部模型授权。"};
+    }
+    try {
+      const encrypted = safeStorage.encryptString(JSON.stringify(payload));
+      const previousUncertainty = modelRoutesPersistenceUncertain;
+      modelRoutesPersistenceUncertain = true;
+      const result = await privateApi("/api/model_settings/update", payload);
+      if (result?.ok === false) {
+        // An explicit validation rejection leaves the previously active pair unchanged.
+        modelRoutesPersistenceUncertain = previousUncertainty;
+        return {ok: false, error: "模型验证未通过，请检查连接和授权。",
+          error_code: result.error_code};
+      }
+      if (result?.ok !== true) throw new Error("model_update_result_unconfirmed");
+      const temp = modelRoutesPath() + ".tmp";
+      fs.writeFileSync(temp, encrypted, {mode: 0o600});
+      fs.renameSync(temp, modelRoutesPath());
+      modelRoutesPersistenceUncertain = false;
+      return {ok: true, status: result};
+    } catch {
+      return {ok: false, error: "模型配置未保存，请检查本机服务和密钥存储。"};
+    }
+  } finally {
+    modelRoutesSaveInProgress = false;
+  }
+});
+
+handleDesktopRequest("openbutler:get-acceptance-pack", async () => readAcceptancePack());
+
+handleDesktopRequest("openbutler:save-acceptance-feedback", async (_event, feedback) => {
   if (!isPreviewChannel) return {ok: false, message: "验收反馈只在 Preview 中可用。"};
   const pack = readAcceptancePack();
   if (!pack) return {ok: false, message: "没有可用的验收包。"};
@@ -753,25 +1106,25 @@ ipcMain.handle("openbutler:save-acceptance-feedback", async (_event, feedback) =
   return {ok: true, savedAt: result.saved_at};
 });
 
-ipcMain.handle("openbutler:restart-backend", async () => {
+handleDesktopRequest("openbutler:restart-backend", async () => {
   const state = await restartBackend();
   return {running: state.running, apiBase: state.apiBase, pid: state.pid};
 });
 
-ipcMain.handle("openbutler:get-minecontext-status", async () => probeMineContext());
+handleDesktopRequest("openbutler:get-minecontext-status", async () => probeMineContext());
 
-ipcMain.handle("openbutler:scan-minecontext-installations", async () => scanMineContextInstallations());
+handleDesktopRequest("openbutler:scan-minecontext-installations", async () => scanMineContextInstallations());
 
-ipcMain.handle("openbutler:download-minecontext-installer", async () => downloadMineContextInstaller());
+handleDesktopRequest("openbutler:download-minecontext-installer", async () => downloadMineContextInstaller());
 
-ipcMain.handle("openbutler:install-minecontext-with-approval", async () => installMineContextWithApproval());
+handleDesktopRequest("openbutler:install-minecontext-with-approval", async () => installMineContextWithApproval());
 
-ipcMain.handle("openbutler:open-minecontext-download-page", async () => {
+handleDesktopRequest("openbutler:open-minecontext-download-page", async () => {
   await shell.openExternal(mineContextReleasesUrl);
   return {ok: true, url: mineContextReleasesUrl};
 });
 
-ipcMain.handle("openbutler:choose-minecontext-installer", async () => {
+handleDesktopRequest("openbutler:choose-minecontext-installer", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: "选择 MineContext 安装程序",
     properties: ["openFile"],
@@ -787,7 +1140,7 @@ ipcMain.handle("openbutler:choose-minecontext-installer", async () => {
   return {canceled: false, selected: true};
 });
 
-ipcMain.handle("openbutler:start-minecontext", async () => {
+handleDesktopRequest("openbutler:start-minecontext", async () => {
   const fromScan = await startMineContextFromScan();
   if (fromScan.ok || fromScan.action !== "not_found") return fromScan;
   if (selectedMineContextInstaller) {
@@ -797,7 +1150,7 @@ ipcMain.handle("openbutler:start-minecontext", async () => {
   return {ok: false, action: "not_found", message: "未找到 MineContext。请先选择安装程序，或手动启动 MineContext。"};
 });
 
-ipcMain.handle("openbutler:test-minecontext-model-config", async (_event, config) => {
+handleDesktopRequest("openbutler:test-minecontext-model-config", async (_event, config) => {
   const missing = validateModelConfig(config);
   const status = await probeMineContext();
   return {
@@ -810,7 +1163,7 @@ ipcMain.handle("openbutler:test-minecontext-model-config", async (_event, config
   };
 });
 
-ipcMain.handle("openbutler:apply-minecontext-model-config", async (_event, config) => {
+handleDesktopRequest("openbutler:apply-minecontext-model-config", async (_event, config) => {
   const missing = validateModelConfig(config);
   if (missing.length) {
     return {ok: false, missing, message: "请补全模型配置后再保存。"};
@@ -851,19 +1204,19 @@ ipcMain.handle("openbutler:apply-minecontext-model-config", async (_event, confi
   }
 });
 
-ipcMain.handle("openbutler:show-main-window", async () => {
+handleDesktopRequest("openbutler:show-main-window", async () => {
   showMainWindow();
   return {ok: true};
 });
 
-ipcMain.handle("openbutler:quit-app", async () => {
+handleDesktopRequest("openbutler:quit-app", async () => {
   isQuitting = true;
   stopBackend();
   app.exit(0);
   return {ok: true};
 });
 
-ipcMain.handle("openbutler:choose-minecontext-home", async () => {
+handleDesktopRequest("openbutler:choose-minecontext-home", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: "选择本机记录目录",
     properties: ["openDirectory"],
@@ -876,13 +1229,27 @@ ipcMain.handle("openbutler:choose-minecontext-home", async () => {
   return {canceled: false, path: selectedMineContextHome};
 });
 
-ipcMain.handle("openbutler:open-data-folder", async () => {
+handleDesktopRequest("openbutler:open-data-folder", async () => {
   await shell.openPath(userDataDir());
   return {ok: true};
 });
 
 app.whenReady().then(createWindow);
 app.whenReady().then(createTray);
+app.whenReady().then(() => {
+  for (const eventName of ["lock-screen", "suspend"]) {
+    powerMonitor.on(eventName, () => {
+      if (captureController?.active) {
+        void captureController.pause(eventName).catch(() => {}).finally(refreshTrayStatus);
+      }
+    });
+  }
+  void privateApi("/api/context-engine/retention/run", {}).catch(() => {});
+  retentionTimer = setInterval(() => {
+    void privateApi("/api/context-engine/retention/run", {}).catch(() => {});
+  }, 60 * 60 * 1000);
+  retentionTimer.unref();
+});
 
 app.on("second-instance", showMainWindow);
 
@@ -895,6 +1262,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   isQuitting = true;
+  if (retentionTimer) clearInterval(retentionTimer);
   stopBackend();
 });
 

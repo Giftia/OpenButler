@@ -16,6 +16,12 @@ const userDataDir = resolve(smokeDir, "user-data");
 if (!existsSync(exePath)) {
   throw new Error(`Packaged app not found: ${exePath}`);
 }
+if (channel === "preview") {
+  for (const script of ["active-app.ps1", "visible-apps.ps1"]) {
+    const scriptPath = resolve(dirname(exePath), "resources", "app.asar.unpacked", "src", script);
+    if (!existsSync(scriptPath)) throw new Error(`Packaged capture script missing: ${script}`);
+  }
+}
 
 rmSync(smokeDir, {recursive: true, force: true});
 mkdirSync(smokeDir, {recursive: true});

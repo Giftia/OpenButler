@@ -1,4 +1,13 @@
-import {useEffect, useMemo, useState} from "react";
+import {useEffect, useMemo, useRef, useState} from "react";
+import {MaskEditor} from "./components/MaskEditor";
+import type {MaskedEditingCanvas} from "./components/MaskEditor";
+import {clampMask, sameMask, validImageBounds} from "./lib/maskGeometry";
+import type {ImageBounds} from "./lib/maskGeometry";
+import {createPrivacyPreviewGate} from "./lib/privacyPreviewGate";
+import type {PreviewTicket} from "./lib/privacyPreviewGate";
+import {currentAppPath, replaceAppPath} from "./lib/navigation";
+import {PreviewDailyReview} from "./components/PreviewDailyReview";
+import {AgentLoopPanel} from "./components/AgentLoopPanel";
 import {
   Bot,
   Boxes,
@@ -56,6 +65,9 @@ import {
   getButlerTimeline,
   getButlerProductizationObjectiveStatus,
   getDesktopStatus,
+  getContextEngineStatus,
+  getContextObservations,
+  deleteContextObservation,
   getEvents,
   getPlugins,
   getPrivacyMode,
@@ -72,6 +84,9 @@ import {
   importPCActivities,
   queryPCActivityAtTime,
   rebuildButlerTimeline,
+  pauseBuiltinCaptureApi,
+  revokeBuiltinCaptureApi,
+  retryContextObservation,
   resetButlerDemo,
   runButlerDemoPath,
   searchPCActivity,
@@ -84,7 +99,10 @@ import {
   updatePCActivitySettings,
   deletePCActivityEvents,
   updateWorkstationSettings,
-  simulateEvents
+  simulateEvents,
+  type CaptureConfig,
+  type ContextEngineStatus,
+  type ContextObservation
 } from "./lib/api";
 import {buildTodayHomeViewModel, type ActivationMode} from "./lib/butlerUiAdapter";
 import {buildAchievementViewModel, type AchievementCard} from "./lib/achievementUiAdapter";
@@ -149,6 +167,8 @@ const advancedNavItems: Array<{key: PageKey; label: string; icon: typeof Home}> 
 
 const navItems = [...primaryNavItems, ...advancedNavItems];
 const FIRST_RUN_ACTIVATION_STORAGE_KEY = "openbutler:first_run_activation:v1";
+const PREVIEW_ACTIVATION_STORAGE_KEY = "openbutler:preview_activation:v1";
+const isPreviewDesktop = () => window.openbutlerDesktop?.channel === "preview";
 
 type ActivationStatus = "unseen" | "demo_selected" | "real_setup_started" | "dismissed" | "completed";
 type ModelProviderConfig = {
@@ -177,7 +197,7 @@ const DEFAULT_MODEL_PROVIDER_CONFIG: ModelProviderConfig = {
 
 function readActivationStatus(): ActivationStatus {
   try {
-    const value = window.localStorage.getItem(FIRST_RUN_ACTIVATION_STORAGE_KEY);
+    const value = window.localStorage.getItem(isPreviewDesktop() ? PREVIEW_ACTIVATION_STORAGE_KEY : FIRST_RUN_ACTIVATION_STORAGE_KEY);
     return value === "demo_selected" ||
       value === "real_setup_started" ||
       value === "dismissed" ||
@@ -229,7 +249,7 @@ function routeForPage(key: PageKey) {
 }
 
 function navigateClient(path: string) {
-  window.history.replaceState(null, "", path);
+  replaceAppPath(path);
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
@@ -306,8 +326,8 @@ function groupByStage(plugins: PluginManifest[]) {
 }
 
 function App() {
-  const currentPath = window.location.pathname;
-  const [page, setPage] = useState<PageKey>(() => window.openbutlerDesktop?.channel === "preview" ? "acceptance" : pageForPath(currentPath));
+  const currentPath = currentAppPath();
+  const [page, setPage] = useState<PageKey>(() => pageForPath(currentPath));
   const [events, setEvents] = useState<EventItem[]>([]);
   const [plugins, setPlugins] = useState<PluginManifest[]>([]);
   const [privacyMode, setMode] = useState<PrivacyMode>("basic");
@@ -337,7 +357,7 @@ function App() {
 
   useEffect(() => {
     function syncPageFromLocation() {
-      setPage(pageForPath(window.location.pathname));
+      setPage(pageForPath(currentAppPath()));
     }
 
     window.addEventListener("popstate", syncPageFromLocation);
@@ -364,7 +384,7 @@ function App() {
 
   function updateActivation(status: ActivationStatus) {
     try {
-      window.localStorage.setItem(FIRST_RUN_ACTIVATION_STORAGE_KEY, status);
+      window.localStorage.setItem(isPreviewDesktop() ? PREVIEW_ACTIVATION_STORAGE_KEY : FIRST_RUN_ACTIVATION_STORAGE_KEY, status);
     } catch {
       // Local storage can be unavailable in restricted browser modes.
     }
@@ -392,7 +412,9 @@ function App() {
 
   const CurrentPage = {
     acceptance: <AcceptanceCenter />,
-    butler: <FormalButlerHome activationStatus={activationStatus} />,
+    butler: isPreviewDesktop() && activationStatus !== "demo_selected"
+      ? <PreviewToday onOpenGuide={() => setShowFirstRunGuide(true)} />
+      : <FormalButlerHome activationStatus={activationStatus} />,
     dashboard: (
       <Dashboard
         events={events}
@@ -407,7 +429,7 @@ function App() {
       <UnifiedTimeline />
     ),
     achievements: <AchievementsPage />,
-    chat: <Chat activationStatus={activationStatus} />,
+    chat: isPreviewDesktop() ? <AgentLoopPanel /> : <Chat activationStatus={activationStatus} />,
     workstation: <WorkstationVision privacyMode={privacyMode} />,
     pcActivity: <PCActivityContext privacyMode={privacyMode} />,
     butlerInbox: <ButlerInbox />,
@@ -417,28 +439,33 @@ function App() {
     designMijia: <DesignConceptPage variant="mijia" activationStatus={activationStatus} />,
     designIos: <DesignConceptPage variant="ios" activationStatus={activationStatus} />,
     designDeck: <DesignConceptPage variant="deck" activationStatus={activationStatus} />,
-    privacy: (
-      <Privacy
-        mode={privacyMode}
-        onChange={handlePrivacy}
-        plugins={plugins}
-        activationStatus={activationStatus}
-        onOpenGuide={() => setShowFirstRunGuide(true)}
-      />
-    )
+    privacy: isPreviewDesktop() && activationStatus !== "demo_selected"
+      ? <PreviewPrivacy mode={privacyMode} onChange={handlePrivacy} onOpenGuide={() => setShowFirstRunGuide(true)} />
+      : <Privacy
+          mode={privacyMode}
+          onChange={handlePrivacy}
+          plugins={plugins}
+          activationStatus={activationStatus}
+          onOpenGuide={() => setShowFirstRunGuide(true)}
+        />
   }[page];
 
-  const activationGateOpen = page !== "acceptance" && !isDesignPage && activationStatus !== "demo_selected" && activationStatus !== "completed";
+  const activationGateOpen = !(isPreviewDesktop() && page === "chat" && activationStatus === "dismissed") && page !== "acceptance" && !isDesignPage && activationStatus !== "demo_selected" && activationStatus !== "completed";
 
   if (activationGateOpen) {
     return (
       <FirstRunGuide
         status={activationStatus}
+        onChooseLocalChat={() => {
+          closeActivation("dismissed");
+          setPage("chat");
+          replaceAppPath(routeForPage("chat"));
+        }}
         mandatory
         onChooseDemo={() => {
           closeActivation("demo_selected");
           setPage("butler");
-          window.history.replaceState(null, "", routeForPage("butler"));
+          replaceAppPath(routeForPage("butler"));
         }}
         onChooseReal={() => {
           updateActivation("real_setup_started");
@@ -447,7 +474,7 @@ function App() {
         onComplete={() => {
           closeActivation("completed");
           setPage("butler");
-          window.history.replaceState(null, "", routeForPage("butler"));
+          replaceAppPath(routeForPage("butler"));
         }}
       />
     );
@@ -474,7 +501,7 @@ function App() {
                   className={page === item.key ? "active" : ""}
                   onClick={() => {
                     setPage(item.key);
-                    window.history.replaceState(null, "", routeForPage(item.key));
+                    replaceAppPath(routeForPage(item.key));
                   }}
                   title={item.label}
                 >
@@ -508,10 +535,15 @@ function App() {
       {showFirstRunGuide && (
         <FirstRunGuide
           status={activationStatus}
+          onChooseLocalChat={() => {
+            closeActivation("dismissed");
+            setPage("chat");
+            replaceAppPath(routeForPage("chat"));
+          }}
           onChooseDemo={() => {
             closeActivation("demo_selected");
             setPage("butler");
-            window.history.replaceState(null, "", routeForPage("butler"));
+            replaceAppPath(routeForPage("butler"));
           }}
           onChooseReal={() => {
             updateActivation("real_setup_started");
@@ -686,7 +718,7 @@ function AchievementsPage() {
   const view = buildAchievementViewModel(events, timelineItems);
 
   const navigateTo = (path: string) => {
-    window.history.replaceState(null, "", path);
+    replaceAppPath(path);
     window.dispatchEvent(new PopStateEvent("popstate"));
   };
 
@@ -1087,7 +1119,7 @@ function ButlerHome({
   }
 
   function navigateTo(path: string) {
-    window.history.replaceState(null, "", path);
+    replaceAppPath(path);
     window.dispatchEvent(new PopStateEvent("popstate"));
   }
 
@@ -1970,12 +2002,24 @@ function TimelineThumbnail({moment}: {moment: TimelineMoment}) {
 
 function UnifiedTimeline() {
   const [items, setItems] = useState<Array<Record<string, any>>>([]);
+  const [previewItems, setPreviewItems] = useState<ContextObservation[]>([]);
+  const [previewError, setPreviewError] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [timeFilter, setTimeFilter] = useState<TimelineTimeFilter>("today");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [importanceFilter, setImportanceFilter] = useState("all");
 
   async function refreshTimeline() {
+    if (isPreviewDesktop() && readActivationStatus() !== "demo_selected") {
+      try {
+        const result = await getContextObservations();
+        setPreviewItems(result.items);
+        setPreviewError("");
+      } catch {
+        setPreviewError("本机记录暂时无法读取。请确认本机服务正在运行。");
+      }
+      return;
+    }
     try {
       const result = await getButlerTimeline();
       setItems(result.items);
@@ -1989,6 +2033,13 @@ function UnifiedTimeline() {
   }, []);
 
   const sampleMode = readActivationStatus() === "demo_selected";
+  if (isPreviewDesktop() && !sampleMode) {
+    return <section className="life-timeline-page preview-timeline-page">
+      <div className="timeline-feed-hero"><div><p className="eyebrow">本机记录</p><h2>时间线</h2><p>先显示授权录制的事实；待整理和整理失败不会被写成已确认结论。</p></div><button className="secondary" onClick={() => void refreshTimeline()}>刷新</button></div>
+      {previewError && <p className="policy-note" role="alert">{previewError}</p>}
+      {previewItems.length ? <div className="life-timeline event-feed">{previewItems.map((item) => <PreviewObservationRow key={item.id} item={item} onChanged={() => void refreshTimeline()} />)}</div> : <div className="friendly-empty"><strong>时间线还没有本机记录</strong><span>完成隐私预览并开始录制后，这里会显示本机记录及其处理状态。</span></div>}
+    </section>;
+  }
   const displayItems = items.length ? items : sampleMode ? timelineSampleEvents : [];
   const moments = displayItems.map(toTimelineMoment);
   const filteredMoments = filterTimelineMoments(moments, timeFilter, categoryFilter, importanceFilter);
@@ -2821,21 +2872,737 @@ ${sampleLine}
   );
 }
 
+type PreviewMask = CaptureConfig["masks"][number];
+
+function observationStateLabel(state: ContextObservation["state"]) {
+  return {
+    recorded_pending: "已记录，待整理",
+    processing: "整理中",
+    ready: "已整理",
+    model_unavailable: "整理失败，记录仍在本机"
+  }[state];
+}
+
+function PreviewObservationRow({item, onChanged}: {item: ContextObservation; onChanged?: () => void}) {
+  const [open, setOpen] = useState(false);
+  const [evidence, setEvidence] = useState<string | null>(null);
+  const [evidenceMessage, setEvidenceMessage] = useState("");
+  const [retryMessage, setRetryMessage] = useState("");
+  const [retryBusy, setRetryBusy] = useState(false);
+
+  async function retry() {
+    setRetryBusy(true);
+    setRetryMessage("");
+    try {
+      const result = await retryContextObservation(item.id);
+      setRetryMessage(result.ok ? "已重新整理。" : result.reason === "model_unavailable"
+        ? "整理模型尚不可用，请先检查配置。" : "图片依据已过期或暂不可用。");
+      onChanged?.();
+    } catch {
+      setRetryMessage("重新整理失败，请检查本机服务后重试。");
+    } finally {
+      setRetryBusy(false);
+    }
+  }
+
+  async function removeRecord() {
+    if (!window.confirm("删除这条本机记录和遮挡后图片依据？此操作不可撤销。")) return;
+    try {
+      const result = await deleteContextObservation(item.id);
+      setRetryMessage(result.deleted ? "记录已删除。" : "这条记录已经不存在。");
+      onChanged?.();
+    } catch {
+      setRetryMessage("删除失败，请检查本机服务后重试。");
+    }
+  }
+
+  async function toggleEvidence() {
+    if (open) { setOpen(false); return; }
+    setOpen(true);
+    if (!item.evidence_available || !item.evidence_id) {
+      setEvidenceMessage("这张遮挡后图片已过期或不可用。");
+      return;
+    }
+    if (!window.openbutlerDesktop?.getMaskedEvidence) {
+      setEvidenceMessage("当前桌面版暂不能展示图片依据。");
+      return;
+    }
+    setEvidenceMessage("正在读取遮挡后图片…");
+    try {
+      const result = await window.openbutlerDesktop.getMaskedEvidence(item.evidence_id);
+      if (result.ok && result.dataUrl.startsWith("data:image/png;base64,")) {
+        setEvidence(result.dataUrl);
+        setEvidenceMessage("");
+      } else {
+        setEvidenceMessage("图片依据已过期或暂不可用。");
+      }
+    } catch {
+      setEvidenceMessage("图片依据暂时无法读取。");
+    }
+  }
+
+  const date = new Date(item.captured_at);
+  return <article className="preview-observation-row">
+    <time dateTime={item.captured_at}>{Number.isNaN(date.getTime()) ? "时间未知" : date.toLocaleString("zh-CN")}</time>
+    <div className="preview-observation-body">
+      <div className="moment-title-row"><strong>{item.title || "本机画面记录"}</strong><span className="moment-state">{observationStateLabel(item.state)}</span></div>
+      <p>{item.summary || (item.state === "model_unavailable" ? "智能整理不可用；本机记录仍保留，未生成结论。" : "已保存遮挡后画面，尚未生成整理结论。")}</p>
+      <small>来源：{item.source_label}</small>
+      <button className="ghost timeline-evidence-button" onClick={() => void toggleEvidence()}>{open ? "收起依据" : "查看依据"}</button>
+      {item.state === "model_unavailable" && <button className="secondary" disabled={retryBusy || !item.evidence_available} onClick={() => void retry()}>重新整理</button>}
+      {retryMessage && <small role="status">{retryMessage}</small>}
+      {open && <div className="moment-evidence evidence-drawer">
+        <strong>依据与边界</strong><p>{item.boundary}</p>
+        {evidence && <img className="preview-evidence-image" src={evidence} alt="本机遮挡后图片依据" />}
+        {evidenceMessage && <small role="status">{evidenceMessage}</small>}
+        <small>仅显示经遮挡处理的本机图片，不显示原始路径。</small>
+        <button className="ghost" onClick={() => void removeRecord()}>删除这条记录</button>
+      </div>}
+    </div>
+  </article>;
+}
+
+function PreviewToday({onOpenGuide}: {onOpenGuide: () => void}) {
+  const [status, setStatus] = useState<ContextEngineStatus | null>(null);
+  const [observations, setObservations] = useState<ContextObservation[]>([]);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function refreshPreviewToday() {
+    try {
+      const [nextStatus, nextObservations, captureState] = await Promise.all([
+        getContextEngineStatus(), getContextObservations(),
+        window.openbutlerDesktop?.getCaptureState?.().catch(() => null) ?? Promise.resolve(null)
+      ]);
+      const desktopActive = typeof captureState?.active === "boolean" ? captureState.active : null;
+      setStatus(desktopActive === null ? nextStatus : {...nextStatus, recording: {...nextStatus.recording, active: nextStatus.recording.active && desktopActive}});
+      setObservations(nextObservations.items);
+      setError(captureState?.lastResult === "privacy_processing_failed"
+        ? "本地遮挡处理失败，记录已暂停。请检查本机文字识别后重新预览并启动。"
+        : desktopActive !== null && desktopActive !== nextStatus.recording.active
+          ? "桌面采集与本机服务状态不一致，请检查隐私预览后重新启动。" : "");
+    } catch {
+      setError("本机记录暂时无法读取，请确认本机服务正在运行。");
+    }
+  }
+
+  useEffect(() => {
+    void refreshPreviewToday();
+    const timer = window.setInterval(() => void refreshPreviewToday(), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  async function stopRecording(revoke: boolean) {
+    setBusy(true);
+    try {
+      const bridge = await window.openbutlerDesktop?.pauseBuiltinCapture?.();
+      if (bridge && !bridge.ok) throw new Error("capture_pause_failed");
+      if (revoke) await revokeBuiltinCaptureApi();
+      else await pauseBuiltinCaptureApi();
+      await refreshPreviewToday();
+    } catch {
+      setError("操作未完成，请检查本机记录状态后重试。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function openRecordingSetup() {
+    if (status?.recording.active) {
+      setBusy(true);
+      try {
+        const bridge = await window.openbutlerDesktop?.pauseBuiltinCapture?.();
+        if (bridge && !bridge.ok) throw new Error("capture_pause_failed");
+        await pauseBuiltinCaptureApi();
+        await refreshPreviewToday();
+      } catch {
+        setError("未能暂停当前录制，请先确认录制状态。");
+        setBusy(false);
+        return;
+      }
+      setBusy(false);
+    }
+    onOpenGuide();
+  }
+
+  const pending = observations.filter((item) => item.state === "recorded_pending" || item.state === "processing").length;
+  const failed = observations.filter((item) => item.state === "model_unavailable").length;
+  return <div className="today-page preview-today">
+    <section className="today-hero mi-home-command" aria-label="本机记录今日概览">
+      <div className="today-hero-copy">
+        <span className="privacy-chip">0.2.0 Preview · 本机记录</span>
+        <h1>今日</h1>
+        <p className="hero-summary">{status?.recording.active ? "正在记录已授权的屏幕。" : "本机记录已暂停。"} {pending ? `${pending} 条记录等待整理。` : "暂无待整理记录。"}</p>
+        <div className="home-status-strip">
+          <article><strong>{status?.recording.record_count ?? 0}</strong><span>本机记录</span><small>仅计数，不代表已整理</small></article>
+          <article><strong>{pending}</strong><span>待整理</span><small>尚未生成结论</small></article>
+          <article><strong>{failed}</strong><span>整理失败</span><small>记录仍可查看</small></article>
+        </div>
+        <div className="hero-actions primary-action-row">
+          {status?.recording.active ? <button className="secondary" disabled={busy} onClick={() => void stopRecording(false)}>暂停录制</button> : <button className="primary" onClick={() => void openRecordingSetup()}>检查隐私预览并开始</button>}
+          <button className="secondary" onClick={() => navigateClient("/timeline")}>查看时间线</button>
+          <a className="secondary preview-model-shortcut" href="#preview-model-settings" onClick={(event) => { event.preventDefault(); document.getElementById("preview-model-settings")?.scrollIntoView({behavior: "smooth", block: "start"}); document.getElementById("preview-model-settings")?.focus(); }}>配置整理模型</a>
+          <button className="ghost" disabled={busy} onClick={() => void refreshPreviewToday()}>刷新</button>
+        </div>
+      </div>
+      <div className="today-hero-status command-suggestion-card"><span className="privacy-chip">记录状态</span><strong>{status?.recording.active ? "记录中" : "未录制"}</strong><span>录制与智能整理分开运行；没有可用模型时，记录只会标为待整理或整理失败。</span></div>
+    </section>
+    {error && <p className="policy-note" role="alert">{error}</p>}
+    <PreviewDailyReview authorized={status?.recording.authorized === true} recordRevision={observations.map((item) => `${item.id}:${item.state}:${item.evidence_available}`).join("|")} />
+    <section className="today-panel preview-records-panel">
+      <div className="section-title"><div><p className="eyebrow">本机记录</p><h2>最近记录</h2></div><button className="secondary" onClick={() => navigateClient("/timeline")}>全部记录</button></div>
+      {observations.length ? observations.slice(0, 3).map((item) => <PreviewObservationRow key={item.id} item={item} onChanged={() => void refreshPreviewToday()} />) : <div className="friendly-empty"><strong>还没有本机记录</strong><span>完成隐私预览并开始录制后，记录会出现在这里。</span></div>}
+    </section>
+    <section className="today-panel preview-recording-controls"><div className="section-title"><div><h2>录制授权</h2><p>重新开始前需要再次检查隐私预览。</p></div></div>
+      <div className="desktop-action-row"><button className="secondary" disabled={busy || !status?.recording.active} onClick={() => void stopRecording(false)}>暂停</button><button className="secondary" disabled={busy || !status?.recording.authorized} onClick={() => void stopRecording(true)}>撤销授权</button><button className="secondary" disabled={busy} onClick={() => void openRecordingSetup()}>更改录制范围</button></div>
+    </section>
+    <PreviewModelSettings onSaved={refreshPreviewToday} />
+  </div>;
+}
+
+function PreviewPrivacy({mode, onChange, onOpenGuide}: {mode: PrivacyMode; onChange: (mode: PrivacyMode) => void; onOpenGuide: () => void}) {
+  const [status, setStatus] = useState<ContextEngineStatus | null>(null);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { void getContextEngineStatus().then(setStatus).catch(() => setMessage("本机录制状态暂不可用。")); }, []);
+
+  async function stop(revoke: boolean) {
+    setBusy(true);
+    try {
+      const bridge = await window.openbutlerDesktop?.pauseBuiltinCapture?.();
+      if (bridge && !bridge.ok) throw new Error("capture_pause_failed");
+      if (revoke) await revokeBuiltinCaptureApi();
+      else await pauseBuiltinCaptureApi();
+      setStatus(await getContextEngineStatus());
+      setMessage(revoke ? "录制授权已撤销；已有记录仍按保留规则处理。" : "录制已暂停。");
+    } catch {
+      setMessage("操作未完成，请检查本机服务后重试。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <div className="me-page preview-me-page">
+    <section className="today-panel"><div className="section-title"><div><p className="eyebrow">我的 OpenButler</p><h2>本机记录授权</h2><p>录制只在你确认的屏幕与范围内运行。重新开始前需要再次检查隐私预览。</p></div><span className="privacy-chip">0.2.0 Preview</span></div>
+      <div className="activation-status-grid"><StatusItem label="录制" value={status?.recording.active ? "运行中" : "已暂停"} /><StatusItem label="授权" value={status?.recording.authorized ? "已授权" : "未授权"} /><StatusItem label="本机记录" value={`${status?.recording.record_count ?? 0} 条`} /></div>
+      <div className="desktop-action-row"><button className="secondary" disabled={busy || !status?.recording.active} onClick={() => void stop(false)}>暂停</button><button className="secondary" disabled={busy || !status?.recording.authorized} onClick={() => void stop(true)}>撤销授权</button><button className="secondary" onClick={onOpenGuide}>查看录制范围</button></div>
+      {message && <p className="policy-note" role="status">{message}</p>}
+    </section>
+    <section className="today-panel"><div className="section-title"><div><h2>隐私方式</h2><p>模型服务另需单独配置及同意；切换到基础隐私不会自动外发记录。</p></div></div>
+      <div className="mode-toggle"><button className={mode === "strict" ? "selected" : ""} onClick={() => onChange("strict")}><CloudOff size={20} /><strong>只在本机整理</strong><span>不允许外部模型调用。</span></button><button className={mode === "basic" ? "selected" : ""} onClick={() => onChange("basic")}><ShieldCheck size={20} /><strong>基础隐私</strong><span>仅在单独授权后使用外部能力。</span></button></div>
+    </section>
+  </div>;
+}
+
+type PreviewModelRoute = {protocol: "openai_compatible" | "ollama_native"; mode: "local" | "custom"; endpoint: string; model: string; api_key: string; apiKeyConfigured: boolean};
+type PreviewModelConfiguration = {image: PreviewModelRoute; text: PreviewModelRoute; external_consent: boolean; masked_data_consent: boolean};
+type PreviewModelConfigurationState = "unconfigured" | "saved-needs-validation" | "ready" | "unavailable";
+const emptyPreviewRoute = (): PreviewModelRoute => ({protocol: "ollama_native", mode: "local", endpoint: "http://127.0.0.1:11434", model: "", api_key: "", apiKeyConfigured: false});
+const samePreviewModelDestination = (a: PreviewModelRoute, b?: PreviewModelRoute) => Boolean(b && a.mode === b.mode && a.protocol === b.protocol && a.endpoint === b.endpoint);
+
+function readPreviewModelConfiguration(result: Record<string, unknown>): PreviewModelConfiguration | null {
+  const routes = result.routes && typeof result.routes === "object" ? result.routes as Record<string, unknown> : result;
+  const route = (value: unknown): PreviewModelRoute => {
+    const item = value && typeof value === "object" ? value as Record<string, unknown> : {};
+    return {...emptyPreviewRoute(),
+      ...(item.protocol === "ollama_native" || item.protocol === "openai_compatible" ? {protocol: item.protocol} : {}),
+      ...(item.mode === "local" || item.mode === "custom" ? {mode: item.mode} : {}),
+      ...(typeof item.endpoint === "string" ? {endpoint: item.endpoint} : {}),
+      ...(typeof item.model === "string" ? {model: item.model} : {}),
+      apiKeyConfigured: item.apiKeyConfigured === true,
+    };
+  };
+  const image = route(routes.image), text = route(routes.text);
+  return image.model && text.model ? {image, text, external_consent: result.external_consent === true, masked_data_consent: result.masked_data_consent === true} : null;
+}
+
+function previewModelFailure(result: unknown): string {
+  const item = result && typeof result === "object" ? result as Record<string, unknown> : {};
+  const messages: Record<string, string> = {
+    provider_connection_failed: "无法连接模型服务，请检查服务是否启动及网络连接。",
+    endpoint_resolution_failed: "无法解析服务地址，请检查地址与网络连接。",
+    provider_http_error: "模型服务拒绝了请求，请检查 API Key、模型名称和服务权限。",
+    image_probe_failed: "图像模型未通过测试，请确认所选模型支持图像识别。",
+    text_probe_failed: "文字模型未通过测试，请检查模型名称及响应能力。",
+    invalid_provider_response: "模型返回格式不兼容，请检查接口类型。",
+    invalid_endpoint: "服务地址格式不正确。OpenAI 兼容接口需含路径（如 /v1），Ollama 只填主机与端口；不要添加末尾斜杠、查询参数或账号密码。",
+    local_requires_loopback_http: "本机模型需使用指向 localhost 或回环地址的 HTTP 服务地址。",
+    custom_requires_public_https: "自定义服务需使用公开的 HTTPS 地址。",
+    unsafe_endpoint: "服务地址不符合安全要求，请使用公开的 HTTPS 模型服务地址。",
+    external_consent_required: "请分别确认外部模型联网调用和遮挡后数据发送范围。",
+    privacy_audit_unavailable: "本机隐私审计暂不可用，请检查本机服务后重试。",
+    strict_mode_forbidden: "当前隐私方式不允许外部调用，请检查隐私设置和授权。",
+    local_service_unavailable: "本机服务暂不可用，请在桌面版检查服务后重试。",
+  };
+  if (typeof item.error_code === "string" && Object.prototype.hasOwnProperty.call(messages, item.error_code)) return messages[item.error_code];
+  // Only known desktop messages are displayed; arbitrary provider errors may contain secrets.
+  const desktopMessages: Record<string, string> = {
+    "本机密钥存储不可用，配置未保存。": "本机加密密钥存储不可用，配置未保存。请检查桌面系统的密钥存储。",
+    "录制尚未安全暂停，模型配置未更改。": "录制尚未安全暂停，请先暂停录制后重试。模型配置未更改。",
+    "已取消外部模型授权。": "已取消外部模型授权，本次配置未保存。",
+  };
+  return typeof item.error === "string" && Object.prototype.hasOwnProperty.call(desktopMessages, item.error) ? desktopMessages[item.error] : "模型验证或保存未完成，请检查地址、模型名称、授权和本机服务后重试。";
+}
+
+function previewModelFailurePreservesConfiguration(result: unknown): boolean {
+  const item = result && typeof result === "object" ? result as Record<string, unknown> : {};
+  return new Set([
+    "本机密钥存储不可用，配置未保存。", "模型配置不完整。", "录制尚未安全暂停，模型配置未更改。",
+    "外部模型需要明确同意联网调用和发送遮挡后数据。", "已取消外部模型授权。",
+    "模型验证未通过，请检查连接和授权。",
+  ]).has(typeof item.error === "string" ? item.error : "");
+}
+
+function PreviewModelSettings({onSaved}: {onSaved: () => Promise<void>}) {
+  const [imageRoute, setImageRoute] = useState<PreviewModelRoute>(emptyPreviewRoute);
+  const [textRoute, setTextRoute] = useState<PreviewModelRoute>(emptyPreviewRoute);
+  const [externalConsent, setExternalConsent] = useState(false);
+  const [maskedDataConsent, setMaskedDataConsent] = useState(false);
+  const [savedConfiguration, setSavedConfiguration] = useState<PreviewModelConfiguration | null>(null);
+  const [configurationState, setConfigurationState] = useState<PreviewModelConfigurationState>("unconfigured");
+  const [dirty, setDirty] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [request] = useState(() => ({active: false, reading: false, pending: false, readVersion: 0, editVersion: 0, persistenceUncertain: false}));
+  const bridgeAvailable = Boolean(window.openbutlerDesktop?.getBuiltinModelRoutes && window.openbutlerDesktop?.saveBuiltinModelRoutes);
+  const hasExternalRoute = imageRoute.mode === "custom" || textRoute.mode === "custom";
+
+  function restoreFields(configuration: PreviewModelConfiguration) {
+    setImageRoute({...configuration.image, api_key: ""});
+    setTextRoute({...configuration.text, api_key: ""});
+    setExternalConsent(configuration.external_consent);
+    setMaskedDataConsent(configuration.masked_data_consent);
+    setDirty(false);
+  }
+
+  async function loadRoutes() {
+    if (request.pending || request.reading) return;
+    const readVersion = ++request.readVersion, editVersion = request.editVersion;
+    request.reading = true;
+    setLoading(true);
+    try {
+      const getRoutes = window.openbutlerDesktop?.getBuiltinModelRoutes;
+      if (!getRoutes || !window.openbutlerDesktop?.saveBuiltinModelRoutes) throw new Error("desktop_bridge_unavailable");
+      const result = await getRoutes();
+      if (!request.active || readVersion !== request.readVersion) return;
+      if (result.persistenceUncertain === true) request.persistenceUncertain = true;
+      if (result.error_code === "local_service_unavailable") throw new Error("local_service_unavailable");
+      const configuration = readPreviewModelConfiguration(result);
+      const activeConfiguration = readPreviewModelConfiguration({...result, routes: null});
+      if (result.ready === true && configuration && activeConfiguration && (["image", "text"] as const).some((target) => !samePreviewModelDestination(configuration[target], activeConfiguration[target]) || configuration[target].model !== activeConfiguration[target].model)) {
+        request.persistenceUncertain = true;
+      }
+      setSavedConfiguration(configuration);
+      setConfigurationState(request.persistenceUncertain ? "unavailable" : result.ready === true ? "ready" : result.last_attempt === "failed" ? "unavailable" : configuration ? "saved-needs-validation" : "unconfigured");
+      // A late read must never overwrite a draft or restore old destination consent over new edits.
+      if (configuration && !dirty && editVersion === request.editVersion) restoreFields(configuration);
+      setMessage(request.persistenceUncertain ? "本机存档已重新读取，但运行配置与存档是否一致尚未确认。请重新验证并保存；录制不会自动恢复。" : result.last_attempt === "failed" ? previewModelFailure(result) : "");
+    } catch {
+      if (!request.active || readVersion !== request.readVersion) return;
+      setConfigurationState("unavailable");
+      setMessage("无法读取模型配置。请在桌面版检查本机服务后重试；当前填写的内容会保留。");
+    } finally {
+      if (request.active && readVersion === request.readVersion) {
+        request.reading = false;
+        setLoading(false);
+      }
+    }
+  }
+
+  useEffect(() => {
+    request.active = true;
+    request.reading = false;
+    void loadRoutes();
+    return () => { request.active = false; request.readVersion += 1; };
+  }, []);
+
+  function markEdited() {
+    request.editVersion += 1;
+    setDirty(true);
+    setMessage("");
+  }
+
+  function routeFields(label: string, target: "image" | "text", value: PreviewModelRoute) {
+    const savedKeyAvailable = samePreviewModelDestination(value, savedConfiguration?.[target]) && savedConfiguration?.[target].apiKeyConfigured;
+    const change = (next: PreviewModelRoute) => {
+      if (request.pending) return;
+      if (!samePreviewModelDestination(next, value)) {
+        setExternalConsent(false);
+        setMaskedDataConsent(false);
+        next = {...next, api_key: ""};
+      }
+      markEdited();
+      (target === "image" ? setImageRoute : setTextRoute)(next);
+    };
+    return <fieldset className="preview-model-route" disabled={busy}><legend>{label}</legend>
+      <label><span>运行位置</span><select name={`${target}-mode`} value={value.mode} onChange={(event) => change({...value, mode: event.target.value as PreviewModelRoute["mode"], protocol: event.target.value === "local" ? "ollama_native" : "openai_compatible", endpoint: event.target.value === "local" ? "http://127.0.0.1:11434" : ""})}><option value="local">本机模型</option><option value="custom">自定义服务</option></select></label>
+      <label><span>接口类型</span><select name={`${target}-protocol`} value={value.protocol} onChange={(event) => change({...value, protocol: event.target.value as PreviewModelRoute["protocol"]})}><option value="ollama_native">Ollama</option><option value="openai_compatible">OpenAI 兼容接口</option></select></label>
+      <label><span>服务地址</span><input name={`${target}-endpoint`} value={value.endpoint} onChange={(event) => change({...value, endpoint: event.target.value})} placeholder={value.mode === "local" ? "http://127.0.0.1:11434" : "https://example.com/v1"} autoComplete="off" spellCheck={false} /></label>
+      <label><span>模型名称</span><input name={`${target}-model`} value={value.model} onChange={(event) => change({...value, model: event.target.value})} placeholder="填写模型名称" autoComplete="off" /></label>
+      {value.mode === "custom" && <label><span>API Key（仅保存在本机加密存储）</span><input name={`${target}-api-key`} type="password" autoComplete="off" value={value.api_key} onChange={(event) => change({...value, api_key: event.target.value})} placeholder={savedKeyAvailable ? "已保存，留空可复用" : "服务需要时填写"} /><small>{savedKeyAvailable ? "同一地址、接口类型和运行位置可复用已保存密钥；密钥不会回显。" : "更换地址、接口类型或运行位置后，不会沿用旧密钥。"}</small></label>}
+    </fieldset>;
+  }
+
+  async function reconcileUncertainSave() {
+    request.persistenceUncertain = true;
+    setConfigurationState("unavailable");
+    let reread = false;
+    try {
+      const result = await window.openbutlerDesktop?.getBuiltinModelRoutes?.();
+      if (!request.active) return;
+      if (result && result.error_code !== "local_service_unavailable") {
+        // The bridge may return old disk routes alongside the new backend's ready state.
+        // Preserve the draft and never infer that the old saved configuration is active.
+        setSavedConfiguration(result.savedConfigurationAvailable === false ? null : readPreviewModelConfiguration(result));
+        reread = true;
+      }
+    } catch { /* The uncertain state remains visible; never display raw IPC errors. */ }
+    if (request.active) setMessage(reread
+      ? "保存结果未确认，已重新读取本机存档。当前运行配置可能与存档不同，请重新验证并保存，确认后再继续录制；录制不会自动恢复。"
+      : "保存结果未确认，且无法读取本机存档。当前运行配置可能已改变，请检查本机服务后重新读取并验证；录制不会自动恢复。");
+  }
+
+  async function saveRoutes() {
+    if (request.pending || request.reading || !bridgeAvailable) return;
+    const validatingSaved = Boolean(savedConfiguration && !dirty);
+    const configuration = validatingSaved ? savedConfiguration! : {image: imageRoute, text: textRoute, external_consent: externalConsent, masked_data_consent: maskedDataConsent};
+    if (![configuration.image, configuration.text].every((route) => route.model.trim() && route.endpoint.trim())) {
+      setMessage("请填写图像和文字模型的服务地址及模型名称。");
+      return;
+    }
+    if ([configuration.image, configuration.text].some((route) => route.mode === "custom") && (!configuration.external_consent || !configuration.masked_data_consent)) {
+      setMessage("使用自定义外部服务前，请分别确认联网调用和遮挡后数据发送范围。");
+      return;
+    }
+    request.pending = true;
+    setBusy(true);
+    setMessage("");
+    const sanitize = (route: PreviewModelRoute) => ({protocol: route.protocol, mode: route.mode, endpoint: route.endpoint.trim(), model: route.model.trim(), ...(route.api_key.trim() ? {api_key: route.api_key} : {})});
+    const payload = {...configuration, image: sanitize(configuration.image), text: sanitize(configuration.text)};
+    let updated = false;
+    try {
+      const result = await window.openbutlerDesktop!.saveBuiltinModelRoutes!(payload);
+      if (!request.active) return;
+      if (!result.ok) {
+        if (result.error === "模型配置正在验证或保存，请等待完成后重试。") {
+          setConfigurationState("unavailable");
+          setMessage("另一次模型配置仍在验证或保存。请等待完成后重新读取状态，再决定是否重试；录制不会自动恢复。");
+          return;
+        }
+        if (previewModelFailurePreservesConfiguration(result)) {
+          // Explicit validation/preflight rejections precede publishing either proposed route.
+          if (configurationState !== "ready") setConfigurationState("unavailable");
+          setMessage(`${previewModelFailure(result)}${savedConfiguration ? " 上次保存的配置仍保留。" : " 本次配置未保存。"}录制不会自动恢复。`);
+        } else {
+          // A disk write can fail after the backend switched routes; !ok alone is not rollback proof.
+          await reconcileUncertainSave();
+        }
+        return;
+      }
+      const savedRoute = (target: "image" | "text"): PreviewModelRoute => ({...payload[target], api_key: "", apiKeyConfigured: Boolean(payload[target].api_key || (samePreviewModelDestination(configuration[target], savedConfiguration?.[target]) && savedConfiguration?.[target].apiKeyConfigured))});
+      const next = {...configuration, image: savedRoute("image"), text: savedRoute("text")};
+      request.persistenceUncertain = false;
+      setSavedConfiguration(next);
+      restoreFields(next);
+      setConfigurationState(result.status?.ready === true ? "ready" : "saved-needs-validation");
+      setMessage(result.status?.ready === true ? "图像和文字模型均已通过测试，配置已加密保存到本机。录制不会自动恢复；继续录制前请重新检查隐私预览。" : "配置已保存，但当前可用状态尚未确认。请重新验证；录制不会自动恢复。");
+      updated = true;
+    } catch {
+      if (request.active) await reconcileUncertainSave();
+    } finally {
+      // Refresh recording status even after a rejected proposal: the desktop may have paused it.
+      if (request.active) {
+        try { await onSaved(); } catch {
+          if (request.active && updated) setMessage("模型配置已保存，但录制状态刷新失败。请刷新页面查看；录制不会自动恢复。");
+        }
+      }
+      request.pending = false;
+      if (request.active) setBusy(false);
+    }
+  }
+
+  const stateLabels: Record<PreviewModelConfigurationState, string> = {unconfigured: "未配置", "saved-needs-validation": "已保存，待验证", ready: "可用", unavailable: "暂不可用"};
+  const stateDescriptions: Record<PreviewModelConfigurationState, string> = {
+    unconfigured: "模型整理是可选功能。填写图像和文字模型后，手动验证并保存；仅录制本机记录不需要模型。",
+    "saved-needs-validation": "已恢复非密钥字段。当前会话尚未验证，请手动验证已保存配置；打开页面不会调用模型。",
+    ready: "上次验证已通过。更改表单不会立即替换正在使用的配置，需重新验证并保存。",
+    unavailable: "暂时无法确认模型可用。检查本机服务和配置后重试；已保存配置不会因验证失败被清除。",
+  };
+  return <section id="preview-model-settings" className="today-panel preview-model-settings" tabIndex={-1} aria-labelledby="preview-model-settings-title" aria-busy={busy || loading}>
+    <div className="section-title preview-model-heading"><div><p className="eyebrow"><KeyRound size={16} /> 智能整理</p><h2 id="preview-model-settings-title">模型配置</h2></div><span className={`preview-model-state ${configurationState}`} role="status">{loading ? "读取中" : `${dirty && configurationState === "ready" ? "上次配置" : ""}${stateLabels[configurationState]}`}</span></div>
+    <p>{stateDescriptions[configurationState]}</p>
+    {!bridgeAvailable && <p className="preview-model-notice">网页预览无法读取或保存模型密钥，请在 OpenButler 桌面版连接本机服务后配置。</p>}
+    {dirty && <p className="preview-model-notice" role="status">当前修改尚未保存，也未验证。{savedConfiguration ? "上次保存的配置仍保留。" : "填写完成后请验证并保存。"}</p>}
+    <div className="preview-model-grid">{routeFields("图像整理", "image", imageRoute)}{routeFields("文字整理", "text", textRoute)}</div>
+    {hasExternalRoute && <div className="preview-model-consent"><p>外部服务需单独授权。更换接收地址、接口类型或运行位置后，需要重新确认。</p><label className="preview-confirm"><input name="external-model-consent" type="checkbox" disabled={busy} checked={externalConsent} onChange={(event) => {markEdited(); setExternalConsent(event.target.checked);}} /> 我同意在使用自定义外部服务时发起联网模型调用</label><label className="preview-confirm"><input name="masked-model-consent" type="checkbox" disabled={busy} checked={maskedDataConsent} onChange={(event) => {markEdited(); setMaskedDataConsent(event.target.checked);}} /> 我同意将遮挡后的数据发送给所选外部服务</label></div>}
+    <p className="preview-model-validation-note">点击验证会向所选模型发送合成测试图和测试文字，不发送本机记录；自定义服务可能产生调用费用。验证可能暂停录制，不会自动开始或恢复录制。</p>
+    <div className="desktop-action-row"><button className="primary" disabled={busy || loading || !bridgeAvailable} onClick={() => void saveRoutes()}>{busy ? "正在验证，请稍候" : savedConfiguration && !dirty ? "验证已保存配置" : "验证并保存配置"}</button>{dirty && savedConfiguration && <button className="secondary" disabled={busy || loading} onClick={() => {request.editVersion += 1; restoreFields(savedConfiguration); setMessage("已恢复上次保存的非密钥字段；尚未发起模型调用。");}}>恢复已保存配置</button>}<button className="secondary" disabled={busy || loading || !bridgeAvailable} onClick={() => void loadRoutes()}>重新读取状态</button></div>
+    {message && <p className="policy-note" role="status">{message}</p>}
+  </section>;
+}
+
+function PreviewActivation({status, mandatory, onChooseDemo, onChooseReal, onDismiss, onComplete, onChooseLocalChat}: {
+  status: ActivationStatus;
+  mandatory: boolean;
+  onChooseLocalChat?: () => void;
+  onChooseDemo: () => void;
+  onChooseReal: () => void;
+  onDismiss: () => void;
+  onComplete: () => void;
+}) {
+  const [localSetup, setLocalSetup] = useState(status === "real_setup_started" || status === "completed");
+  const [displays, setDisplays] = useState<Array<{id: string; label: string}>>([]);
+  const [displayId, setDisplayId] = useState("");
+  const [exclusions, setExclusions] = useState("");
+  const [masks, setMasks] = useState<PreviewMask[]>([]);
+  const [preview, setPreview] = useState<(MaskedEditingCanvas & {ticket: PreviewTicket; configKey: string; privacyMode: PrivacyMode}) | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [privacyMode, setLocalPrivacyMode] = useState<PrivacyMode>("strict");
+  const [statusData, setStatusData] = useState<ContextEngineStatus | null>(null);
+  const [busy, setBusy] = useState<"preview" | "privacy" | "start" | null>(null);
+  const [message, setMessage] = useState("");
+  const previewGate = useRef(createPrivacyPreviewGate());
+  const operation = useRef<"preview" | "privacy" | "start" | null>(null);
+
+  useEffect(() => {
+    previewGate.current.open();
+    return () => previewGate.current.close();
+  }, []);
+
+  useEffect(() => {
+    if (!localSetup) return;
+    let cancelled = false;
+    void Promise.all([getContextEngineStatus(), window.openbutlerDesktop?.getCaptureDisplays?.() ?? Promise.resolve([])])
+      .then(([current, available]) => {
+        if (cancelled) return;
+        setStatusData(current);
+        setLocalPrivacyMode(current.privacy_mode);
+        setDisplays(available);
+        setDisplayId((previous) => previous || available[0]?.id || "");
+      })
+      .catch(() => { if (!cancelled) setMessage("本机录制服务暂不可用，请稍后重试。"); });
+    return () => { cancelled = true; };
+  }, [localSetup]);
+
+  function invalidatePreview() {
+    previewGate.current.invalidate();
+    setConfirmed(false);
+    setPreview((previous) => previous ? {...previous, fresh: false} : null);
+  }
+
+  function changeConfig(action: () => void, clearCanvas = false) {
+    if (operation.current === "start" || operation.current === "privacy" || statusData?.recording.active) return;
+    invalidatePreview();
+    action();
+    if (clearCanvas) setPreview(null);
+    setMessage("");
+  }
+
+  function captureConfig(): CaptureConfig | null {
+    const excluded_apps = exclusions.split(/[\n,，]/).map((name) => name.trim()).filter(Boolean);
+    if (!displayId || !excluded_apps.length) {
+      setMessage("请先选择屏幕，并填写至少一个不记录的应用。");
+      return null;
+    }
+    if (masks.some((mask) => !Number.isSafeInteger(mask.x) || !Number.isSafeInteger(mask.y) || !Number.isSafeInteger(mask.width) || !Number.isSafeInteger(mask.height) || mask.x < 0 || mask.y < 0 || mask.width <= 0 || mask.height <= 0
+        || (preview?.bounds && !sameMask(mask, clampMask(mask, preview.bounds))))) {
+      setMessage("遮挡区域需要填写图像范围内的非负整数坐标和大于 0 的宽高。");
+      return null;
+    }
+    return {display_id: displayId, excluded_apps, masks: masks.map((mask) => ({...mask})), confirmed: true};
+  }
+
+  const configKey = JSON.stringify({display_id: displayId, excluded_apps: exclusions.split(/[\n,，]/).map((name) => name.trim()).filter(Boolean), masks, confirmed: true});
+  const previewCurrent = !!preview && preview.fresh && !!preview.bounds && preview.configKey === configKey
+    && preview.privacyMode === privacyMode && previewGate.current.isCurrent(preview.ticket);
+  const editDisabled = !statusData || busy === "start" || busy === "privacy" || !!statusData.recording.active;
+
+  async function checkPreview() {
+    if (operation.current || editing || statusData?.recording.active || !statusData?.capture_available) return;
+    const config = captureConfig();
+    if (!config || !window.openbutlerDesktop?.getMaskedCapturePreview) return;
+    invalidatePreview();
+    const ticket = previewGate.current.request();
+    operation.current = "preview";
+    setBusy("preview");
+    setMessage("正在生成新的已遮挡预览；尚未开始录制。");
+    try {
+      const result = await window.openbutlerDesktop.getMaskedCapturePreview(config);
+      if (!previewGate.current.isCurrent(ticket)) return;
+      if (!result.ok || !result.previewDataUrl.startsWith("data:image/png;base64,")) {
+        setMessage("隐私预览未完成，录制尚未开始。请检查遮挡配置后重试。");
+        return;
+      }
+      setPreview({url: result.previewDataUrl, maskedRegions: result.masked_regions ?? result.maskedRegions ?? 0,
+        configKey: JSON.stringify(config), privacyMode, ticket, bounds: null, fresh: true});
+      setMessage("请检查预览图中是否仍有不希望记录的内容。修改设置后需要重新预览。");
+    } catch {
+      if (previewGate.current.isCurrent(ticket)) setMessage("隐私预览失败，录制尚未开始。");
+    } finally {
+      operation.current = null;
+      setBusy(null);
+      if (!previewGate.current.isCurrent(ticket)) setMessage("设置已改变，旧的预览结果已忽略。请重新检查隐私预览。");
+    }
+  }
+
+  function loadedPreview(ticket: PreviewTicket, bounds: ImageBounds) {
+    if (!preview || preview.ticket !== ticket) return;
+    if (!validImageBounds(bounds)) {
+      invalidatePreview();
+      setPreview(null);
+      setMessage("隐私预览图片不可用，请重新预览；录制尚未开始。");
+      return;
+    }
+    const fresh = preview.fresh && previewGate.current.isCurrent(ticket);
+    const boundedMasks = masks.map((mask) => clampMask(mask, bounds));
+    const changed = boundedMasks.some((mask, index) => !sameMask(mask, masks[index]));
+    if (changed) {
+      previewGate.current.invalidate();
+      setMasks(boundedMasks);
+      setConfirmed(false);
+      setMessage("遮挡区域已按原图边界调整，请重新检查隐私预览。");
+    }
+    setPreview((previous) => previous?.ticket === ticket ? {...previous, bounds, fresh: fresh && !changed} : previous);
+  }
+
+  async function pauseFailedStart() {
+    await Promise.all([
+      pauseBuiltinCaptureApi().catch(() => undefined),
+      window.openbutlerDesktop?.pauseBuiltinCapture?.().catch(() => undefined),
+    ]);
+  }
+
+  async function beginRecording() {
+    if (operation.current || editing || statusData?.recording.active || !statusData?.capture_available) return;
+    const config = captureConfig();
+    if (!config || !previewCurrent || !preview || !previewGate.current.isCurrent(preview.ticket) || !confirmed || !window.openbutlerDesktop?.startBuiltinCapture) return;
+    // Consume this approval before awaiting the bridge so a double-click cannot reuse it.
+    invalidatePreview();
+    const ticket = previewGate.current.request();
+    operation.current = "start";
+    setBusy("start");
+    try {
+      const result = await window.openbutlerDesktop.startBuiltinCapture(config);
+      if (!result.ok) throw new Error("capture_bridge_failed");
+      if (!previewGate.current.isCurrent(ticket)) {
+        await pauseFailedStart();
+        return;
+      }
+      onComplete();
+    } catch {
+      await pauseFailedStart();
+      if (previewGate.current.isCurrent(ticket)) setMessage("录制未能启动，已尝试暂停。请检查本机服务后重新预览并确认。");
+    } finally {
+      operation.current = null;
+      setBusy(null);
+    }
+  }
+
+  async function choosePrivacy(mode: PrivacyMode) {
+    if (operation.current || editing || statusData?.recording.active || mode === privacyMode) return;
+    invalidatePreview();
+    const ticket = previewGate.current.request();
+    operation.current = "privacy";
+    setBusy("privacy");
+    try {
+      await setPrivacyMode(mode);
+      if (previewGate.current.isCurrent(ticket)) {
+        setLocalPrivacyMode(mode);
+        setMessage("隐私方式已更新，请重新检查隐私预览。");
+      }
+    } catch {
+      if (previewGate.current.isCurrent(ticket)) setMessage("隐私设置未保存，请重试；原预览已失效。");
+    } finally {
+      operation.current = null;
+      setBusy(null);
+    }
+  }
+
+  function leaveSetup(action: () => void) {
+    if (operation.current === "start") return;
+    previewGate.current.close();
+    setPreview(null);
+    setConfirmed(false);
+    action();
+  }
+
+  return (
+    <div className="first-run-backdrop" role="dialog" aria-modal="true" aria-labelledby="preview-activation-title">
+      <section className="first-run-guide preview-activation-guide">
+        <div className="first-run-copy">
+          <p className="eyebrow">0.2.0 Preview · 首次激活</p>
+          <h2 id="preview-activation-title">开始使用本机记录</h2>
+          <p>选择要记录的屏幕和隐私范围。录制前你会看到经本机识别与遮挡处理的预览；智能整理可以稍后配置。</p>
+          <div className="activation-choice-grid">
+            {onChooseLocalChat && <button className="activation-choice" disabled={busy === "start"} onClick={() => leaveSetup(onChooseLocalChat)}>
+              <MessageSquareText size={17} /><strong>先用管家对话</strong><span>只保存本地文字与目标；不启用录制。</span>
+            </button>}
+            <button className="activation-choice primary-choice" disabled={!!busy} onClick={() => { onChooseReal(); setLocalSetup(true); }}>
+              <Video size={17} /><strong>设置本机记录</strong><span>无需安装其他记录组件。</span>
+            </button>
+            <button className="activation-choice" disabled={busy === "start"} onClick={() => leaveSetup(onChooseDemo)}>
+              <Eye size={17} /><strong>先看样例</strong><span>不读取真实数据。</span>
+            </button>
+          </div>
+          {!localSetup && <p className="policy-note">只有 Preview 桌面版能启用本机录制。公开网页仍为样例体验。</p>}
+        </div>
+        {localSetup && <div className="first-run-local-setup preview-capture-setup">
+          <div className="local-setup-head"><strong>录制范围</strong><p>更改任何设置后，必须重新检查隐私预览。</p></div>
+          <div className="local-setup-status">
+            <StatusItem label="录制能力" value={statusData?.capture_available ? "可用" : "待连接"} />
+            <StatusItem label="当前状态" value={statusData?.recording.active ? "记录中" : "未录制"} />
+            <StatusItem label="已有记录" value={`${statusData?.recording.record_count ?? 0} 条`} />
+          </div>
+          <label><span>选择屏幕</span><select value={displayId} disabled={editDisabled || editing} onChange={(event) => changeConfig(() => setDisplayId(event.target.value), true)}>
+            {!displays.length && <option value="">尚未检测到屏幕</option>}
+            {displays.map((display) => <option key={display.id} value={display.id}>{display.label}</option>)}
+          </select></label>
+          <label><span>不记录的应用（每行一个）</span><textarea value={exclusions} disabled={editDisabled || editing} onChange={(event) => changeConfig(() => setExclusions(event.target.value))} placeholder="例如：密码管理器" rows={3} /></label>
+          <fieldset className="preview-privacy-choice" disabled={!!busy || editing || editDisabled}><legend>隐私方式</legend>
+            <label><input type="radio" checked={privacyMode === "strict"} onChange={() => void choosePrivacy("strict")} /> 只在本机整理</label>
+            <label><input type="radio" checked={privacyMode === "basic"} onChange={() => void choosePrivacy("basic")} /> 允许之后单独授权外部能力</label>
+          </fieldset>
+          <p className="policy-note">当前只启用本机记录。选择基础隐私也不会自动调用外部模型。</p>
+          {statusData?.recording.active && <p className="policy-note">录制正在运行。请先返回今日暂停，再更改范围。</p>}
+          <button className="secondary" onClick={() => void checkPreview()} disabled={!!busy || editing || statusData?.recording.active || !statusData?.capture_available || !window.openbutlerDesktop?.getMaskedCapturePreview}>检查隐私预览</button>
+          <MaskEditor key={preview?.ticket.requestId ?? "no-preview"} masks={masks} canvas={preview} disabled={editDisabled} editing={editing}
+            onChange={(next) => changeConfig(() => setMasks(next))} onEditStart={invalidatePreview} onEditingChange={setEditing}
+            onImageLoad={(bounds) => { if (preview) loadedPreview(preview.ticket, bounds); }}
+            onImageError={() => { invalidatePreview(); setPreview(null); setMessage("隐私预览图片无法显示，请重新预览；录制尚未开始。"); }} />
+          <label className="preview-confirm"><input type="checkbox" checked={confirmed} disabled={!previewCurrent || !!busy || editing || !!statusData?.recording.active}
+            onChange={(event) => { if (previewCurrent && preview && previewGate.current.isCurrent(preview.ticket) && !busy && !editing) setConfirmed(event.target.checked); }} /> 我已检查最新预览，确认按上述范围开始录制</label>
+          <button className="primary" onClick={() => void beginRecording()} disabled={!!busy || editing || statusData?.recording.active || !previewCurrent || !confirmed || !statusData?.capture_available || !window.openbutlerDesktop?.startBuiltinCapture}>开始本机记录</button>
+          {statusData?.recording.active && <button className="secondary" onClick={() => leaveSetup(onComplete)}>返回今日</button>}
+          {message && <p className="policy-note" role="status">{message}</p>}
+        </div>}
+        {!mandatory && <button className="first-run-close" disabled={busy === "start"} onClick={() => leaveSetup(onDismiss)}>关闭</button>}
+      </section>
+    </div>
+  );
+}
+
 function FirstRunGuide({
   status,
   mandatory = false,
   onChooseDemo,
   onChooseReal,
   onDismiss,
-  onComplete
+  onComplete,
+  onChooseLocalChat
 }: {
   status: ActivationStatus;
   mandatory?: boolean;
+  onChooseLocalChat?: () => void;
   onChooseDemo: () => void;
   onChooseReal: () => void;
   onDismiss: () => void;
   onComplete: () => void;
 }) {
+  if (isPreviewDesktop()) {
+    return <PreviewActivation status={status} mandatory={mandatory} onChooseDemo={onChooseDemo} onChooseReal={onChooseReal} onDismiss={onDismiss} onComplete={onComplete} onChooseLocalChat={onChooseLocalChat} />;
+  }
   const isDesktopRuntime = typeof window !== "undefined" && !!window.openbutlerDesktop;
   const [setupPane, setSetupPane] = useState<"intro" | "local">(status === "real_setup_started" ? "local" : "intro");
   const [mineContextStatus, setMineContextStatus] = useState<Record<string, any> | null>(null);
@@ -3395,7 +4162,7 @@ function Privacy({
 
 
   function openPageFromSettings(key: PageKey) {
-    window.history.replaceState(null, "", routeForPage(key));
+    replaceAppPath(routeForPage(key));
     window.dispatchEvent(new PopStateEvent("popstate"));
   }
 

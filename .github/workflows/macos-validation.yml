@@ -1,0 +1,115 @@
+name: OpenButler macOS Source Validation
+
+# A separate development branch can run this workflow without changing main.
+# workflow_dispatch becomes available only if this workflow reaches the default
+# branch. A normal push to the branch below is the initial trigger.
+on:
+  push:
+    branches: ["dev/macos-validation-*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-source-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-validation:
+    name: macOS source checks (${{ matrix.arch }})
+    # Standard runners are free for this public repository. Do not silently
+    # consume paid private-repository minutes if its visibility changes.
+    if: github.event.repository.private == false && startsWith(github.ref, 'refs/heads/dev/macos-validation-')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify exact source and native platform
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(uname -s)" = Darwin
+          test "$(uname -m)" = "$EXPECTED_ARCH"
+          sw_vers
+          printf 'Source commit: %s\n' "$GITHUB_SHA"
+          mkdir -p "$RUNNER_TEMP/macos-validation"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install locked project dependencies
+        run: |
+          python -m pip install -r backend/requirements.txt
+          npm ci --prefix frontend
+          npm ci --prefix desktop
+      - name: Backend synthetic unit suites
+        env:
+          PYTHONPATH: backend
+        run: |
+          for module in butler_core pc_activity_context workstation_vision context_engine model_gateway agent_runtime; do
+            python -m unittest discover -s "backend/app/modules/$module/tests"
+          done
+      - name: Build desktop frontend and run UI contracts
+        run: |
+          npm run build:frontend --prefix desktop
+          for suite in local-proxy phase1-ui preview-model-settings mask-editor mask-editor-dom agent-loop planner-model-settings natural-chat; do
+            npm run "test:$suite" --prefix frontend
+          done
+      - name: Desktop source and synthetic capture contracts
+        run: |
+          node desktop/scripts/check-desktop-contract.mjs
+          node desktop/scripts/check-local-session.cjs
+          node desktop/scripts/check-local-session-main.cjs
+          node desktop/scripts/check-model-routes-persistence.cjs
+          node desktop/scripts/check-capture-controller.cjs
+          node desktop/scripts/check-capture-providers.cjs
+          node desktop/scripts/check-desktop-frontend-assets.mjs
+          node --test desktop/scripts/check-macos-capabilities.test.cjs
+      - name: Synthetic offline OCR with network denial in worker
+        run: npm run check:offline-ocr --prefix desktop
+      - name: Inspect Electron macOS capability without capture or permission prompts
+        env:
+          OPENBUTLER_MACOS_PROBE_OUTPUT: ${{ runner.temp }}/macos-validation/capabilities.json
+          OPENBUTLER_MACOS_PROBE_USER_DATA: ${{ runner.temp }}/macos-probe-user-data
+        run: ./node_modules/.bin/electron scripts/check-macos-capabilities.cjs
+        working-directory: desktop
+        timeout-minutes: 2
+      - name: State verification boundary
+        if: always()
+        run: |
+          {
+            printf '### macOS validation boundary\n\n'
+            printf 'Commit: `%s`\n\n' "$GITHUB_SHA"
+            printf 'This run checks source tests, frontend build, synthetic offline OCR, and native Electron capability metadata.\n\n'
+            printf 'Interactive screen capture, real TCC approval/denial flows, a packaged macOS app, signing, notarization, and a macOS installer remain unverified.\n\n'
+            printf 'No desktop image is captured. No permission is requested or modified. No model endpoint is called.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain capability metadata only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-capabilities-${{ matrix.arch }}-${{ github.sha }}
+          path: ${{ runner.temp }}/macos-validation/capabilities.json
+          if-no-files-found: warn
+          retention-days: 3
+
+# This is not a Mac packaging workflow: the current desktop build config still
+# expects a Windows backend executable. Never fix runner permissions by modifying
+# TCC databases, replayd preferences, SIP, signing identities, or remote access.

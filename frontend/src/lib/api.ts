@@ -1,11 +1,54 @@
 import type { EventItem, PluginManifest, PrivacyMode } from "../types";
 
+export type CaptureConfig = {
+  display_id: string;
+  excluded_apps: string[];
+  masks: Array<{x: number; y: number; width: number; height: number}>;
+  confirmed: true;
+};
+
+export type RecordingState = {
+  configured: boolean;
+  authorized: boolean;
+  active: boolean;
+  record_count: number;
+};
+
+export type ContextEngineStatus = {
+  state: string;
+  privacy_mode: PrivacyMode;
+  capture_available: boolean;
+  model_routes_available: boolean;
+  recording: RecordingState;
+};
+
+export type ContextObservation = {
+  id: string;
+  captured_at: string;
+  state: "recorded_pending" | "processing" | "ready" | "model_unavailable";
+  title: string | null;
+  summary: string | null;
+  boundary: string;
+  evidence_available: boolean;
+  evidence_id: string | null;
+  source_label: "本机记录";
+};
+
 const API_BASE =
   typeof window !== "undefined" && window.openbutlerDesktop?.apiBase
     ? window.openbutlerDesktop.apiBase
     : import.meta.env.VITE_API_BASE_URL ?? "";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const bridge = typeof window !== "undefined" ? window.openbutlerDesktop : undefined;
+  if (bridge?.requestApi) {
+    if (init?.body != null && typeof init.body !== "string") {
+      throw new Error("Invalid desktop request body.");
+    }
+    const response = await bridge.requestApi(path, {method: init?.method, body: init?.body});
+    if (!response.ok) throw new Error(`${response.status} ${response.error}`);
+    return response.data as T;
+  }
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {"Content-Type": "application/json", ...(init?.headers ?? {})},
     ...init
@@ -38,6 +81,57 @@ export function getPrivacyMode() {
 
 export function getDesktopStatus() {
   return request<Record<string, any>>("/api/desktop/status");
+}
+
+export function getContextEngineStatus() {
+  return request<ContextEngineStatus>("/api/context-engine/status");
+}
+
+export function pauseBuiltinCaptureApi() {
+  return request<RecordingState>("/api/context-engine/capture/pause", {method: "POST"});
+}
+
+export function revokeBuiltinCaptureApi() {
+  return request<RecordingState>("/api/context-engine/capture/revoke", {method: "POST"});
+}
+
+export function getContextObservations() {
+  return request<{count: number; items: ContextObservation[]}>("/api/context-engine/observations");
+}
+
+export type DailyReview = {
+  status: "ready" | "empty" | "unavailable";
+  reason: string | null;
+  day: string;
+  timezone: string;
+  generated_at: string;
+  boundary: string;
+  counts: {total: number; ready: number; pending: number; failed: number;
+    expired_evidence: number; missing_evidence: number; invalid_records: number;
+    eligible: number; included: number; omitted: number};
+  coverage: {requested_start: string; requested_end: string; evaluated_until: string;
+    observed_start: string | null; observed_end: string | null; observation_count: number;
+    gap_threshold_seconds: number; gaps: Array<{start: string; end: string; seconds: number}>;
+    gap_count: number; gaps_truncated: boolean};
+  truncated: boolean;
+  conclusions: Array<{text: string; evidence_refs: Array<{observation_id: string;
+    evidence_id: string; captured_at: string}>}>;
+};
+
+export function generateDailyReview(day: string, timezone: string) {
+  return request<DailyReview>("/api/context-engine/daily-review", {
+    method: "POST", body: JSON.stringify({day, timezone, confirmed: true})
+  });
+}
+
+export function retryContextObservation(id: string) {
+  if (!/^[0-9a-f-]{36}$/.test(id)) throw new Error("Invalid observation ID");
+  return request<{ok: boolean; reason?: string}>(`/api/context-engine/observations/${id}/retry`, {method: "POST"});
+}
+
+export function deleteContextObservation(id: string) {
+  if (!/^[0-9a-f-]{36}$/.test(id)) throw new Error("Invalid observation ID");
+  return request<{deleted: boolean}>(`/api/context-engine/observations/${id}/delete`, {method: "POST"});
 }
 
 export function setPrivacyMode(mode: PrivacyMode) {

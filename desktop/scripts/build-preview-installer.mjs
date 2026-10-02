@@ -1,4 +1,4 @@
-import {copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync} from "node:fs";
+import {copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync} from "node:fs";
 import {dirname, join} from "node:path";
 import {spawnSync} from "node:child_process";
 import {fileURLToPath} from "node:url";
@@ -6,12 +6,18 @@ import {fileURLToPath} from "node:url";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const runId = process.env.OPENBUTLER_PREVIEW_RUN_ID || new Date().toISOString().slice(0, 10).replaceAll("-", "");
-const sequence = process.env.OPENBUTLER_PREVIEW_SEQUENCE || "1";
-const version = pkg.version;
-const previewVersion = `${pkg.version}-preview.${runId}.${sequence}`;
+if (!/^\d{8}$/.test(runId)) throw new Error("Preview run ID must be YYYYMMDD");
 const tmp = join(root, ".tmp", "preview-build");
 const output = join(root, "dist-preview");
 mkdirSync(tmp, {recursive: true});
+mkdirSync(output, {recursive: true});
+const existing = readdirSync(output).flatMap((name) => {
+  const match = name.match(new RegExp(`^OpenButler-Preview-Setup-0\\.2\\.0-preview\\.${runId}\\.(\\d+)\\.exe$`));
+  return match ? [Number(match[1])] : [];
+});
+const sequence = process.env.OPENBUTLER_PREVIEW_SEQUENCE || String(Math.max(0, ...existing) + 1);
+if (!/^\d+$/.test(sequence) || Number(sequence) < 1) throw new Error("Invalid preview sequence");
+const previewVersion = `0.2.0-preview.${runId}.${sequence}`;
 
 function run(commandLine, env = {}) {
   const result = spawnSync("cmd.exe", ["/d", "/s", "/c", commandLine], {
@@ -34,8 +40,10 @@ function runNodeScript(script, args, env = {}) {
 }
 
 run("npm run build:frontend", {OPENBUTLER_DESKTOP_CHANNEL: "preview"});
+run("npm run build:backend -- --clean");
+runNodeScript(join(root, "scripts", "copy-offline-ocr-assets.cjs"), []);
 const stableBackend = join(root, "dist", "openbutler-backend.exe");
-if (!existsSync(stableBackend)) run("npm run build:backend");
+if (!existsSync(stableBackend)) throw new Error("Fresh backend build produced no executable");
 const previewBackend = join(tmp, "openbutler-backend-preview.exe");
 copyFileSync(stableBackend, previewBackend);
 
@@ -46,7 +54,7 @@ build.directories = {...build.directories, output};
 build.artifactName = undefined;
 build.win = {...build.win, artifactName: `OpenButler-Preview-Setup-${previewVersion}.\${ext}`};
 build.nsis = {...build.nsis, include: "installer/installer-preview.nsh", shortcutName: "OpenButler Preview"};
-build.extraMetadata = {version, productName: "OpenButler Preview", openbutlerChannel: "preview", openbutlerPreviewVersion: previewVersion};
+build.extraMetadata = {version: previewVersion, productName: "OpenButler Preview", openbutlerChannel: "preview", openbutlerPreviewVersion: previewVersion};
 build.extraResources = build.extraResources.map((resource) => resource.to === "backend/openbutler-backend.exe"
   ? {from: previewBackend, to: "backend/openbutler-backend-preview.exe"}
   : resource);
