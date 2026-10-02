@@ -2,7 +2,35 @@
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const {spawnSync} = require("node:child_process");
+const {join} = require("node:path");
+const {pathToFileURL} = require("node:url");
 const {inspectCapabilities} = require("./check-macos-capabilities.cjs");
+
+test("explicit CLI starts the probe when Electron dynamically imports the entry", () => {
+  const entry = pathToFileURL(join(__dirname, "check-macos-capabilities-cli.cjs")).href;
+  const script = `
+    import {createRequire} from "node:module";
+    const require = createRequire(import.meta.url);
+    const Module = require("node:module");
+    const originalLoad = Module._load;
+    let calls = 0;
+    Module._load = function (request, parent, isMain) {
+      if (request === "./check-macos-capabilities.cjs") {
+        return {main() {calls++;}};
+      }
+      return originalLoad.call(this, request, parent, isMain);
+    };
+    await import(${JSON.stringify(entry)});
+    if (calls !== 1) throw new Error("Dynamic entry must start exactly one probe");
+    console.log("dynamic-entry-started-once");
+  `;
+  const result = spawnSync(process.execPath, ["--input-type=module", "--eval", script], {
+    encoding: "utf8", timeout: 10000,
+  });
+  assert.equal(result.status, 0, result.stderr || String(result.error || ""));
+  assert.equal(result.stdout.trim(), "dynamic-entry-started-once");
+});
 
 function fixture(permission = "not-determined") {
   const calls = [];

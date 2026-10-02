@@ -88,7 +88,7 @@ jobs:
         env:
           OPENBUTLER_MACOS_PROBE_OUTPUT: ${{ runner.temp }}/macos-validation/capabilities.json
           OPENBUTLER_MACOS_PROBE_USER_DATA: ${{ runner.temp }}/macos-probe-user-data
-        run: ./node_modules/.bin/electron scripts/check-macos-capabilities.cjs
+        run: ./node_modules/.bin/electron scripts/check-macos-capabilities-cli.cjs
         working-directory: desktop
         timeout-minutes: 2
       - name: State verification boundary

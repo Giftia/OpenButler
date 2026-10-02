@@ -65,5 +65,5 @@ async function main() {
   }
 }
 
-module.exports = {inspectCapabilities};
+module.exports = {inspectCapabilities, main};
 if (require.main === module) main();
