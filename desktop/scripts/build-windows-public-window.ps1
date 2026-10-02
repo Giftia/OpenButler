@@ -8,6 +8,7 @@ $vcvars = Join-Path $installation 'VC\Auxiliary\Build\vcvars64.bat'
 New-Item -ItemType Directory -Path (Join-Path $desktopRoot '.tmp') -Force | Out-Null
 Push-Location -LiteralPath $desktopRoot
 try {
-  & cmd.exe /d /s /c ('"' + $vcvars + '" >nul && cl /nologo /std:c++17 /EHsc /MT /DUNICODE /D_UNICODE src\windows-public-window.cpp /Fe:src\windows-public-window.exe /Fo:.tmp\windows-public-window.obj /link d3d11.lib windowsapp.lib user32.lib gdi32.lib dwmapi.lib wtsapi32.lib')
+  # C++20 selects standard WinRT coroutines; VS2026 rejects the legacy experimental path.
+  & cmd.exe /d /s /c ('"' + $vcvars + '" >nul && cl /nologo /std:c++20 /EHsc /MT /DUNICODE /D_UNICODE src\windows-public-window.cpp /Fe:src\windows-public-window.exe /Fo:.tmp\windows-public-window.obj /link d3d11.lib windowsapp.lib user32.lib gdi32.lib dwmapi.lib wtsapi32.lib')
   if ($LASTEXITCODE -ne 0) { throw "Native helper compilation failed ($LASTEXITCODE)" }
 } finally { Pop-Location }
