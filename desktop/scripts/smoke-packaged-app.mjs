@@ -6,7 +6,7 @@ import {fileURLToPath} from "node:url";
 const desktopRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const channel = process.argv.includes("--channel=preview") ? "preview" : "stable";
 const executableName = channel === "preview" ? "OpenButler Preview.exe" : "OpenButler.exe";
-const backendName = channel === "preview" ? "openbutler-backend-preview.exe" : "openbutler-backend.exe";
+const backendName = process.env.OPENBUTLER_EXPECTED_BACKEND_IMAGE || (channel === "preview" ? "openbutler-backend-preview.exe" : "openbutler-backend.exe");
 const distName = channel === "preview" ? "dist-preview" : "dist";
 const exePath = process.env.OPENBUTLER_DESKTOP_EXE_PATH || resolve(desktopRoot, distName, "win-unpacked", executableName);
 const smokeDir = resolve(desktopRoot, ".tmp", `packaged-smoke-${channel}`);

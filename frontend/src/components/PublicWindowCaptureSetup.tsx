@@ -154,7 +154,9 @@ export function PublicWindowCaptureSetup({active, capabilities, onComplete, onSt
 
   return <section className="public-window-setup" aria-label="专用公开窗口自动记录">
     <p className="policy-note">只记录你明确选择的专用公开工作窗口。不会获取整屏缩略图；不会在窗口关闭或身份改变后改录其他来源。</p>
-    <p className="capture-capability-warning">当前云 X11 锁屏状态未知，锁屏保护不受支持。此范围只用于公开内容，不等于完整桌面记录能力。</p>
+    <p className="capture-capability-warning">{capabilities?.public_window.platform === "windows-hwnd-wgc"
+      ? "Windows 仅采集选定窗口；窗口身份变化、关闭、锁定或锁屏状态不可知时停止。"
+      : "当前云 X11 锁屏状态未知，锁屏保护不受支持。"}此范围只用于公开内容，不等于完整桌面记录能力。</p>
     {!available && <p role="alert">此环境的专用窗口采集暂不可用；不会退回全屏采集。</p>}
     <label><span>选择专用公开窗口</span><select aria-label="选择专用公开窗口" value={sourceId} disabled={disabled || loading || editing || !available}
       onChange={(event) => change(() => { setSourceId(event.target.value); setPublicOnly(false); setMasks([]); }, true)}>

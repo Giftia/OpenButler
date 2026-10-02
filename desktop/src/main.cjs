@@ -16,7 +16,9 @@ const desktopChannel = process.env.OPENBUTLER_DESKTOP_CHANNEL
   || packageMetadata.openbutlerChannel
   || (String(packageMetadata.productName || "").includes("Preview") ? "preview" : "stable");
 const isPreviewChannel = desktopChannel === "preview";
-const backendImageName = isPreviewChannel ? "openbutler-backend-preview.exe" : "openbutler-backend.exe";
+const backendImageName = packageMetadata.productName === "OpenButler Preview Windows Trial"
+  ? "openbutler-backend-windows-trial.exe"
+  : isPreviewChannel ? "openbutler-backend-preview.exe" : "openbutler-backend.exe";
 
 let mainWindow = null;
 let tray = null;
@@ -73,7 +75,8 @@ const discoverLocalModels = createLocalModelDiscovery();
 if (process.env.OPENBUTLER_DESKTOP_USER_DATA_DIR) {
   app.setPath("userData", process.env.OPENBUTLER_DESKTOP_USER_DATA_DIR);
 } else if (isPreviewChannel) {
-  app.setPath("userData", path.join(app.getPath("appData"), "OpenButler Preview"));
+  app.setPath("userData", path.join(app.getPath("appData"),
+    packageMetadata.productName === "OpenButler Preview Windows Trial" ? "OpenButler Preview Windows Trial" : "OpenButler Preview"));
 }
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -264,7 +267,9 @@ function controller() {
 }
 
 function windowProvider() {
-  if (!publicWindowProvider) publicWindowProvider = new PublicWindowProvider();
+  if (!publicWindowProvider) publicWindowProvider = process.platform === 'win32'
+    ? new (require('./windows-public-window-provider.cjs').WindowsPublicWindowProvider)()
+    : new PublicWindowProvider();
   return publicWindowProvider;
 }
 
@@ -1084,8 +1089,10 @@ handleDesktopRequest("openbutler:get-runtime", async () => ({
 handleDesktopRequest("openbutler:get-capture-displays", async () => captureDisplays());
 
 handleDesktopRequest("openbutler:get-capture-capabilities", async () => ({
-  public_window: {supported: windowProvider().available(), platform: "linux-x11",
-    lock_state: "unknown", lock_protection_supported: false,
+  public_window: {supported: windowProvider().probe ? await windowProvider().probe().catch(() => false) : windowProvider().available(),
+    platform: windowProvider().platform || "linux-x11",
+    lock_state: windowProvider().lockState || "unknown",
+    lock_protection_supported: windowProvider().lockProtectionSupported === true,
     reason: windowProvider().available() ? "requires_verified_window_preview" : "public_window_platform_unsupported"},
   full_desktop: {supported: process.platform === "win32", reason:
     process.platform === "win32" ? "requires_existing_privacy_checks" : "lock_state_unknown"},

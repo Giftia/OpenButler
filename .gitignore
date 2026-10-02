@@ -70,3 +70,4 @@ temp/
 # Workspace-only native validation dependencies and artifacts
 /native-runtime/
 /native-session/
+/desktop/src/windows-public-window.exe

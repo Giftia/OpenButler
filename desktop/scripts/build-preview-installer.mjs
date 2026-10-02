@@ -18,6 +18,8 @@ const existing = readdirSync(output).flatMap((name) => {
 const sequence = process.env.OPENBUTLER_PREVIEW_SEQUENCE || String(Math.max(0, ...existing) + 1);
 if (!/^\d+$/.test(sequence) || Number(sequence) < 1) throw new Error("Invalid preview sequence");
 const previewVersion = `0.2.0-preview.${runId}.${sequence}`;
+const isolatedTrial = process.env.OPENBUTLER_PREVIEW_ISOLATED_TRIAL === "1";
+const productName = isolatedTrial ? "OpenButler Preview Windows Trial" : "OpenButler Preview";
 
 function run(commandLine, env = {}) {
   const result = spawnSync("cmd.exe", ["/d", "/s", "/c", commandLine], {
@@ -40,23 +42,27 @@ function runNodeScript(script, args, env = {}) {
 }
 
 run("npm run build:frontend", {OPENBUTLER_DESKTOP_CHANNEL: "preview"});
+run("powershell.exe -NoProfile -File scripts/build-windows-public-window.ps1");
 run("npm run build:backend -- --clean");
 runNodeScript(join(root, "scripts", "copy-offline-ocr-assets.cjs"), []);
 const stableBackend = join(root, "dist", "openbutler-backend.exe");
 if (!existsSync(stableBackend)) throw new Error("Fresh backend build produced no executable");
-const previewBackend = join(tmp, "openbutler-backend-preview.exe");
+const backendName = isolatedTrial ? "openbutler-backend-windows-trial.exe" : "openbutler-backend-preview.exe";
+const previewBackend = join(tmp, backendName);
 copyFileSync(stableBackend, previewBackend);
 
 const build = structuredClone(pkg.build);
-build.appId = "moe.giftia.openbutler.preview";
-build.productName = "OpenButler Preview";
+build.appId = isolatedTrial ? "moe.giftia.openbutler.preview.windows-trial" : "moe.giftia.openbutler.preview";
+build.productName = productName;
+build.asarUnpack = [...build.asarUnpack, "src/windows-public-window.exe"];
 build.directories = {...build.directories, output};
 build.artifactName = undefined;
-build.win = {...build.win, artifactName: `OpenButler-Preview-Setup-${previewVersion}.\${ext}`};
-build.nsis = {...build.nsis, include: "installer/installer-preview.nsh", shortcutName: "OpenButler Preview"};
-build.extraMetadata = {version: previewVersion, productName: "OpenButler Preview", openbutlerChannel: "preview", openbutlerPreviewVersion: previewVersion};
+build.win = {...build.win, artifactName: `${isolatedTrial ? "OpenButler-Preview-Windows-Trial" : "OpenButler-Preview"}-Setup-${previewVersion}.\${ext}`};
+build.nsis = {...build.nsis, include: isolatedTrial ? "installer/installer-windows-trial.nsh" : "installer/installer-preview.nsh", shortcutName: productName};
+if (isolatedTrial) build.nsis.allowToChangeInstallationDirectory = false;
+build.extraMetadata = {version: previewVersion, productName, openbutlerChannel: "preview", openbutlerPreviewVersion: previewVersion};
 build.extraResources = build.extraResources.map((resource) => resource.to === "backend/openbutler-backend.exe"
-  ? {from: previewBackend, to: "backend/openbutler-backend-preview.exe"}
+  ? {from: previewBackend, to: `backend/${backendName}`}
   : resource);
 
 const configPath = join(tmp, "electron-builder-preview.json");

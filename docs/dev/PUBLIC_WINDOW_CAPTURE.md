@@ -1,10 +1,64 @@
 # Dedicated public-window capture
 
 This is a separate, explicitly selected source scope (`dedicated_public_window`),
-implemented by the OpenButler desktop product. It is currently Linux/X11-only.
-Windows and external-hardware providers must not invoke it or fall back to a
-screen capture. The generic provider contract and whole-desktop privacy gates
-are unchanged. Lock state remains **unknown**, with lock protection unsupported.
+implemented by the OpenButler desktop product. Linux uses X11; the Windows
+development provider uses `CreateForWindow(HWND)` with `hwnd:` identities and
+`windows_wgc_hwnd` provenance. Neither provider falls back to screen capture.
+The generic provider contract and whole-desktop privacy gates are unchanged.
+Linux lock state remains **unknown**, with lock protection unsupported.
+
+### Windows development validation
+
+Build the native helper from the installed Microsoft C++/WinRT SDK using
+`powershell.exe -NoProfile -File desktop/scripts/build-windows-public-window.ps1`.
+The build does not install software or alter OS permissions. The Preview build
+compiles and unpacks this helper alongside the desktop shell. A missing helper,
+unsupported WGC device, unavailable event guard or unknown/locked input desktop
+disables capture. Selected windows are bound to HWND, PID, process creation
+FILETIME, executable basename, exact class/title and DWM physical frame bounds.
+Metadata enumeration takes no thumbnails. Unknown, cloaked, minimized, layered,
+transparent, negative-position or oversized windows are not offered; the current
+raw pipe limit supports at most two million window pixels.
+
+WGC reads only that window's surface. Frame dimensions must match the bound
+window, and only `ContentSize` is copied from the surface; transparent corner RGB
+is cleared. A per-monitor V2 DPI context avoids logical/physical coordinate
+mixups. Frame QPC timestamps must be nonfuture and at most eight seconds old.
+Window destroy/hide/name/location events permanently revoke the binding,
+including a title change followed by restoration. Required WTS session events,
+power suspend and fail-closed input-desktop polling revoke capture. The helper
+and controller recheck identity before/after acquisition, after local OCR and
+before submission. No automatic rebind or resume exists.
+
+Run `node --test desktop/scripts/check-windows-public-window.cjs`,
+`node desktop/scripts/check-windows-native-revocation.cjs` and
+`node desktop/scripts/check-windows-native-public-window.cjs` for synthetic
+contract tests and real self-created public-window capture/masking/offline OCR.
+Then run `PYTHONPATH=backend python desktop/scripts/check-windows-timeline.py`.
+Only the timeline validation model is mocked; no endpoint/model is downloaded
+or called. Native title, movement, resize, transient-title and closing tests are
+separate from injected PID-reuse/lock/timeout cases. Actual OS lock/unlock and
+real PID/HWND reuse are not claimed as accepted. This isolated development trial
+is not a production Windows security or model-understanding acceptance.
+
+For an independent Windows Trial installer, set
+`OPENBUTLER_PREVIEW_ISOLATED_TRIAL=1` when building the Preview. Its app identity,
+backend executable, default user-data directory and shortcuts are separate from
+the ordinary Preview and stable channels. Installation is limited to the
+current user's `Programs/OpenButlerWindowsTrial` directory. The NSIS startup
+guard rejects a conflicting destination or cached Trial uninstall target before
+the installation section can uninstall or extract files. This path guard is
+not an uninstall-lifecycle acceptance.
+
+The installed-component checks accept `OPENBUTLER_TRIAL_INSTALL_DIR`, defaulting
+to the current user's Trial installation. They create fresh workspace-owned
+profiles, use public generated fixtures and explicitly label local HTTP mock
+model output. The component test opens evidence over the authenticated API;
+the UI test validates rendered startup and app-owned exit separately. These
+checks do not prove a user-clicked end-to-end flow or real model quality. The
+existing backend summary boundary still conservatively reports unsupported
+lock protection; native Windows capabilities and provenance report the actual
+guard contract separately.
 
 ## User flow
 

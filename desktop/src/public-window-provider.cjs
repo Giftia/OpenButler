@@ -8,7 +8,7 @@ const FORMAT_KEYS = ['depth', 'bits_per_pixel', 'byte_order', 'format', 'xoffset
   'visual_red_mask', 'visual_green_mask', 'visual_blue_mask', 'visual_depth'];
 
 function checkedIdentity(value) {
-  if (!value || !/^x11:[1-9][0-9]{0,10}$/.test(value.window_id)
+  if (!value || !/^(?:x11:[1-9][0-9]{0,10}|hwnd:[1-9][0-9]{0,19})$/.test(value.window_id)
     || !Number.isSafeInteger(value.owner_pid) || value.owner_pid < 1
     || !/^[0-9]{1,30}$/.test(value.owner_process_start)
     || !['owner_process_name', 'wm_class', 'window_title'].every(key =>

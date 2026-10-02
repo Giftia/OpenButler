@@ -48,7 +48,9 @@ class PublicWindowController {
     if (config.excluded_apps.some(name => app.includes(name.toLowerCase()) || selected.includes(name.toLowerCase()))) {
       throw new Error('application_excluded_or_unknown');
     }
-    if (inspection.lock_state !== 'unknown' || inspection.lock_protection_supported !== false) {
+    const windows = config.source_identity.window_id.startsWith('hwnd:');
+    if (inspection.lock_state !== (windows ? 'unlocked' : 'unknown')
+      || inspection.lock_protection_supported !== windows) {
       throw new Error('invalid_public_window_capabilities');
     }
     return inspection;
@@ -61,7 +63,7 @@ class PublicWindowController {
     const frame = await this.provider.acquireFrame();
     try {
       current();
-      if (!Buffer.isBuffer(frame.buffer) || frame.capture_method !== METHOD
+      if (!Buffer.isBuffer(frame.buffer) || frame.capture_method !== (config.source_identity.window_id.startsWith('hwnd:') ? 'windows_wgc_hwnd' : METHOD)
         || frame.source_verified_before !== true || frame.source_verified_after !== true
         || sourceRevision(frame.source_identity) !== sourceRevision(config.source_identity)
         || !Number.isSafeInteger(frame.captured_at_ms) || this.clock() - frame.captured_at_ms > 8_000
@@ -135,7 +137,8 @@ class PublicWindowController {
           observation_mode: config.observation_mode, ...processed.postMaskOcr,
           previewDataUrl: `data:image/png;base64,${processed.buffer.toString('base64')}`,
           maskedRegions: processed.maskedRegions, source_revision: sourceRevision(config.source_identity),
-          lock_state: 'unknown', lock_protection_supported: false};
+          lock_state: config.source_identity.window_id.startsWith('hwnd:') ? 'unlocked' : 'unknown',
+          lock_protection_supported: config.source_identity.window_id.startsWith('hwnd:')};
       } finally { processed.buffer.fill(0); }
     } catch (error) {
       if (generation === this.generation) {
@@ -165,8 +168,11 @@ class PublicWindowController {
       const session = {capture_scope: SCOPE, source_kind: 'public_window',
       observation_mode: config.observation_mode,
       session_id: randomUUID(), source_revision: sourceRevision(config.source_identity),
-      source_identity: config.source_identity, lock_state: 'unknown', lock_protection_supported: false,
-      capture_method: METHOD, sampling_interval_ms: this.intervalMs,
+      source_identity: config.source_identity,
+      lock_state: config.source_identity.window_id.startsWith('hwnd:') ? 'unlocked' : 'unknown',
+      lock_protection_supported: config.source_identity.window_id.startsWith('hwnd:'),
+      capture_method: config.source_identity.window_id.startsWith('hwnd:') ? 'windows_wgc_hwnd' : METHOD,
+      sampling_interval_ms: this.intervalMs,
       session_expires_at: new Date(this.clock() + config.session_duration_seconds * 1000).toISOString()};
       const configured = await this.configureBackend({display_id: config.display_id,
       excluded_apps: config.excluded_apps, masks: config.masks, confirmed: true, ...session});
@@ -241,8 +247,9 @@ class PublicWindowController {
     return {active: this.active, intervalSeconds: this.intervalMs / 1000, lastResult: this.lastResult,
       observation_mode: this.config?.observation_mode || null,
       capture_scope: SCOPE, sessionExpiresAt: this.session?.session_expires_at || null,
-      sourceIdentity: this.config?.source_identity || null, lock_state: 'unknown',
-      lock_protection_supported: false};
+      sourceIdentity: this.config?.source_identity || null,
+      lock_state: this.provider.lockState || 'unknown',
+      lock_protection_supported: this.provider.lockProtectionSupported === true};
   }
 }
 

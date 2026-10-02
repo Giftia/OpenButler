@@ -138,7 +138,7 @@ class WindowBounds(MaskRect):
 
 class WindowIdentity(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
-    window_id: str = Field(pattern=r"^x11:[1-9][0-9]{0,19}$", max_length=24)
+    window_id: str = Field(pattern=r"^(?:x11|hwnd):[1-9][0-9]{0,19}$", max_length=25)
     owner_pid: int = Field(gt=0)
     owner_process_start: str = Field(pattern=r"^[0-9]{1,30}$")
     owner_process_name: str = Field(min_length=1, max_length=120)
@@ -163,20 +163,21 @@ class SourceProvenance(BaseModel):
     source_revision: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     source_identity: WindowIdentity | None = None
     session_expires_at: str | None = None
-    lock_state: Literal["unknown"] | None = None
+    lock_state: Literal["unknown", "unlocked"] | None = None
     lock_protection_supported: StrictBool | None = None
-    capture_method: Literal["xcomposite_named_window_pixmap"] | None = None
+    capture_method: Literal["xcomposite_named_window_pixmap", "windows_wgc_hwnd"] | None = None
     sampling_interval_ms: int | None = Field(default=None, strict=True, ge=1000, le=300000)
 
     @model_validator(mode="after")
     def validate_source(self):
         if self.source_kind == "public_window":
             from uuid import UUID
+            windows = self.source_identity is not None and self.source_identity.window_id.startswith("hwnd:")
             if (self.capture_scope != "dedicated_public_window" or not self.session_id
                     or not self.source_revision or self.source_identity is None
-                    or not self.session_expires_at or self.lock_state != "unknown"
-                    or self.lock_protection_supported is not False
-                    or self.capture_method != "xcomposite_named_window_pixmap"
+                    or not self.session_expires_at or self.lock_state != ("unlocked" if windows else "unknown")
+                    or self.lock_protection_supported is not windows
+                    or self.capture_method != ("windows_wgc_hwnd" if windows else "xcomposite_named_window_pixmap")
                     or self.sampling_interval_ms is None):
                 raise ValueError("incomplete_public_window_provenance")
             try:
