@@ -461,14 +461,39 @@ def _payload(route: ModelRoute, prompt: str, image: bytes | None, *, json_schema
     return payload
 
 
+_LLAMA_TIMING_COUNTS = frozenset({"cache_n", "prompt_n", "predicted_n"})
+_LLAMA_TIMING_MEASUREMENTS = frozenset({
+    "prompt_ms", "prompt_per_token_ms", "prompt_per_second",
+    "predicted_ms", "predicted_per_token_ms", "predicted_per_second",
+})
+
+
+def _validate_llama_timings(timings) -> None:
+    # Optional llama.cpp non-speculative completion metadata, never content or
+    # authorization. Require the documented shape; do not strip unknown fields.
+    if type(timings) is not dict or set(timings) != _LLAMA_TIMING_COUNTS | _LLAMA_TIMING_MEASUREMENTS:
+        raise ValueError
+    for key, value in timings.items():
+        types = (int,) if key in _LLAMA_TIMING_COUNTS else (int, float)
+        # Exact types reject booleans; the bounded comparison also rejects NaN
+        # and infinities without converting arbitrarily large integers to float.
+        if type(value) not in types or not 0 <= value <= 2**63 - 1:
+            raise ValueError
+
+
 def _content(route: ModelRoute, response: dict, *, strict_text_response: bool = False) -> str:
     try:
         if route.protocol == "openai_compatible":
             choices = response["choices"]
             message = choices[0]["message"]
+            envelope_fields = {"id", "object", "created", "model", "choices", "usage",
+                               "system_fingerprint", "service_tier"}
+            if route.mode == "local":
+                envelope_fields.add("timings")
+                if strict_text_response and "timings" in response:
+                    _validate_llama_timings(response["timings"])
             if strict_text_response and (not isinstance(choices, list) or len(choices) != 1
-                    or set(response) - {"id", "object", "created", "model", "choices", "usage",
-                                        "system_fingerprint", "service_tier"}
+                    or set(response) - envelope_fields
                     or set(choices[0]) - {"index", "message", "finish_reason", "logprobs"}
                     or choices[0].get("finish_reason") != "stop"):
                 raise ValueError

@@ -14,6 +14,7 @@ from app.modules.model_gateway.gateway import (
     RouteError, _payload, synthetic_probe_png,
 )
 from app.modules.model_gateway.router import create_model_settings_router
+from app.modules.model_gateway.tests.test_llama_timings import synthetic_timings
 from app.security.privacy_guard import PrivacyGuard
 
 MODULE = 'app.modules.model_gateway.gateway'
@@ -249,6 +250,27 @@ class LocalBudgetSchemaTests(unittest.TestCase):
             with self.assertRaisesRegex(RouteError, 'invalid_provider_response'):
                 gateway.call_text('JSON fixture', self.auth, json_schema=OBSERVATION_JSON_SCHEMA)
             self.server.response_extra = {}
+
+    def test_local_openai_timings_pass_real_transport_probe_and_schema_call(self):
+        self.server.response_extra = {'timings': synthetic_timings()}
+        gateway = self.gateway('openai_compatible')
+        content = self.server.content
+        self.server.content = 'READY'
+        gateway.configure_text(text=self.route('openai_compatible'), auth=self.auth)
+        self.server.content = content
+        self.assertEqual(gateway.call_text('JSON fixture', self.auth,
+                         json_schema=OBSERVATION_JSON_SCHEMA, local_cpu_profile='observation'), content)
+        self.assertEqual(len(self.server.calls), 2)
+
+    def test_local_openai_malformed_timings_and_extra_fields_fail_real_transport(self):
+        gateway = self.gateway('openai_compatible')
+        for extra in [{'timings': {**synthetic_timings(), 'prompt_ms': float('nan')}},
+                      {'timings': {**synthetic_timings(), 'cache_n': True}},
+                      {'timings': {**synthetic_timings(), 'unknown': 0}},
+                      {'timings': synthetic_timings(), 'unknown': 0}]:
+            self.server.response_extra = extra
+            with self.subTest(extra=extra), self.assertRaisesRegex(RouteError, 'invalid_provider_response'):
+                gateway.call_text('JSON fixture', self.auth, json_schema=OBSERVATION_JSON_SCHEMA)
 
     def test_observation_profile_requires_normal_stop_for_capped_image(self):
         self.server.finish = 'length'
