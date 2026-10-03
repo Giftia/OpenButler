@@ -2895,6 +2895,7 @@ function observationProcessingReason(reason?: string | null): string {
     source_reconfigured: "采集来源已重新配置，这条截图未继续整理。",
     session_expired: "本次采集授权已到期，未继续整理；不会自动续期。",
     model_unavailable: "模型不可用，截图已保存",
+    invalid_source_grounding: "OCR 摘录未匹配原始文字，未采用模型结论；截图依据仍保留。",
     invalid_model_result: "输出格式不符，结果未采用",
     invalid_temporal_comparison: "跨记录比较未通过依据检查，未采用变化结论。",
     evidence_changed: "截图依据已改变，原整理结果不能继续采用。",

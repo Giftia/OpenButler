@@ -23,6 +23,9 @@ class MaskedOcrTests(unittest.TestCase):
     def setUp(self):
         window.PublicWindowTests.setUp(self)
         self.configure(observation_mode="masked_ocr_text")
+        response = json.loads(self.gateway.response)
+        response["source_quotes"] = ["Qwen3.5 local model evaluation"]
+        self.gateway.response = json.dumps(response, ensure_ascii=False)
 
     def frame(self, **changes):
         image = self.png(self.sequence + 1)

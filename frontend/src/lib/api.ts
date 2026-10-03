@@ -34,12 +34,25 @@ export type CaptureProvenance = {
   source_verified_before?: boolean; source_verified_after?: boolean;
 };
 
+export type OcrSourceExcerpt = {quote: string; start: number; end: number};
+export type OcrSourceSpan = {
+  observation_id: string; evidence_id: string; image_digest: string; source_text_digest: string;
+  start: number; end: number; offset_unit: "unicode_codepoints";
+};
+export type OcrSourceGrounding = {
+  version: 1; source_kind: "post_mask_ocr_text"; source_text_digest: string;
+  observation_id: string; evidence_id: string; image_digest: string;
+  offset_unit: "unicode_codepoints"; verification: "exact_source_spans_only"; semantic_verified: false;
+  excerpts: OcrSourceExcerpt[];
+  model_proposal: {title: string; summary: string; verification: "unverified_inference"};
+};
+
 export type ContextObservation = {
   extraction_version?: 1 | 2;
   current_facts?: {version: 2; inference: true; input_scope: "current_observation_only";
     observation_id: string; evidence_id: string; image_digest: string; captured_at: string;
     observation_route: "post_mask_ocr_to_text_model" | "masked_image_to_vision_to_text";
-    title: string; summary: string; boundary: string} | null;
+    title: string; summary: string; boundary: string; source_grounding?: OcrSourceGrounding} | null;
   id: string;
   captured_at: string;
   state: "recorded_pending" | "processing" | "ready" | "model_unavailable";
@@ -61,8 +74,10 @@ export type ContextObservation = {
   temporal_context?: {prior_observation_ids?: string[] | null; inference?: boolean; coverage?: string; note?: string | null;
     association_state?: "skipped" | "pending" | "running" | "ready" | "failed";
     association_reason?: string | null;
+    citation_basis?: "post_mask_ocr_spans" | "unverified_model_summaries";
     relations?: Array<{prior_observation_id: string; relation: "same_topic" | "different_topic" | "uncertain";
-      current_quote: string; prior_quote: string}> | null;
+      current_quote: string; prior_quote: string;
+      current_source_span?: OcrSourceSpan; prior_source_span?: OcrSourceSpan}> | null;
     prior_candidate_count?: number; prior_selected_count?: number; prior_omitted_count?: number;
     comparison?: {performed: boolean; prior_observation_ids: string[]; current_quote?: string; prior_quote?: string}} | null;
 };

@@ -66,6 +66,14 @@ _no_prior_comparison["prior_observation_ids"]["maxItems"] = 0
 _no_prior_comparison["current_quote"]["enum"] = [""]
 _no_prior_comparison["prior_quote"]["enum"] = [""]
 del _no_prior_comparison
+# OCR output must cite source text. These citations establish traceability only;
+# free-form model proposals are not accepted as observed screen content.
+OCR_OBSERVATION_JSON_SCHEMA = json.loads(json.dumps(OBSERVATION_NO_PRIOR_JSON_SCHEMA))
+OCR_OBSERVATION_JSON_SCHEMA["properties"]["source_quotes"] = {
+    "type": "array", "minItems": 1, "maxItems": 3, "uniqueItems": True,
+    "items": {"type": "string", "minLength": 1, "maxLength": 120},
+}
+OCR_OBSERVATION_JSON_SCHEMA["required"].append("source_quotes")
 TEMPORAL_ASSOCIATION_JSON_SCHEMA = {
     "type": "object", "additionalProperties": False,
     "properties": {
@@ -86,6 +94,7 @@ _OBSERVATION_SCHEMA_ALLOWLIST = frozenset((
     _OBSERVATION_SCHEMA_JSON,
     json.dumps(OBSERVATION_NO_PRIOR_JSON_SCHEMA, sort_keys=True, separators=(",", ":")),
     json.dumps(TEMPORAL_ASSOCIATION_JSON_SCHEMA, sort_keys=True, separators=(",", ":")),
+    json.dumps(OCR_OBSERVATION_JSON_SCHEMA, sort_keys=True, separators=(",", ":")),
 ))
 
 

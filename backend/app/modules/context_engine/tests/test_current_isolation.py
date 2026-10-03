@@ -11,11 +11,12 @@ from app.modules.context_engine.capture import CaptureStore, init_capture_store
 from app.modules.context_engine.organization_queue import ObservationQueue
 from app.modules.context_engine.processor import ObservationProcessor
 from app.modules.context_engine.tests import test_public_window as window
-from app.modules.model_gateway.gateway import OBSERVATION_NO_PRIOR_JSON_SCHEMA, TEMPORAL_ASSOCIATION_JSON_SCHEMA
+from app.modules.model_gateway.gateway import OBSERVATION_NO_PRIOR_JSON_SCHEMA, TEMPORAL_ASSOCIATION_JSON_SCHEMA, OCR_OBSERVATION_JSON_SCHEMA
 
 GUITAR_OCR = "qwen35-evaluation. txt @\nguitar notes\nstandard tuning e a d g b e\n"
 OLD_SUMMARY = "显示本地小模型评估界面，包含问题与来源信息，工作清单提及检查测量文本和图像结果，当前处于审查进行中状态。"
 CURRENT_REPLY = json.dumps({"title": "吉他调弦笔记", "summary": "文档记载吉他标准调弦e a d g b e。", "boundary": "仅当前截图。",
+    "source_quotes": ["guitar notes", "standard tuning e a d g b e"],
     "comparison": {"performed": False, "prior_observation_ids": [], "current_quote": "", "prior_quote": ""}}, ensure_ascii=False)
 
 
@@ -35,7 +36,7 @@ class CurrentIsolationTests(unittest.TestCase):
     def call_text(self, prompt, auth, **options):
         options["dispatch_precondition"]()
         schema = options["json_schema"]
-        stage = "current" if schema == OBSERVATION_NO_PRIOR_JSON_SCHEMA else "association"
+        stage = "current" if schema in (OBSERVATION_NO_PRIOR_JSON_SCHEMA, OCR_OBSERVATION_JSON_SCHEMA) else "association"
         self.requests.append((stage, prompt, deepcopy(schema)))
         data = json.loads(prompt.split("\n", 1)[1])
         if self.hook:
@@ -47,7 +48,7 @@ class CurrentIsolationTests(unittest.TestCase):
         if self.association_reply is not None:
             return self.association_reply
         return json.dumps({"relations": [{"prior_observation_id": row["observation_id"],
-            "relation": "uncertain", "current_quote": data["current"]["title"], "prior_quote": row["title"]}
+            "relation": "uncertain", "current_quote": data["current"]["source_quotes"][0], "prior_quote": row["source_quotes"][0]}
             for row in data["prior_records"]]}, ensure_ascii=False)
 
     def ingest(self, text=GUITAR_OCR):
@@ -59,8 +60,16 @@ class CurrentIsolationTests(unittest.TestCase):
         return event, image
 
     def seed_prior(self, summary=OLD_SUMMARY):
-        event, _ = self.ingest("Public historical note")
-        self.store.set_result(event, state="ready", title="旧Qwen评估", summary=summary, boundary="历史未验证观察。")
+        event, image = self.ingest("Public historical note")
+        snapshot = self.store.processing_snapshot(event, image)
+        grounding = ObservationProcessor.source_grounding(snapshot, ["Public historical note"], ["旧Qwen评估", summary])
+        facts = {"version": 2, "inference": True, "input_scope": "current_observation_only",
+            "observation_id": event, "evidence_id": snapshot["evidence_id"], "image_digest": snapshot["image_digest"],
+            "captured_at": snapshot["captured_at"], "observation_route": snapshot["observation_route"],
+            "title": "文档 OCR 摘录", "summary": "屏幕文档 OCR 文字：“Public historical note”。", "boundary": "历史未验证观察。",
+            "source_grounding": grounding}
+        self.store.set_result(event, state="ready", title=facts["title"], summary=facts["summary"],
+            boundary=facts["boundary"], current_facts=facts, temporal_context={"association_state": "skipped"})
         return event
 
     def row(self, event):
@@ -103,7 +112,7 @@ class CurrentIsolationTests(unittest.TestCase):
             self.assertTrue(self.processor.process(event, image))  # current extraction still succeeded
             row = self.row(event)
             self.assertEqual(row["state"], "ready")
-            self.assertEqual(row["current_facts"]["summary"], "文档记载吉他标准调弦e a d g b e。")
+            self.assertEqual(row["current_facts"]["summary"], "屏幕文档 OCR 文字：“guitar notes”；“standard tuning e a d g b e”。")
             self.assertEqual(row["summary"], row["current_facts"]["summary"])
             self.assertEqual(row["temporal_context"]["association_state"], "failed")
             self.assertEqual(row["temporal_context"]["association_reason"], "invalid_association_result")
@@ -211,8 +220,11 @@ class CurrentIsolationTests(unittest.TestCase):
         self.assertIsNotNone(row["current_facts"])
 
     def test_restart_interrupts_association_without_relabeling_or_replaying(self):
+        legacy_id, _ = self.ingest("legacy source")
+        self.store.set_result(legacy_id, state="ready", title="旧Qwen评估", summary=OLD_SUMMARY, boundary="未验证")
+        legacy = deepcopy(self.row(legacy_id))
         previous = self.seed_prior()
-        legacy = deepcopy(self.row(previous))
+        grounded = deepcopy(self.row(previous))
         def hook(stage, options):
             if stage == "association":
                 with self.db() as conn:
@@ -224,7 +236,8 @@ class CurrentIsolationTests(unittest.TestCase):
         self.assertEqual(row["state"], "ready")
         self.assertEqual(row["temporal_context"]["association_state"], "failed")
         self.assertEqual(row["temporal_context"]["association_reason"], "process_restarted")
-        self.assertEqual(self.row(previous), legacy)
+        self.assertEqual(self.row(legacy_id), legacy)
+        self.assertEqual(self.row(previous), grounded)
         self.assertEqual(legacy["extraction_version"], 1)
         self.assertIsNone(legacy["current_facts"])
         restarted = CaptureStore(self.db, self.root, lambda: "strict", lambda: self.now)
@@ -237,7 +250,7 @@ class CurrentIsolationTests(unittest.TestCase):
     def test_failed_extraction_cannot_be_rescued_by_history(self):
         self.seed_prior()
         self.extract_reply = json.dumps({"title": "相较前帧", "summary": "与先前相比发生变化。", "boundary": "仅截图。",
-            "comparison": {"performed": False, "prior_observation_ids": [], "current_quote": "", "prior_quote": ""}})
+            "source_quotes": ["guitar notes"], "comparison": {"performed": False, "prior_observation_ids": [], "current_quote": "", "prior_quote": ""}})
         event, image = self.ingest()
         self.assertFalse(self.processor.process(event, image))
         self.assertEqual([call[0] for call in self.requests], ["current"])

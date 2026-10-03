@@ -2,7 +2,7 @@ name: OpenButler Development Source Validation
 
 on:
   push:
-    branches: ["dev/windows-wgc-20261002", "dev/device-model-catalog-20261002"]
+    branches: ["dev/windows-wgc-20261002", "dev/device-model-catalog-20261002", "dev/source-grounding-20261003"]
 
 # Source-only validation: no installer, native desktop capture, external model,
 # screenshots, or runtime artifact uploads. Main and existing workflows unchanged.

@@ -21,7 +21,7 @@ export function CaptureObservationProvenance({item}: {item: ContextObservation})
     {typeof interval === "number" && <small>计划采样间隔 {interval / 1000} 秒{provenance?.sampling_sequence === 1 ? " · 本会话首个采样" : typeof gap === "number" ? ` · 超出计划间隔的额外采样延迟 ${Math.round(gap / 1000)} 秒` : " · 前次采样间隔未知"}</small>}
     {publicWindow && <small>仅此窗口的离散观察点；采样空隙与其他窗口的活动未知。锁屏状态未知。</small>}
     {item.extraction_version !== 2 && item.temporal_context && <small>连续上下文为推断：{item.temporal_context.note || "只结合已有观察点，不能补全未采样时段。"}</small>}
-    {item.summary && <small>AI 标题与摘要是基于{ocrText ? "遮挡后 OCR 文字" : "遮挡后截图"}的推断，不证明每次点击、完整行为或外部任务已完成。</small>}
+    {item.summary && <small>{ocrText ? "遮挡后 OCR 文字的原文摘录与模型推断需区分；两者都不证明每次点击、完整行为或外部任务已完成。" : "AI 标题与摘要是基于遮挡后截图的推断，不证明每次点击、完整行为或外部任务已完成。"}</small>}
     {!item.evidence_available && <small>截图依据已过期或不可用，不能将摘要作为仍可核验的依据。</small>}
   </div>;
 }
