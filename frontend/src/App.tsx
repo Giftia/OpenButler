@@ -1,5 +1,6 @@
 import {useEffect, useMemo, useRef, useState} from "react";
 import {PublicWindowCaptureSetup} from "./components/PublicWindowCaptureSetup";
+import {CaptureObservationFeed} from "./components/CaptureObservationFeed";
 import {CaptureObservationProvenance} from "./components/CaptureObservationProvenance";
 import {CaptureObservationAnalysis, observationCurrentContent, observationStateLabel} from "./components/CaptureObservationAnalysis";
 import {CaptureSessionSummary, capturePauseMessage} from "./components/CaptureSessionSummary";
@@ -109,7 +110,8 @@ import {
   simulateEvents,
   type CaptureConfig,
   type ContextEngineStatus,
-  type ContextObservation
+  type ContextObservation,
+  type CaptureCoverageEvent
 } from "./lib/api";
 import {buildTodayHomeViewModel, type ActivationMode} from "./lib/butlerUiAdapter";
 import {buildAchievementViewModel, type AchievementCard} from "./lib/achievementUiAdapter";
@@ -2014,6 +2016,7 @@ function TimelineThumbnail({moment}: {moment: TimelineMoment}) {
 function UnifiedTimeline() {
   const [items, setItems] = useState<Array<Record<string, any>>>([]);
   const [previewItems, setPreviewItems] = useState<ContextObservation[]>([]);
+  const [coverageEvents, setCoverageEvents] = useState<CaptureCoverageEvent[]>([]);
   const [previewError, setPreviewError] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [timeFilter, setTimeFilter] = useState<TimelineTimeFilter>("today");
@@ -2025,6 +2028,7 @@ function UnifiedTimeline() {
       try {
         const result = await getContextObservations();
         setPreviewItems(result.items);
+        setCoverageEvents(result.coverage_events ?? []);
         setPreviewError("");
       } catch {
         setPreviewError("本机记录暂时无法读取。请确认本机服务正在运行。");
@@ -2048,7 +2052,7 @@ function UnifiedTimeline() {
     return <section className="life-timeline-page preview-timeline-page">
       <div className="timeline-feed-hero"><div><p className="eyebrow">本机记录</p><h2>时间线</h2><p>查看截图记录和整理状态</p></div><button className="secondary" onClick={() => void refreshTimeline()}>刷新</button></div>
       {previewError && <p className="policy-note" role="alert">{previewError}</p>}
-      {previewItems.length ? <div className="life-timeline event-feed">{previewItems.map((item) => <PreviewObservationRow key={item.id} item={item} onChanged={() => void refreshTimeline()} />)}</div> : <div className="friendly-empty"><strong>时间线还没有本机记录</strong><span>完成隐私预览并开始录制后，这里会显示本机记录及其处理状态。</span></div>}
+      <CaptureObservationFeed observations={previewItems} coverageEvents={coverageEvents} renderObservation={(item) => <PreviewObservationRow item={item} onChanged={() => void refreshTimeline()} />} />
     </section>;
   }
   const displayItems = items.length ? items : sampleMode ? timelineSampleEvents : [];
@@ -3000,6 +3004,7 @@ function PreviewObservationRow({item, onChanged}: {item: ContextObservation; onC
 function PreviewToday({onOpenGuide}: {onOpenGuide: () => void}) {
   const [status, setStatus] = useState<ContextEngineStatus | null>(null);
   const [observations, setObservations] = useState<ContextObservation[]>([]);
+  const [coverageEvents, setCoverageEvents] = useState<CaptureCoverageEvent[]>([]);
   const [desktopCapture, setDesktopCapture] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -3020,6 +3025,7 @@ function PreviewToday({onOpenGuide}: {onOpenGuide: () => void}) {
       setStatus(desktopActive === null ? nextStatus : {...nextStatus, recording: {...nextStatus.recording, active: nextStatus.recording.active || desktopActive}});
       setStateMismatch(desktopActive !== null && desktopActive !== nextStatus.recording.active);
       setObservations(nextObservations.items);
+      setCoverageEvents(nextObservations.coverage_events ?? []);
       setError(capturePauseMessage(typeof captureState?.lastResult === "string" ? captureState.lastResult : null) || (desktopActive !== null && desktopActive !== nextStatus.recording.active
           ? "桌面采集与本机服务状态不一致，请检查隐私预览后重新启动。" : ""));
     } catch {
@@ -3106,7 +3112,7 @@ function PreviewToday({onOpenGuide}: {onOpenGuide: () => void}) {
     <PreviewDailyReview authorized={status?.recording.authorized === true} recordRevision={observations.map((item) => `${item.id}:${item.state}:${item.evidence_available}`).join("|")} />
     <section className="today-panel preview-records-panel">
       <div className="section-title"><div><p className="eyebrow">本机记录</p><h2>最近记录</h2></div><button className="secondary" onClick={() => navigateClient("/timeline")}>全部记录</button></div>
-      {observations.length ? observations.slice(0, 3).map((item) => <PreviewObservationRow key={item.id} item={item} onChanged={() => void refreshPreviewToday()} />) : <div className="friendly-empty"><strong>还没有本机记录</strong><span>检查预览并开始记录</span></div>}
+      <CaptureObservationFeed observations={observations} coverageEvents={coverageEvents} limit={6} renderObservation={(item) => <PreviewObservationRow item={item} onChanged={() => void refreshPreviewToday()} />} />
     </section>
     <section className="today-panel preview-recording-controls"><div className="section-title"><div><h2>录制授权</h2><p>重新开始前需要再次检查隐私预览。</p></div></div>
       <div className="desktop-action-row"><button className="secondary" disabled={busy || !status?.recording.active} onClick={() => void stopRecording(false)}>暂停</button><button className="secondary" disabled={busy || !status?.recording.authorized} onClick={() => void stopRecording(true)}>停止并撤销授权</button><button className="secondary" disabled={busy} onClick={() => void openRecordingSetup()}>更改录制范围</button></div>

@@ -30,6 +30,8 @@ let backendStartPromise = null;
 let backendGeneration = 0;
 let backendDiagnostics = {stage: "idle", errorCode: null, exitCode: null};
 let isQuitting = false;
+let orderlyStopPromise = null;
+let quitPromise = null;
 let smokeQuitScheduled = false;
 let backendState = {
   apiBase: "",
@@ -265,7 +267,7 @@ function controller() {
     postObservation: payload => privateApi("/api/context-engine/observations", payload),
     configureBackend: payload => privateApi("/api/context-engine/capture/configure", payload),
     startBackendCapture: () => privateApi("/api/context-engine/capture/start", {}),
-    pauseBackendCapture: () => privateApi("/api/context-engine/capture/pause", {}),
+    pauseBackendCapture: payload => privateApi("/api/context-engine/capture/pause", payload),
   });
   return captureController;
 }
@@ -290,7 +292,7 @@ function publicController() {
     postObservation: payload => privateApi("/api/context-engine/observations", payload),
     configureBackend: payload => privateApi("/api/context-engine/capture/configure", payload),
     startBackendCapture: () => privateApi("/api/context-engine/capture/start", {}),
-    pauseBackendCapture: () => privateApi("/api/context-engine/capture/pause", {}),
+    pauseBackendCapture: payload => privateApi("/api/context-engine/capture/pause", payload),
   });
   return publicWindowController;
 }
@@ -298,7 +300,7 @@ function publicController() {
 function selectedController(config) {
   const isPublic = config?.capture_scope === PUBLIC_WINDOW_SCOPE;
   const other = isPublic ? captureController : publicWindowController;
-  if (other?.active || other?.busy) {
+  if (other?.active || other?.busy || other?.starting) {
     throw new Error("capture_already_active");
   }
   if (config?.capture_scope && !isPublic) throw new Error("unsupported_capture_scope");
@@ -565,6 +567,8 @@ async function probeMineContext() {
 }
 
 function startBackend() {
+  if (isQuitting) return Promise.resolve(backendState);
+  if (orderlyStopPromise) return Promise.resolve(backendState);
   if (sessionModelStopPromise) return Promise.resolve(backendState);
   if (backendStartPromise) return backendStartPromise;
   if (backendProcess && backendState.running) return Promise.resolve(backendState);
@@ -748,13 +752,46 @@ function stopBackend({terminateProcess = true} = {}) {
   }
 }
 
-async function restartBackend() {
-  if (sessionModelRoutes || sessionModelValidationPending || sessionModelStopPromise) {
-    if (!await stopOwnedSessionBackend()) return backendState;
-    return startBackend();
+function stopBackendForLifecycle() {
+  if (orderlyStopPromise) return orderlyStopPromise;
+  // Never delay an in-flight model-validation revocation or an uncertain kill.
+  if (sessionModelValidationPending || sessionModelStopPromise || !backendState.running) {
+    return Promise.resolve(stopBackend());
   }
-  if (captureController?.active) void captureController.pause("service_restarted").catch(() => {});
-  stopBackend();
+  const generation = backendGeneration;
+  const pending = (async () => {
+    let timer;
+    // Controllers stop locally before their first await. Keep the backend token
+    // alive briefly to acknowledge the durable stop before a Windows force-kill.
+    const stops = [captureController, publicWindowController].filter(Boolean).map(target => {
+      try { return Promise.resolve(target.pause("shutdown")); }
+      catch { return Promise.resolve(); }
+    });
+    stops.push(privateApi("/api/context-engine/capture/pause", {reason: "shutdown"}));
+    try {
+      await Promise.race([Promise.allSettled(stops), new Promise(resolve => {
+        timer = setTimeout(resolve, 1000);
+      })]);
+    } finally { clearTimeout(timer); }
+    // A concurrent forced stop must not cause this older operation to kill a
+    // replacement process. Unacknowledged stops recover as unknown gaps.
+    return generation === backendGeneration ? stopBackend() : false;
+  })().finally(() => { if (orderlyStopPromise === pending) orderlyStopPromise = null; });
+  orderlyStopPromise = pending;
+  return pending;
+}
+
+function quitApplication() {
+  if (quitPromise) return quitPromise;
+  isQuitting = true;
+  builtinModelCatalog.close();
+  if (retentionTimer) clearInterval(retentionTimer);
+  quitPromise = stopBackendForLifecycle().then(() => { app.exit(0); });
+  return quitPromise;
+}
+
+async function restartBackend() {
+  if (await stopBackendForLifecycle() === false) return backendState;
   return startBackend();
 }
 
@@ -917,7 +954,7 @@ function refreshTrayStatus() {
     {label: "重启本机服务", click: async () => { await restartBackend(); showMainWindow(); }},
     {label: "打开本地数据文件夹", click: async () => { await shell.openPath(userDataDir()); }},
     {type: "separator"},
-    {label: "退出", click: () => { isQuitting = true; stopBackend(); app.exit(0); }},
+    {label: "退出", click: () => { void quitApplication(); }},
   ]));
 }
 
@@ -1062,6 +1099,9 @@ function handleDesktopRequest(channel, handler) {
     if (!isTrustedSender(event, mainWindow, frontendIndexPath())) {
       throw new Error("Desktop request denied.");
     }
+    if ((isQuitting || orderlyStopPromise) && channel !== "openbutler:quit-app") {
+      throw new Error("Desktop service is stopping.");
+    }
     if (isPreviewChannel && channel.includes("minecontext")) {
       throw new Error("Legacy source is unavailable in Preview.");
     }
@@ -1073,7 +1113,7 @@ ipcMain.handle("openbutler:request-api", createLocalApiRequest({
   getWindow: () => mainWindow,
   getFrontendIndexPath: frontendIndexPath,
   getBackendState: () => backendState,
-  getSessionToken: () => backendSessionToken,
+  getSessionToken: () => isQuitting || orderlyStopPromise ? "" : backendSessionToken,
 }));
 
 handleDesktopRequest("openbutler:get-runtime", async () => ({
@@ -1551,9 +1591,7 @@ handleDesktopRequest("openbutler:show-main-window", async () => {
 });
 
 handleDesktopRequest("openbutler:quit-app", async () => {
-  isQuitting = true;
-  await stopBackend();
-  app.exit(0);
+  await quitApplication();
   return {ok: true};
 });
 
@@ -1604,11 +1642,9 @@ app.on("window-all-closed", () => {
   }
 });
 
-app.on("before-quit", () => {
-  builtinModelCatalog.close();
-  isQuitting = true;
-  if (retentionTimer) clearInterval(retentionTimer);
-  stopBackend();
+app.on("before-quit", event => {
+  event?.preventDefault();
+  void quitApplication();
 });
 
 app.on("will-quit", () => {

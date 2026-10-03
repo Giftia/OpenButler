@@ -9,13 +9,14 @@ const {execFileSync} = require("node:child_process");
 const localApi = require("../src/local-api.cjs");
 
 // Execute real main code with all Electron, OS, filesystem and network effects mocked.
-function mainHarness({packaged = false, spawnThrows = false, healthOk = true, fetchBehavior, discoveryImpl, catalogImpl, platform = "win32", storage, childKillExits = true} = {}) {
+function mainHarness({packaged = false, spawnThrows = false, healthOk = true, fetchBehavior, discoveryImpl, catalogImpl, platform = "win32", storage, childKillExits = true, lifecycleTimeout = false} = {}) {
   const handlers = new Map();
   const children = [];
   const calls = [];
   const writes = [];
   const logs = [];
   const requests = [];
+  const exits = [], forceKills = [];
   const fakeFetch = async (url, options) => {
     requests.push({url, options});
     assert.equal(options.redirect, "error");
@@ -29,7 +30,7 @@ function mainHarness({packaged = false, spawnThrows = false, healthOk = true, fe
   let port = 8200;
   const app = Object.assign(new EventEmitter(), {
     isPackaged: packaged, getPath: () => path.resolve(__dirname, "synthetic-user"),
-    setPath() {}, requestSingleInstanceLock: () => true, quit() {}, exit() {},
+    setPath() {}, requestSingleInstanceLock: () => true, quit() {}, exit(code) { exits.push(code); },
     getVersion: () => "0.0.0-test", whenReady: () => ({then() {}}),
   });
   class BrowserWindow extends EventEmitter {
@@ -63,7 +64,7 @@ function mainHarness({packaged = false, spawnThrows = false, healthOk = true, fe
       calls.push({command, args, options: {...options, env: {...options.env}}, originalEnv: options.env});
       return child;
     },
-    spawnSync() { return {status: 0}; },
+    spawnSync(...args) { forceKills.push(args); return {status: 0}; },
     execFile() { throw new Error("Unexpected OS command."); },
   };
   const net = {createServer() {
@@ -79,6 +80,7 @@ function mainHarness({packaged = false, spawnThrows = false, healthOk = true, fe
     setTimeout(callback, delay) {
       if (delay === 300) queueMicrotask(() => { now += delay; callback(); });
       if (delay === 5000) setImmediate(callback);
+      if (delay === 1000 && lifecycleTimeout) setImmediate(callback);
       return 1;
     },
     clearTimeout() {},
@@ -108,9 +110,9 @@ function mainHarness({packaged = false, spawnThrows = false, healthOk = true, fe
   });
   const source = fs.readFileSync(path.resolve(__dirname, "../src/main.cjs"), "utf8");
   const controls = vm.runInContext(source +
-    "\n({startBackend, stopBackend, restartBackend, createWindow, privateApi," +
+    "\n({startBackend, stopBackend, restartBackend, createWindow, privateApi, stopBackendForLifecycle, quitApplication," +
     "getWindow: () => mainWindow, getState: () => backendState, getToken: () => backendSessionToken, getSessionRoutes: () => sessionModelRoutes, stopOwnedSessionBackend, secureModelStorageAvailable, readEncryptedModelRoutes, setControllers: (a,b) => {captureController=a; publicWindowController=b;}})", context);
-  return {...controls, app, fakeProcess, handlers, children, calls, writes, logs, requests};
+  return {...controls, app, fakeProcess, handlers, children, calls, writes, logs, requests, exits, forceKills};
 }
 
 test("main lifecycle generates per-spawn tokens, deduplicates startup, rotates and clears", async () => {
@@ -201,6 +203,7 @@ test("startup failure, timeout, process error and shutdown invalidate the sessio
     const other = mainHarness();
     await other.startBackend();
     (event === "exit" ? other.fakeProcess : other.app).emit(event);
+    if (event === "before-quit") await other.quitApplication();
     assert.equal(other.getToken(), "");
     assert.equal(other.getState().running, false);
   }
@@ -601,4 +604,89 @@ test("catalog inspection discards navigation results and all catalog IPC remains
   assert.equal((await pending).error_code, "catalog_inspection_stale");
   for (const name of ["before-quit", "will-quit"]) h.app.emit(name);
   h.fakeProcess.emit("exit"); assert.equal(closed, 3);
+});
+
+// No native process or pixels: exercise acknowledged shutdown ordering in real main code.
+test("orderly quit stops local capture immediately, waits for durable acknowledgment and is idempotent", async () => {
+  let release;
+  const h = mainHarness({fetchBehavior: async (url) => String(url).endsWith('/capture/pause')
+    ? new Promise(resolve => { release = () => resolve({ok: true, json: async () => ({active: false})}); })
+    : {ok: true, json: async () => ({})}});
+  await h.createWindow();
+  const reasons = [], beforeKills = h.forceKills.length;
+  h.setControllers({active: true, pause(reason) { this.active = false; reasons.push(reason); return Promise.resolve(); }}, null);
+  let prevented = 0;
+  h.app.emit('before-quit', {preventDefault() { prevented++; }});
+  h.app.emit('before-quit', {preventDefault() { prevented++; }});
+  assert.equal(prevented, 2);
+  assert.deepEqual(reasons, ['shutdown']);
+  assert.equal(h.exits.length, 0);
+  assert.equal(h.forceKills.length, beforeKills);
+  assert.notEqual(h.getToken(), ''); // Preserved only for the private stop acknowledgment.
+  assert.equal(h.requests.filter(item => String(item.url).endsWith('/capture/pause')).length, 1);
+  const event = {sender: h.getWindow().webContents, senderFrame: h.getWindow().webContents.mainFrame};
+  assert.throws(() => h.handlers.get('openbutler:start-builtin-capture')(event, {}), /service is stopping/);
+  release();
+  await h.quitApplication();
+  assert.deepEqual(h.exits, [0]);
+  assert.equal(h.getToken(), '');
+  assert.equal(h.getState().running, false);
+  assert.ok(h.forceKills.length > beforeKills);
+});
+
+test("unacknowledged orderly stop is bounded and cannot claim a persisted stop", async () => {
+  const h = mainHarness({lifecycleTimeout: true, fetchBehavior: async (url) => String(url).endsWith('/capture/pause')
+    ? new Promise(() => {}) : {ok: true, json: async () => ({})}});
+  await h.startBackend();
+  await h.quitApplication();
+  assert.deepEqual(h.exits, [0]);
+  assert.equal(h.getState().running, false);
+  assert.equal(h.getToken(), '');
+  assert.ok(h.forceKills.length > 1); // Recovery, not the desktop, decides whether a stop was persisted.
+});
+
+test("service restart awaits stop with the old token before launching a fresh backend", async () => {
+  let release;
+  const h = mainHarness({fetchBehavior: async (url) => String(url).endsWith('/capture/pause')
+    ? new Promise(resolve => { release = () => resolve({ok: true, json: async () => ({active: false})}); })
+    : {ok: true, json: async () => ({})}});
+  await h.startBackend();
+  const token = h.getToken();
+  const restarting = h.restartBackend();
+  await h.startBackend();
+  assert.equal(h.children.length, 1);
+  assert.equal(h.requests.at(-1).options.headers[localApi.SESSION_HEADER], token);
+  assert.deepEqual(JSON.parse(h.requests.at(-1).options.body), {reason: 'shutdown'});
+  release();
+  await restarting;
+  assert.equal(h.children.length, 2);
+  assert.notEqual(h.getToken(), token);
+  assert.equal(h.getState().running, true);
+  h.stopBackend();
+});
+
+test("Quit during an awaiting restart prevents replacement startup", async () => {
+  let release;
+  const h = mainHarness({fetchBehavior: async (url) => String(url).endsWith('/capture/pause')
+    ? new Promise(resolve => { release = () => resolve({ok: true, json: async () => ({active: false})}); })
+    : {ok: true, json: async () => ({})}});
+  await h.startBackend();
+  const restarting = h.restartBackend();
+  const quitting = h.quitApplication();
+  release();
+  await Promise.all([restarting, quitting]);
+  await h.startBackend();
+  assert.equal(h.children.length, 1);
+  assert.equal(h.getState().running, false);
+  assert.deepEqual(h.exits, [0]);
+});
+
+test("a pending full-screen startup cannot switch to a replacement window source", async () => {
+  const h = mainHarness(); await h.createWindow();
+  h.setControllers({active: false, busy: false, starting: true}, null);
+  const event = {sender: h.getWindow().webContents, senderFrame: h.getWindow().webContents.mainFrame};
+  const result = await h.handlers.get('openbutler:get-masked-capture-preview')(event, {capture_scope: 'dedicated_public_window'});
+  assert.equal(result.ok, false);
+  assert.equal(result.error_code, 'capture_already_active');
+  h.setControllers(null, null); h.stopBackend();
 });

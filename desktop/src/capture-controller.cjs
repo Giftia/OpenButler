@@ -82,6 +82,7 @@ class CaptureController {
     this.active = false;
     this.busy = false;
     this.lastResult = 'idle';
+    this.generation = 0; this.starting = false;
   }
 
   async eligible(config) {
@@ -95,12 +96,16 @@ class CaptureController {
       typeof title === 'string' && title.toLowerCase().includes(name.toLowerCase())));
   }
 
-  async process(config) {
+  async process(config, current = () => {}) {
+    current();
     if (!await this.eligible(config)) return {ok: false, reason: 'application_excluded_or_unknown'};
+    current();
     const raw = await this.captureScreen(config.display_id);
     if (!Buffer.isBuffer(raw)) throw new Error('screen_capture_unavailable');
     try {
+      current();
       const detected = await this.ocr.recognize(raw);
+      current();
       const masked = maskedPng(raw, detected, config.masks);
       return {ok: true, buffer: masked.buffer, maskedRegions: masked.maskedRegions};
     } finally {
@@ -110,8 +115,12 @@ class CaptureController {
 
   async previewMasked(configInput) {
     const config = validConfig(configInput);
-    const processed = await this.process(config);
+    const generation = this.generation;
+    const processed = await this.process(config, () => {
+      if (generation !== this.generation) throw new Error('preview_cancelled');
+    });
     if (!processed.ok) return processed;
+    if (generation !== this.generation) { processed.buffer.fill(0); throw new Error('preview_cancelled'); }
     this.preview = {fingerprint: fingerprint(config), when: this.clock()};
     return {ok: true, previewDataUrl: `data:image/png;base64,${processed.buffer.toString('base64')}`,
       maskedRegions: processed.maskedRegions};
@@ -123,15 +132,27 @@ class CaptureController {
         || this.clock() - this.preview.when > MAX_PREVIEW_AGE_MS) {
       throw new Error('privacy_preview_required');
     }
-    if (this.active) throw new Error('capture_already_active');
-    await this.configureBackend({...config, confirmed: true});
-    await this.startBackendCapture();
-    this.preview = null;
+    if (this.active || this.starting) throw new Error('capture_already_active');
+    const generation = ++this.generation;
+    const current = () => { if (generation !== this.generation) throw new Error('capture_cancelled'); };
+    this.starting = true; this.preview = null;
+    try {
+      await this.configureBackend({...config, confirmed: true});
+      current();
+      await this.startBackendCapture();
+      current();
+    } catch (error) {
+      if (generation !== this.generation) {
+        await this.pauseBackendCapture({reason: captureStopReason(this.lastResult)}).catch(() => {});
+      }
+      throw error;
+    } finally { this.starting = false; }
     this.config = config;
     this.active = true;
     this.lastResult = 'recording';
     this.timer = setInterval(() => {
       void this.captureOnce().catch(async () => {
+        if (generation !== this.generation) return;
         try {
           await this.pause('privacy_processing_failed');
         } catch {
@@ -145,8 +166,12 @@ class CaptureController {
   async captureOnce() {
     if (!this.active || !this.config || this.busy) return {recorded: false};
     this.busy = true;
+    const generation = this.generation;
     try {
-      const processed = await this.process(this.config);
+      const processed = await this.process(this.config, () => {
+        if (!this.active || generation !== this.generation) throw new Error('capture_cancelled');
+      });
+      if (!this.active || generation !== this.generation) return {recorded: false, reason: 'paused'};
       if (!processed.ok) {
         this.lastResult = processed.reason;
         return {recorded: false, reason: processed.reason};
@@ -159,6 +184,7 @@ class CaptureController {
         local_ocr_complete: true,
         masks_applied: true,
       });
+      if (!this.active || generation !== this.generation) return {recorded: false, reason: 'paused'};
       this.lastResult = result.recorded ? 'recorded' : 'unchanged';
       return result;
     } finally {
@@ -167,13 +193,13 @@ class CaptureController {
   }
 
   async pause(reason = 'paused') {
-    this.active = false;
+    this.active = false; ++this.generation;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     this.config = null;
     this.preview = null;
     this.lastResult = reason;
-    await this.pauseBackendCapture();
+    await this.pauseBackendCapture({reason: captureStopReason(reason)});
     return this.state();
   }
 
@@ -183,4 +209,16 @@ class CaptureController {
   }
 }
 
-module.exports = {CaptureController, maskedPng, validConfig, fingerprint};
+// Persist only bounded control reasons, never native error text or window names.
+function captureStopReason(reason) {
+  if (['paused', 'user_paused'].includes(reason)) return 'user_paused';
+  if (reason === 'session_expired') return 'session_expired';
+  if (['shutdown', 'before-quit', 'service_restarted'].includes(reason)) return 'shutdown';
+  if (reason === 'model_reconfigured') return 'configuration_changed';
+  if (typeof reason === 'string' && /^(?:source_|window_|application_|invalid_public_window_capabilities|lock-screen|suspend|renderer_unavailable)/.test(reason)) {
+    return 'source_unavailable';
+  }
+  return 'capture_error';
+}
+
+module.exports = {CaptureController, maskedPng, validConfig, fingerprint, captureStopReason};

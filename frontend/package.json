@@ -57,6 +57,7 @@
     "test:agent-loop": "node scripts/check-agent-loop-dom.cjs",
     "test:planner-model-settings": "node scripts/check-planner-model-settings-dom.cjs",
     "test:natural-chat": "node scripts/check-natural-chat-dom.cjs",
+    "test:capture-coverage": "node scripts/check-capture-coverage-dom.cjs",
     "test:model-catalog": "node scripts/check-model-catalog-dom.cjs"
   },
   "dependencies": {

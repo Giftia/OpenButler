@@ -3,6 +3,8 @@
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Response
+from pydantic import BaseModel, ConfigDict
+from typing import Literal
 
 from .audit import PrivacyAuditLedger, RETENTION_DAYS
 from .capture import CaptureSettings, CaptureStore, MaskedObservation
@@ -10,6 +12,11 @@ from .foundation import ContextEngineStatusService
 from .daily_review import DailyReviewRequest, DailyReviewService
 from .processor import ObservationProcessor
 from .organization_queue import ObservationQueue
+
+
+class CapturePauseRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: Literal["user_paused", "session_expired", "source_unavailable", "capture_error", "configuration_changed", "shutdown"] = "user_paused"
 
 
 def create_context_engine_router(connection_factory, privacy_mode_getter, data_dir: Path,
@@ -25,6 +32,7 @@ def create_context_engine_router(connection_factory, privacy_mode_getter, data_d
 
     @router.on_event("shutdown")
     def shutdown_organization():
+        captures.pause("shutdown")
         if queue is not None and not queue.close():
             raise RuntimeError("observation_worker_shutdown_timeout")
 
@@ -74,8 +82,8 @@ def create_context_engine_router(connection_factory, privacy_mode_getter, data_d
         return recording_state()
 
     @router.post("/api/context-engine/capture/pause")
-    def pause_capture():
-        captures.pause()
+    def pause_capture(request: CapturePauseRequest = CapturePauseRequest()):
+        captures.pause(request.reason)
         return recording_state()
 
     @router.post("/api/context-engine/capture/revoke")
@@ -103,7 +111,7 @@ def create_context_engine_router(connection_factory, privacy_mode_getter, data_d
     @router.get("/api/context-engine/observations")
     def observations(limit: int = Query(default=100, ge=1, le=200)):
         records = captures.list_records(limit)
-        return {"count": len(records), "items": records}
+        return {"count": len(records), "items": records, "coverage_events": captures.list_coverage_events(limit)}
 
     @router.post("/api/context-engine/observations/{event_id}/retry")
     def retry_observation(event_id: str):

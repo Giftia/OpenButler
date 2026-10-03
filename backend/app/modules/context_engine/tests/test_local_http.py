@@ -145,8 +145,21 @@ class LocalHttpTests(unittest.TestCase):
         self.assertEqual(record["state"], "model_unavailable")
         self.assertEqual(record["processing_reason"], "model_unavailable")
         self.assertNotIn(self.tmp.name, json.dumps(record))
+        initial = self.fetch("/api/context-engine/observations", headers)[1]
+        self.assertEqual(initial["coverage_events"][0]["kind"], "started")
+        self.assertEqual(initial["coverage_events"][0]["first_sample_at"], event["captured_at"])
+        self.assertEqual(self.fetch("/api/context-engine/capture/pause", headers,
+            b'{"reason":"unbounded native window error"}')[0], 422)
+        self.assertTrue(self.fetch("/api/context-engine/status", headers)[1]["recording"]["active"])
+        self.assertEqual(self.fetch("/api/context-engine/capture/pause", headers, b"{}")[0], 200)
         self.assertEqual(self.fetch("/api/context-engine/capture/pause", headers, b"{}")[0], 200)
         self.assertFalse(self.fetch("/api/context-engine/status", headers)[1]["recording"]["active"])
+        paused = self.fetch("/api/context-engine/observations", headers)[1]
+        self.assertEqual(paused["count"], 1)
+        self.assertEqual([item["kind"] for item in paused["coverage_events"]], ["paused", "started"])
+        self.assertEqual(paused["coverage_events"][0]["reason"], "user_paused")
+        self.assertIsNone(paused["coverage_events"][0]["gap_end_at"])
+        self.assertEqual(self.fetch("/api/context-engine/observations")[0], 401)
 
 
 if __name__ == "__main__":

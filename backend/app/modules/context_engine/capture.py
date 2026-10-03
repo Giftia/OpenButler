@@ -23,6 +23,7 @@ from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
 from app.modules.context_engine.audit import PrivacyAuditLedger
+from app.modules.context_engine.coverage import init_coverage_store, list_coverage, record_boundary, record_sample
 from app.modules.context_engine.privacy import AuditedPrivacyGuard
 from app.security.privacy_guard import PrivacyRequest
 
@@ -50,7 +51,7 @@ def evidence_synchronized(method):
     return guarded
 
 
-def init_capture_store(conn: sqlite3.Connection, *, reset_active: bool = False) -> None:
+def init_capture_store(conn: sqlite3.Connection, *, reset_active: bool = False, recovered_at=None) -> None:
     conn.execute("""CREATE TABLE IF NOT EXISTS context_capture_settings (
         id INTEGER PRIMARY KEY CHECK(id = 1),
         display_id TEXT NOT NULL,
@@ -81,6 +82,7 @@ def init_capture_store(conn: sqlite3.Connection, *, reset_active: bool = False) 
             "provenance": "TEXT NOT NULL DEFAULT '{}'",
             "last_capture_at": "TEXT",
             "last_sampling_sequence": "INTEGER NOT NULL DEFAULT 0",
+            "coverage_event_id": "TEXT",
         },
         "context_observations": {
             "source_kind": "TEXT NOT NULL DEFAULT 'full_screen'",
@@ -100,8 +102,10 @@ def init_capture_store(conn: sqlite3.Connection, *, reset_active: bool = False) 
         for name, definition in columns.items():
             if name not in existing:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+    init_coverage_store(conn)
     if reset_active:
         # Consent persists for settings review, but a restarted process never resumes capture.
+        record_boundary(conn, "process_restarted", recovered_at or datetime.now(timezone.utc))
         conn.execute("UPDATE context_capture_settings SET active = 0 WHERE id = 1")
         conn.execute("""UPDATE context_observations SET state='model_unavailable', processing_reason='process_restarted'
             WHERE state IN ('processing','recorded_pending')""")
@@ -324,6 +328,7 @@ class CaptureStore:
             self.cancel_pending("source_reconfigured")
             revision = str(uuid4())
             with self._connect() as conn:
+                record_boundary(conn, "reconfigured", self._clock())
                 conn.execute("""INSERT INTO context_capture_settings
                     (id,display_id,excluded_apps,masks,consented,active,source_kind,consent_revision,provenance)
                     VALUES (1,?,?,?,?,0,?,?,?)
@@ -331,7 +336,7 @@ class CaptureStore:
                       display_id=excluded.display_id, excluded_apps=excluded.excluded_apps,
                       masks=excluded.masks, consented=excluded.consented, active=0,
                       source_kind=excluded.source_kind,consent_revision=excluded.consent_revision,
-                      provenance=excluded.provenance,last_capture_at=NULL,last_sampling_sequence=0""",
+                      provenance=excluded.provenance,last_capture_at=NULL,last_sampling_sequence=0,coverage_event_id=NULL""",
                     (settings.display_id, json.dumps(settings.excluded_apps),
                      json.dumps([item.model_dump() for item in settings.masks]), 1,
                      settings.source_kind, revision, json.dumps(provenance_of(settings))))
@@ -352,12 +357,16 @@ class CaptureStore:
             action="capture", mode=self._mode(), authorized=authorized, paused=False,
         ))
         with self._connect() as conn:
+            record_boundary(conn, "started", self._clock())
             conn.execute("UPDATE context_capture_settings SET active=1 WHERE id=1 AND consented=1")
 
-    def pause(self) -> None:
+    def pause(self, reason: str = "user_paused") -> None:
+        if reason not in {"user_paused", "session_expired", "source_unavailable", "capture_error", "configuration_changed", "shutdown"}:
+            raise ValueError("invalid_capture_stop_reason")
         self._invalidate()
         with self._lock:
             with self._connect() as conn:
+                record_boundary(conn, "stopped" if reason == "shutdown" else "paused", self._clock(), reason)
                 conn.execute("UPDATE context_capture_settings SET active=0 WHERE id=1")
             self.cancel_pending("capture_paused")
 
@@ -366,6 +375,7 @@ class CaptureStore:
         self._revocation_requested.set()
         with self._lock:
             with self._connect() as conn:
+                record_boundary(conn, "revoked", self._clock())
                 conn.execute("UPDATE context_capture_settings SET active=0,consented=0 WHERE id=1")
             self.cancel_pending("authorization_revoked")
 
@@ -445,9 +455,6 @@ class CaptureStore:
             if self._generation != generation or self._revocation_requested.is_set():
                 raise PermissionError("capture_consent_revoked")
             with self._connect() as conn:
-                if observation.source_kind == "public_window":
-                    conn.execute("""UPDATE context_capture_settings SET last_capture_at=?,last_sampling_sequence=?
-                        WHERE id=1 AND consent_revision=?""", (observed.isoformat(), observation.sampling_sequence, row[4]))
                 last = conn.execute("""SELECT id,image_digest,captured_at,provenance FROM context_observations
                     WHERE display_id=? AND source_kind=? AND consent_revision=?
                     ORDER BY captured_at DESC LIMIT 1""", (observation.display_id, observation.source_kind, row[4])).fetchone()
@@ -456,6 +463,7 @@ class CaptureStore:
                             <= json.loads(last[3]).get("sampling_sequence", 0)):
                         raise ValueError("late_public_window_frame")
                 if last and last[1] == digest:
+                    record_sample(conn, observed, observation.sampling_sequence)
                     return {"recorded": False, "duplicate": True, "id": last[0]}
             event_id, evidence_id = str(uuid4()), str(uuid4())
             expires = observed + timedelta(days=RETENTION_DAYS)
@@ -482,6 +490,7 @@ class CaptureStore:
                             "source_verified_after": observation.source_verified_after}), now.isoformat(),
                          observation.post_mask_ocr_text, observation.post_mask_ocr_image_digest,
                          observation.post_mask_ocr_engine))
+                    record_sample(conn, observed, observation.sampling_sequence)
             except Exception:
                 temporary.unlink(missing_ok=True)
                 target.unlink(missing_ok=True)
@@ -525,6 +534,12 @@ class CaptureStore:
                 item["evidence_id"] = None
             results.append(item)
         return results
+
+    def list_coverage_events(self, limit: int = 100) -> list[dict]:
+        if type(limit) is not int or not 1 <= limit <= 200:
+            raise ValueError("record_limit_out_of_range")
+        with self._connect() as conn:
+            return list_coverage(conn, limit)
 
     def review_records(self, start: datetime, end: datetime, *,
                        observation_ids: list[str] | None = None) -> list[dict]:

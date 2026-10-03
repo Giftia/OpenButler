@@ -143,8 +143,24 @@ export function revokeBuiltinCaptureApi() {
   return request<RecordingState>("/api/context-engine/capture/revoke", {method: "POST"});
 }
 
+export type CaptureCoverageEvent = {
+  id: string;
+  kind: "started" | "paused" | "revoked" | "reconfigured" | "stopped" | "process_restarted";
+  occurred_at: string;
+  source_kind: string;
+  consent_revision: string;
+  session_id: string | null;
+  first_sample_at?: string | null;
+  last_sample_at: string | null;
+  gap_started_at: string | null;
+  gap_end_at: string | null;
+  gap_start_known: boolean;
+  gap_end_known: boolean;
+  reason: string;
+};
+
 export function getContextObservations() {
-  return request<{count: number; items: ContextObservation[]}>("/api/context-engine/observations");
+  return request<{count: number; items: ContextObservation[]; coverage_events?: CaptureCoverageEvent[]}>("/api/context-engine/observations");
 }
 
 export type DailyReview = {

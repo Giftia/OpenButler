@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {PNG} = require('pngjs');
 const {PublicWindowController, publicConfig} = require('../src/public-window-controller.cjs');
+const {captureStopReason} = require('../src/capture-controller.cjs');
 const {PublicWindowProvider, sourceRevision} = require('../src/public-window-provider.cjs');
 
 const identity = {window_id: 'x11:123', owner_pid: 456, owner_process_start: '789',
@@ -16,8 +17,15 @@ const config = {capture_scope: 'dedicated_public_window', display_id: 'x11:123',
   session_duration_seconds: 60, interval_seconds: 10};
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return {resolve, promise}; };
+
+test('known configuration and service stops retain bounded causes without native text', () => {
+  assert.equal(captureStopReason('model_reconfigured'), 'configuration_changed');
+  assert.equal(captureStopReason('service_restarted'), 'shutdown');
+  assert.equal(captureStopReason('before-quit'), 'shutdown');
+  assert.equal(captureStopReason('private arbitrary error detail'), 'capture_error');
+});
 function fixture() {
-  const calls = {posts: [], configure: [], starts: 0, pauses: 0, acquires: 0};
+  const calls = {posts: [], configure: [], starts: 0, pauses: 0, pauseReasons: [], acquires: 0};
   const png = new PNG({width: 40, height: 30}); png.data.fill(255);
   let now = Date.parse('2026-10-02T06:00:00Z');
   let current = structuredClone(identity), foreground = structuredClone(identity), raw;
@@ -30,7 +38,7 @@ function fixture() {
     ocr: {recognize: async () => ({text: 'PUBLIC WORK', words: [
       {text: 'PUBLIC', bbox: {x0: 1, y0: 1, x1: 20, y1: 10}}]})},
     configureBackend: async body => { calls.configure.push(body); return {consent_revision: '12345678-1234-1234-1234-123456789012'}; },
-    startBackendCapture: async () => { calls.starts++; }, pauseBackendCapture: async () => { calls.pauses++; },
+    startBackendCapture: async () => { calls.starts++; }, pauseBackendCapture: async payload => { calls.pauses++; calls.pauseReasons.push(payload.reason); },
     postObservation: async body => { calls.posts.push(body); return {recorded: true}; }});
   return {c, provider, calls, raw: () => raw, advance: ms => { now += ms; },
     identity: value => { current = value; }, foreground: value => { foreground = value; }};
@@ -124,6 +132,7 @@ test('source loss during recording stops instead of silently skipping and resumi
   const result = await f.c.captureOnce();
   assert.equal(result.recorded, false); assert.equal(f.c.active, false);
   assert.equal(f.calls.posts.length, 0);
+  assert.equal(f.calls.pauseReasons.at(-1), 'source_unavailable');
   await assert.rejects(f.c.start(config), /privacy_preview_required/);
 });
 
@@ -169,6 +178,27 @@ test('session expiry stops before acquisition and requires another preview', asy
   f.advance(61_000); const before = f.calls.acquires;
   assert.equal((await f.c.captureOnce()).reason, 'session_expired');
   assert.equal(f.calls.acquires, before); assert.equal(f.c.active, false);
+  assert.equal(f.calls.pauseReasons.at(-1), 'session_expired');
+});
+
+test('pause gap requires fresh preview and distinct session; sequence remains session-local', async () => {
+  const f = fixture();
+  await f.c.previewMasked(config); await f.c.start(config); await f.c.captureOnce();
+  const firstSession = f.calls.posts[0].session_id;
+  await f.c.pause();
+  const acquired = f.calls.acquires;
+  f.advance(58_669);
+  await f.c.captureOnce();
+  assert.equal(f.calls.acquires, acquired);
+  assert.equal(f.calls.posts.length, 1);
+  assert.equal(f.calls.pauseReasons.at(-1), 'user_paused');
+  await assert.rejects(f.c.start(config), /privacy_preview_required/);
+  await f.c.previewMasked(config); await f.c.start(config); await f.c.captureOnce();
+  assert.notEqual(f.calls.posts[1].session_id, firstSession);
+  assert.equal(f.calls.posts[1].sampling_sequence, 1);
+  assert.equal(f.calls.posts[1].sampling_gap_ms, 0);
+  await f.c.pause('native error containing PRIVATE WINDOW TITLE');
+  assert.equal(f.calls.pauseReasons.at(-1), 'capture_error');
 });
 
 test('stale guard rejection cannot cancel a newer reviewed preview', async () => {

@@ -1,7 +1,7 @@
 'use strict';
 
 const {randomUUID, createHash} = require('node:crypto');
-const {maskedPng, validConfig} = require('./capture-controller.cjs');
+const {maskedPng, validConfig, captureStopReason} = require('./capture-controller.cjs');
 const {checkedIdentity, sourceRevision} = require('./public-window-provider.cjs');
 const SCOPE = 'dedicated_public_window';
 const METHOD = 'xcomposite_named_window_pixmap';
@@ -239,7 +239,7 @@ class PublicWindowController {
     this.preview = null; this.config = null; this.session = null;
     this.lastResult = reason;
     this.provider.close();
-    await this.pauseBackendCapture();
+    await this.pauseBackendCapture({reason: captureStopReason(reason)});
     return this.state();
   }
 

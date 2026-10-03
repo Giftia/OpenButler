@@ -98,3 +98,74 @@ test('OCR failure during recording pauses instead of reporting active capture', 
   assert.equal(pauseCalls, 1);
   assert.equal(calls.posts, 0);
 });
+
+for (const phase of ['configureBackend', 'startBackendCapture']) {
+  test(`pause during full-screen start ${phase} never reactivates or installs timers`, async () => {
+    const {controller} = fixture();
+    await controller.previewMasked(config);
+    let release, calls = 0;
+    controller[phase] = () => new Promise(resolve => {release = resolve;});
+    controller.pauseBackendCapture = async () => {calls++;};
+    const starting = controller.start(config);
+    await new Promise(resolve => setImmediate(resolve));
+    await controller.pause('shutdown');
+    release();
+    await assert.rejects(starting, /capture_cancelled/);
+    assert.equal(controller.active, false);
+    assert.equal(controller.timer, null);
+    assert.equal(controller.preview, null);
+    assert.equal(controller.lastResult, 'shutdown');
+    assert.equal(calls, 2);
+    await assert.rejects(controller.start(config), /privacy_preview_required/);
+  });
+}
+
+test('full-screen pause during eligibility prevents later pixel acquisition', async () => {
+  const {controller, calls} = fixture();
+  await controller.previewMasked(config); await controller.start(config);
+  const before = calls.capture;
+  let release;
+  controller.foregroundApp = () => new Promise(resolve => {release = resolve;});
+  const capturing = controller.captureOnce();
+  await controller.pause('shutdown');
+  release('editor.exe');
+  await assert.rejects(capturing, /capture_cancelled/);
+  assert.equal(calls.capture, before);
+  assert.equal(calls.posts, 0);
+});
+
+test('late interval cancellation cannot overwrite pause or stop a newer full-screen generation', async () => {
+  const {controller, calls} = fixture();
+  let callback;
+  const realInterval = global.setInterval;
+  global.setInterval = fn => {callback = fn; return 7654321;};
+  try {
+    await controller.previewMasked(config); await controller.start(config);
+    let release;
+    controller.ocr.recognize = () => new Promise(resolve => {release = resolve;});
+    callback();
+    await new Promise(resolve => setImmediate(resolve));
+    await controller.pause('shutdown');
+    controller.ocr.recognize = async () => ({text: 'PUBLIC', words: [{text: 'PUBLIC', bbox: {x0: 1, y0: 1, x1: 20, y1: 10}}]});
+    await controller.previewMasked(config); await controller.start(config);
+    release({text: 'OLD PUBLIC', words: []});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(controller.active, true);
+    assert.equal(controller.lastResult, 'recording');
+    assert.equal(calls.posts, 0);
+    await controller.pause();
+  } finally { global.setInterval = realInterval; }
+});
+
+test('late full-screen preview result is erased after pause even at the final async boundary', async () => {
+  const {controller} = fixture();
+  let release;
+  const masked = image();
+  controller.process = () => new Promise(resolve => {release = () => resolve({ok: true, buffer: masked, maskedRegions: 0});});
+  const preview = controller.previewMasked(config);
+  await controller.pause();
+  release();
+  await assert.rejects(preview, /preview_cancelled/);
+  assert.equal(controller.preview, null);
+  assert.ok(masked.every(value => value === 0));
+});
