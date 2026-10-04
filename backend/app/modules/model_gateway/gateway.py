@@ -4,6 +4,7 @@ import base64
 import errno
 from dataclasses import dataclass, field
 import http.client
+import io
 import ipaddress
 import json
 import os
@@ -245,6 +246,48 @@ def _pinned_address(route: ModelRoute, host: str, port: int) -> str:
         raise RouteError("endpoint_resolution_failed") from None
 
 
+class _DeadlineReader(io.RawIOBase):
+    """Poll inside the raw read, so a short timeout never poisons buffering."""
+
+    def __init__(self, sock, remaining):
+        self._sock = sock
+        self._remaining = remaining
+        # Preserve socket.makefile's lifetime when HTTP/1.0 detaches conn.sock.
+        self._lease = sock.makefile("rb", buffering=0)
+
+    def readable(self):
+        return True
+
+    def readinto(self, buffer):
+        self._checkClosed()
+        while True:
+            # Windows does not reliably wake a long socket wait on shutdown
+            # from another thread. Check revocation/deadline between short waits.
+            self._sock.settimeout(min(.05, self._remaining()))
+            try:
+                count = self._sock.recv_into(buffer)
+                self._remaining()
+                return count
+            except TimeoutError:
+                self._remaining()
+
+    def close(self):
+        try:
+            self._lease.close()
+        finally:
+            super().close()
+
+
+class _ResponseSocket:
+    def __init__(self, sock, remaining):
+        self._sock, self._remaining = sock, remaining
+
+    def makefile(self, mode):
+        if mode != "rb":
+            raise ValueError("invalid_response_stream_mode")
+        return io.BufferedReader(_DeadlineReader(self._sock, self._remaining))
+
+
 class _PinnedHTTP(http.client.HTTPConnection):
     def __init__(self, host: str, port: int, address: str, *, tls: bool,
                  deadline: float, expired: Event):
@@ -254,6 +297,8 @@ class _PinnedHTTP(http.client.HTTPConnection):
         self.deadline = deadline
         self.expired = expired
         self.active_socket = None
+        self.response_class = lambda sock, *args, **kwargs: http.client.HTTPResponse(
+            _ResponseSocket(sock, self._remaining), *args, **kwargs)
 
     def _remaining(self):
         remaining = self.deadline - monotonic()
