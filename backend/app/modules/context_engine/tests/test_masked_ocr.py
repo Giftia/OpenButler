@@ -40,7 +40,8 @@ class MaskedOcrTests(unittest.TestCase):
         self.assertEqual([call[0] for call in self.gateway.calls], ["text"])
         prompt = self.gateway.calls[0][1]
         data = json.loads(prompt.split("\n", 1)[1])
-        self.assertEqual(data["current_observation"], PUBLIC_OCR)
+        self.assertEqual([item[1] for item in data["source_candidates"]],
+                         [line for line in PUBLIC_OCR.splitlines() if line.strip()])
         self.assertEqual(len(PUBLIC_OCR), 424)
         self.assertLessEqual(len(prompt.encode("utf-8")), MAX_PROMPT_BYTES)
         row = self.store.list_records()[0]
@@ -65,7 +66,7 @@ class MaskedOcrTests(unittest.TestCase):
         class TextTransport:
             def post(self, route, payload, *, cancel_event=None):
                 payloads.append(payload)
-                return {"done": True, "done_reason": "stop", "message": {"role": "assistant", "content": content}}
+                return {"done": True, "done_reason": "stop", "message": {"role": "assistant", "content": __import__("app.modules.context_engine.tests.selection_fixture", fromlist=["selection_reply"]).selection_reply(payload["messages"][0]["content"], content)}}
         gateway = Gateway(PrivacyGuard(), TextTransport())
         route = ModelRoute("ollama_native", "local", "http://127.0.0.1:11434", "synthetic-text")
         gateway._configuration = (1, {"text": route})

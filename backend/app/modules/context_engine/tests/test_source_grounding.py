@@ -15,7 +15,7 @@ from app.modules.context_engine.processor import ObservationProcessor, MAX_PROMP
 from app.modules.context_engine.tests import test_current_isolation as isolation
 
 CURRENT_REPLY, GUITAR_OCR = isolation.CURRENT_REPLY, isolation.GUITAR_OCR
-from app.modules.model_gateway.gateway import OCR_OBSERVATION_JSON_SCHEMA
+from app.modules.model_gateway.gateway import OCR_SELECTION_JSON_SCHEMA
 
 NEGATIVE = json.loads(Path(__file__).with_name("fixtures").joinpath("reconstructed-guitar-negative.json").read_text())
 
@@ -190,6 +190,6 @@ class SourceGroundingTests(unittest.TestCase):
         event, image = self.ingest()
         self.assertTrue(self.processor.process(event, image))
         _, prompt, schema = self.requests[0]
-        self.assertEqual(schema, OCR_OBSERVATION_JSON_SCHEMA)
+        self.assertEqual(schema, OCR_SELECTION_JSON_SCHEMA)
         self.assertLessEqual(len(prompt.encode()), MAX_PROMPT_BYTES)
-        self.assertEqual(json.loads(prompt.split("\n", 1)[1]), {"current_observation": GUITAR_OCR})
+        self.assertEqual([item[1] for item in json.loads(prompt.split("\n", 1)[1])["source_candidates"]], GUITAR_OCR.splitlines())

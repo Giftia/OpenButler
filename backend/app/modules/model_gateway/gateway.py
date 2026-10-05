@@ -75,6 +75,14 @@ OCR_OBSERVATION_JSON_SCHEMA["properties"]["source_quotes"] = {
     "items": {"type": "string", "minLength": 1, "maxLength": 120},
 }
 OCR_OBSERVATION_JSON_SCHEMA["required"].append("source_quotes")
+# Current OCR selection uses fixed IDs; lookup remains source-bound in the engine.
+OCR_SELECTION_JSON_SCHEMA = json.loads(json.dumps(OBSERVATION_NO_PRIOR_JSON_SCHEMA))
+OCR_SELECTION_JSON_SCHEMA["properties"]["source_ids"] = {
+    "type": "array", "minItems": 1, "maxItems": 3, "uniqueItems": True,
+    "items": {"type": "string", "minLength": 20, "maxLength": 20,
+              "pattern": "^E[0-9]{2}_[0-9a-f]{16}$"},
+}
+OCR_SELECTION_JSON_SCHEMA["required"].append("source_ids")
 TEMPORAL_ASSOCIATION_JSON_SCHEMA = {
     "type": "object", "additionalProperties": False,
     "properties": {
@@ -93,6 +101,7 @@ TEMPORAL_ASSOCIATION_JSON_SCHEMA = {
 }
 _OBSERVATION_SCHEMA_ALLOWLIST = frozenset((
     _OBSERVATION_SCHEMA_JSON,
+    json.dumps(OCR_SELECTION_JSON_SCHEMA, sort_keys=True, separators=(",", ":")),
     json.dumps(OBSERVATION_NO_PRIOR_JSON_SCHEMA, sort_keys=True, separators=(",", ":")),
     json.dumps(TEMPORAL_ASSOCIATION_JSON_SCHEMA, sort_keys=True, separators=(",", ":")),
     json.dumps(OCR_OBSERVATION_JSON_SCHEMA, sort_keys=True, separators=(",", ":")),

@@ -45,11 +45,13 @@ did not truncate input; real model verification remains required.
 Internal `Gateway.call_text(..., json_schema=OBSERVATION_JSON_SCHEMA)` uses
 Ollama's native `format` schema, or an OpenAI-compatible
 `response_format={type: "json_schema", json_schema: {name, strict: true, schema}}`.
-No user-facing endpoint accepts a schema. Only the three exact authored schemas (legacy observation, current-only
-observation and relation-only temporal association) are admitted; a bounded primitive-tree check precedes canonical comparison.
+No user-facing endpoint accepts a schema. Only the five exact authored schemas (legacy observation, current-only
+observation, legacy OCR quotation, current OCR selection and relation-only temporal
+association) are admitted; a bounded primitive-tree check precedes canonical comparison.
 References, enlarged fields, recursive data and arbitrary schemas fail before
 network dispatch. Mutating the exported convenience object cannot change the
-canonical allowlist. Version-2 current extraction always uses `OBSERVATION_NO_PRIOR_JSON_SCHEMA`:
+canonical allowlist. Version-2 current extraction uses `OBSERVATION_NO_PRIOR_JSON_SCHEMA` for vision
+and `OCR_SELECTION_JSON_SCHEMA` for masked OCR:
 comparison is fixed to false, prior IDs and quotes are empty, and boundary is
 fixed to the engine-authored current-frame limitation. It receives no historical
 summary. Optional later association uses `TEMPORAL_ASSOCIATION_JSON_SCHEMA`;
@@ -102,3 +104,16 @@ cleanup, native/OpenAI schema wire shapes, bounded resource options, schema
 rejection, strict-channel/truncation rejection, physical in-flight cancellation,
 postflight revocation and public status. Passing mocks are not evidence of model
 quality or an actual accepted screenshot observation.
+
+
+Current-frame masked OCR extraction uses the static `OCR_SELECTION_JSON_SCHEMA`:
+models return 1–3 `source_ids` from immutable `[id,text]` candidates, never free
+quotes. The engine resolves exact Unicode offsets in the complete source-bound
+snapshot; unknown, duplicate, cross-source or over-budget choices fail as a whole.
+Distinct occurrences have separate IDs; selecting duplicate text from distinct
+occurrences is rejected for the existing v1 unique-quote contract. Candidate text
+is never normalized. Limits remain 12 candidates, 120 characters per fragment,
+200 selected characters and 1200 prompt bytes. IDs/byte offsets remain internal;
+persisted excerpts retain only `quote/start/end`, version 1 and
+`semantic_verified=false`. Legacy quote parsing is diagnostic only, with no live
+fallback. Historical association and daily-review contracts remain unchanged.

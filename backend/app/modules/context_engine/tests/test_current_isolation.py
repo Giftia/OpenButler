@@ -11,7 +11,7 @@ from app.modules.context_engine.capture import CaptureStore, init_capture_store
 from app.modules.context_engine.organization_queue import ObservationQueue
 from app.modules.context_engine.processor import ObservationProcessor
 from app.modules.context_engine.tests import test_public_window as window
-from app.modules.model_gateway.gateway import OBSERVATION_NO_PRIOR_JSON_SCHEMA, TEMPORAL_ASSOCIATION_JSON_SCHEMA, OCR_OBSERVATION_JSON_SCHEMA
+from app.modules.model_gateway.gateway import OBSERVATION_NO_PRIOR_JSON_SCHEMA, TEMPORAL_ASSOCIATION_JSON_SCHEMA, OCR_SELECTION_JSON_SCHEMA
 
 GUITAR_OCR = "qwen35-evaluation. txt @\nguitar notes\nstandard tuning e a d g b e\n"
 OLD_SUMMARY = "显示本地小模型评估界面，包含问题与来源信息，工作清单提及检查测量文本和图像结果，当前处于审查进行中状态。"
@@ -36,14 +36,15 @@ class CurrentIsolationTests(unittest.TestCase):
     def call_text(self, prompt, auth, **options):
         options["dispatch_precondition"]()
         schema = options["json_schema"]
-        stage = "current" if schema in (OBSERVATION_NO_PRIOR_JSON_SCHEMA, OCR_OBSERVATION_JSON_SCHEMA) else "association"
+        stage = "current" if schema in (OBSERVATION_NO_PRIOR_JSON_SCHEMA, OCR_SELECTION_JSON_SCHEMA) else "association"
         self.requests.append((stage, prompt, deepcopy(schema)))
         data = json.loads(prompt.split("\n", 1)[1])
         if self.hook:
             self.hook(stage, options)
         if stage == "current":
-            self.assertEqual(set(data), {"current_observation"})
-            return self.extract_reply
+            self.assertEqual(set(data), {"source_candidates"})
+            from app.modules.context_engine.tests.selection_fixture import selection_reply
+            return selection_reply(prompt, self.extract_reply)
         self.assertEqual(schema, TEMPORAL_ASSOCIATION_JSON_SCHEMA)
         if self.association_reply is not None:
             return self.association_reply
@@ -88,7 +89,11 @@ class CurrentIsolationTests(unittest.TestCase):
             self.assertEqual(calls[0][0], "current")
             self.assertNotIn(OLD_SUMMARY, calls[0][1])
             self.assertNotIn("prior_records", json.loads(calls[0][1].split("\n", 1)[1]))
-            current_requests.append(json.dumps(calls[0][1:], ensure_ascii=False, sort_keys=True))
+            # Source-scoped IDs differ across observations; source text, instruction
+            # prefix and schema remain independent of prior history.
+            current_requests.append(json.dumps([calls[0][1].split("\n", 1)[0],
+                [item[1] for item in json.loads(calls[0][1].split("\n", 1)[1])["source_candidates"]],
+                calls[0][2]], ensure_ascii=False, sort_keys=True))
             row = self.row(event)
             facts = row["current_facts"]
             self.assertEqual(row["extraction_version"], 2)

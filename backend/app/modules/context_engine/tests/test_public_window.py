@@ -56,7 +56,8 @@ class Gateway:
             return json.dumps({"relations": [{"prior_observation_id": row["observation_id"],
                 "relation": "uncertain", "current_quote": data["current"]["title"], "prior_quote": row["title"]}
                 for row in data["prior_records"]]})
-        return self.response
+        from app.modules.context_engine.tests.selection_fixture import selection_reply
+        return selection_reply(prompt, self.response)
 
 
 class PublicWindowTests(unittest.TestCase):
