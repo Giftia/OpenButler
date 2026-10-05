@@ -3,6 +3,10 @@ const {PNG} = require('pngjs');
 
 const DEFAULT_INTERVAL_MS = 60_000;
 const MAX_PREVIEW_AGE_MS = 5 * 60_000;
+// Full-desktop acquisition and exclusion isolation have not passed native acceptance.
+// No platform, saved consent, preview, or renderer capability can opt into this path.
+function fullDesktopUnavailable() { throw new Error('full_desktop_unavailable'); }
+
 const sensitivePattern = /(?:\b(?:password|passcode|secret|token|api\s*key|bearer|authorization)\b|密码|密钥|验证码|(?:\b\d[ -]?){12,19}\b|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|\bsk-[A-Za-z0-9_-]{8,})/i;
 
 function validConfig(config) {
@@ -97,6 +101,7 @@ class CaptureController {
   }
 
   async process(config, current = () => {}) {
+    fullDesktopUnavailable();
     current();
     if (!await this.eligible(config)) return {ok: false, reason: 'application_excluded_or_unknown'};
     current();
@@ -114,6 +119,7 @@ class CaptureController {
   }
 
   async previewMasked(configInput) {
+    fullDesktopUnavailable();
     const config = validConfig(configInput);
     const generation = this.generation;
     const processed = await this.process(config, () => {
@@ -127,6 +133,7 @@ class CaptureController {
   }
 
   async start(configInput) {
+    fullDesktopUnavailable();
     const config = validConfig(configInput);
     if (!this.preview || this.preview.fingerprint !== fingerprint(config)
         || this.clock() - this.preview.when > MAX_PREVIEW_AGE_MS) {
@@ -164,6 +171,7 @@ class CaptureController {
   }
 
   async captureOnce() {
+    fullDesktopUnavailable();
     if (!this.active || !this.config || this.busy) return {recorded: false};
     this.busy = true;
     const generation = this.generation;
@@ -221,4 +229,4 @@ function captureStopReason(reason) {
   return 'capture_error';
 }
 
-module.exports = {CaptureController, maskedPng, validConfig, fingerprint, captureStopReason};
+module.exports = {CaptureController, maskedPng, validConfig, fingerprint, captureStopReason, fullDesktopUnavailable};

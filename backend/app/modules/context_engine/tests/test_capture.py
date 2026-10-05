@@ -7,6 +7,9 @@ import tempfile
 import unittest
 
 from PIL import Image
+from uuid import uuid4
+
+from app.modules.context_engine.tests.capture_fixture import public_window_provenance
 
 from app.modules.context_engine.audit import init_privacy_audit
 from app.modules.context_engine.capture import (
@@ -37,15 +40,23 @@ class CaptureTests(unittest.TestCase):
         output = BytesIO()
         image.save(output, format="PNG")
         self.encoded = base64.b64encode(output.getvalue()).decode("ascii")
+        self.metadata = public_window_provenance(self.now)
+        self.revision = str(uuid4())
+        self.sequence = 0
 
     def observation(self, **changes):
-        return MaskedObservation(display_id="display_1", captured_at=self.now,
-                                 masked_png_base64=self.encoded,
-                                 local_ocr_complete=True, masks_applied=True, **changes)
+        self.sequence += 1
+        values = {**self.metadata, "display_id": "x11:100", "captured_at": self.now,
+            "masked_png_base64": self.encoded, "local_ocr_complete": True, "masks_applied": True,
+            "consent_revision": self.revision, "source_verified_before": True, "source_verified_after": True,
+            "sampling_sequence": self.sequence, "sampling_gap_ms": 0}
+        values.update(changes)
+        return MaskedObservation(**values)
 
     def activate(self):
-        self.store.configure(CaptureSettings(display_id="display_1",
-                            excluded_apps=["password-manager"], confirmed=True))
+        result = self.store.configure(CaptureSettings(display_id="x11:100",
+            excluded_apps=["password-manager"], confirmed=True, **self.metadata))
+        self.revision = result["consent_revision"]
         self.store.start()
 
     def test_consent_and_masks_are_required_and_pause_denies(self):
@@ -55,9 +66,7 @@ class CaptureTests(unittest.TestCase):
             self.store.ingest(self.observation())
         self.activate()
         with self.assertRaises(PermissionError):
-            self.store.ingest(MaskedObservation(display_id="display_1", captured_at=self.now,
-                              masked_png_base64=self.encoded, local_ocr_complete=False,
-                              masks_applied=True))
+            self.store.ingest(self.observation(local_ocr_complete=False))
         first = self.store.ingest(self.observation())
         self.assertTrue(first["recorded"])
         self.store.pause()
@@ -68,6 +77,7 @@ class CaptureTests(unittest.TestCase):
     def test_restart_never_resumes_and_identical_masked_frame_deduplicates(self):
         self.activate()
         first = self.store.ingest(self.observation())
+        self.now += timedelta(seconds=1)
         second = self.store.ingest(self.observation())
         self.assertEqual(second, {"recorded": False, "duplicate": True, "id": first["id"]})
         with self.db() as conn:
@@ -80,7 +90,7 @@ class CaptureTests(unittest.TestCase):
         self.activate()
         self.store.ingest(self.observation())
         record = self.store.list_records()[0]
-        self.assertEqual(record["source_label"], "本机记录")
+        self.assertEqual(record["source_label"], "专用公开窗口")
         self.assertEqual(self.store.evidence(record["evidence_id"]), base64.b64decode(self.encoded))
         self.assertIsNone(self.store.evidence("../owned.sqlite3"))
         self.now += timedelta(days=7)
@@ -93,14 +103,10 @@ class CaptureTests(unittest.TestCase):
     def test_invalid_or_stale_png_never_persists(self):
         self.activate()
         with self.assertRaises(ValueError):
-            self.store.ingest(MaskedObservation(display_id="display_1", captured_at=self.now,
-                              masked_png_base64=base64.b64encode(b"bad" * 20).decode(),
-                              local_ocr_complete=True, masks_applied=True))
+            self.store.ingest(self.observation(masked_png_base64=base64.b64encode(b"bad" * 20).decode()))
         self.now += timedelta(minutes=6)
         with self.assertRaises(ValueError):
-            self.store.ingest(MaskedObservation(display_id="display_1", captured_at=self.now - timedelta(minutes=6),
-                              masked_png_base64=self.encoded, local_ocr_complete=True,
-                              masks_applied=True))
+            self.store.ingest(self.observation(captured_at=self.now - timedelta(minutes=6)))
         self.assertEqual(self.store.list_records(), [])
 
     def test_early_delete_only_removes_owned_record_and_media(self):

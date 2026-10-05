@@ -13,7 +13,8 @@ from uuid import uuid4
 from pydantic import ValidationError
 
 from app.modules.context_engine.audit import init_privacy_audit, PrivacyAuditLedger
-from app.modules.context_engine.capture import CaptureSettings, CaptureStore, init_capture_store
+from app.modules.context_engine.capture import CaptureStore, init_capture_store
+from app.modules.context_engine.tests.capture_fixture import seed_legacy_capture_settings
 from app.modules.context_engine.daily_review import DailyReviewRequest, DailyReviewService, MAX_PROMPT_CHARS
 from app.modules.context_engine.privacy import AuditedPrivacyGuard
 from app.modules.context_engine.router import create_context_engine_router
@@ -65,8 +66,8 @@ class DailyReviewTests(unittest.TestCase):
             init_capture_store(conn)
         self.now = datetime(2026, 10, 2, 12, tzinfo=timezone.utc)
         self.store = CaptureStore(self.db, self.root, lambda: "strict", lambda: self.now)
-        self.store.configure(CaptureSettings(display_id="synthetic_display",
-            excluded_apps=["password-manager"], confirmed=True))
+        # Existing full-screen history remains reviewable; new capture is disabled.
+        seed_legacy_capture_settings(self.db)
         self.auth = CallAuthorization(privacy_mode="strict", authorized=True, redacted=True)
         self.gateway = FakeGateway()
         self.service = DailyReviewService(self.store, self.gateway, lambda: self.auth, lambda: self.now)
@@ -413,8 +414,9 @@ class DailyReviewTests(unittest.TestCase):
         for change in ("revoke", "delete", "expire"):
             with self.subTest(change=change):
                 self.now = datetime(2026, 10, 2, 12, tzinfo=timezone.utc)
-                self.store.configure(CaptureSettings(display_id="synthetic_display",
-                    excluded_apps=["password-manager"], confirmed=True))
+                seed_legacy_capture_settings(self.db)
+                self.store = CaptureStore(self.db, self.root, lambda: "strict", lambda: self.now)
+                self.service.captures = self.store
                 with self.db() as conn:
                     conn.execute("DELETE FROM context_observations")
                 event, _ = self.row(expiry=(self.now + timedelta(seconds=1)).isoformat())

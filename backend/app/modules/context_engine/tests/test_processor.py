@@ -9,6 +9,8 @@ import unittest
 
 from PIL import Image
 
+from app.modules.context_engine.tests.capture_fixture import public_window_provenance
+
 from app.modules.context_engine.audit import init_privacy_audit
 from app.modules.context_engine.capture import CaptureSettings, CaptureStore, MaskedObservation, init_capture_store
 from app.modules.context_engine.processor import ObservationProcessor
@@ -52,16 +54,24 @@ class ProcessorTests(unittest.TestCase):
             init_capture_store(conn)
         self.now = datetime(2026, 9, 23, tzinfo=timezone.utc)
         self.store = CaptureStore(self.db, self.root, lambda: "strict", lambda: self.now)
-        self.store.configure(CaptureSettings(display_id="display_1", excluded_apps=["password-manager"], confirmed=True))
+        self.metadata = public_window_provenance(self.now, width=32)
+        configured = self.store.configure(CaptureSettings(display_id="x11:100",
+            excluded_apps=["password-manager"], confirmed=True, **self.metadata))
+        self.revision = configured["consent_revision"]
+        self.sequence = 0
         self.store.start()
         output = BytesIO()
         Image.new("RGB", (32, 20), "black").save(output, format="PNG")
         self.image = output.getvalue()
-        event = self.store.ingest(MaskedObservation(
-            display_id="display_1", captured_at=self.now,
-            masked_png_base64=base64.b64encode(self.image).decode(),
-            local_ocr_complete=True, masks_applied=True))
+        event = self.store.ingest(self.observation(self.image))
         self.event_id = event["id"]
+
+    def observation(self, image):
+        self.sequence += 1
+        return MaskedObservation(**self.metadata, display_id="x11:100", captured_at=self.now,
+            masked_png_base64=base64.b64encode(image).decode(), local_ocr_complete=True, masks_applied=True,
+            consent_revision=self.revision, source_verified_before=True, source_verified_after=True,
+            sampling_sequence=self.sequence, sampling_gap_ms=0)
 
     def test_complete_result_uses_only_masked_image(self):
         gateway = FakeGateway()
@@ -141,10 +151,7 @@ class ProcessorTests(unittest.TestCase):
             output = BytesIO()
             Image.new("RGB", (32, 20), (minute, 0, 0)).save(output, format="PNG")
             frame = output.getvalue()
-            event = self.store.ingest(MaskedObservation(
-                display_id="display_1", captured_at=self.now,
-                masked_png_base64=base64.b64encode(frame).decode(),
-                local_ocr_complete=True, masks_applied=True))
+            event = self.store.ingest(self.observation(frame))
             self.assertTrue(event["recorded"])
             self.assertTrue(processor.process(event["id"], frame))
         records = self.store.list_records()

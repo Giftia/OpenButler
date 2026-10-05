@@ -6,7 +6,7 @@ const net = require("net");
 const path = require("path");
 const {randomBytes} = require("node:crypto");
 const {SESSION_HEADER, createLocalApiRequest, isTrustedSender, restrictNavigation} = require("./local-api.cjs");
-const {CaptureController} = require("./capture-controller.cjs");
+const {CaptureController, fullDesktopUnavailable} = require("./capture-controller.cjs");
 const {PublicWindowProvider} = require("./public-window-provider.cjs");
 const {PublicWindowController, SCOPE: PUBLIC_WINDOW_SCOPE} = require("./public-window-controller.cjs");
 const {createLocalModelDiscovery, localEndpoint, installedIds} = require("./local-model-discovery.cjs");
@@ -228,27 +228,12 @@ async function visibleApplications(displayId) {
 }
 
 async function captureDisplays() {
-  const sources = await desktopCapturer.getSources({
-    types: ["screen"], thumbnailSize: {width: 0, height: 0},
-  });
-  return sources.map((source, index) => ({id: source.id, label: `显示器 ${index + 1}`}));
+  // Do not enumerate or acquire screen sources while full desktop is unavailable.
+  return [];
 }
 
-async function captureSelectedDisplay(displayId) {
-  const metadata = await desktopCapturer.getSources({
-    types: ["screen"], thumbnailSize: {width: 0, height: 0},
-  });
-  const selected = metadata.find(item => item.id === displayId);
-  if (!selected) throw new Error("display_unavailable");
-  const display = screen.getAllDisplays().find(item => String(item.id) === selected.display_id);
-  const width = Math.max(1, Math.min(4096, display?.size.width || 1920));
-  const height = Math.max(1, Math.min(4096, display?.size.height || 1080));
-  const sources = await desktopCapturer.getSources({
-    types: ["screen"], thumbnailSize: {width, height},
-  });
-  const chosen = sources.find(item => item.id === displayId);
-  if (!chosen || chosen.thumbnail.isEmpty()) throw new Error("screen_capture_unavailable");
-  return chosen.thumbnail.toPNG();
+async function captureSelectedDisplay() {
+  fullDesktopUnavailable();
 }
 
 function controller() {
@@ -298,13 +283,11 @@ function publicController() {
 }
 
 function selectedController(config) {
-  const isPublic = config?.capture_scope === PUBLIC_WINDOW_SCOPE;
-  const other = isPublic ? captureController : publicWindowController;
-  if (other?.active || other?.busy || other?.starting) {
+  if (config?.capture_scope !== PUBLIC_WINDOW_SCOPE) fullDesktopUnavailable();
+  if (captureController?.active || captureController?.busy || captureController?.starting) {
     throw new Error("capture_already_active");
   }
-  if (config?.capture_scope && !isPublic) throw new Error("unsupported_capture_scope");
-  return isPublic ? publicController() : controller();
+  return publicController();
 }
 
 function execFileText(command, args, timeout = 3000) {
@@ -1139,8 +1122,7 @@ handleDesktopRequest("openbutler:get-capture-capabilities", async () => ({
     lock_state: windowProvider().lockState || "unknown",
     lock_protection_supported: windowProvider().lockProtectionSupported === true,
     reason: windowProvider().available() ? "requires_verified_window_preview" : "public_window_platform_unsupported"},
-  full_desktop: {supported: process.platform === "win32", reason:
-    process.platform === "win32" ? "requires_existing_privacy_checks" : "lock_state_unknown"},
+  full_desktop: {supported: false, reason: "full_desktop_unavailable"},
 }));
 
 handleDesktopRequest("openbutler:get-capture-windows", async () => {
@@ -1155,7 +1137,9 @@ handleDesktopRequest("openbutler:get-masked-capture-preview", async (_event, con
     return await selectedController(config).previewMasked(config);
   } catch (error) {
     const code = /^[a-z_]{1,80}$/.test(error?.message || "") ? error.message : "privacy_processing_failed";
-    return {ok: false, error_code: code, error: config?.capture_scope === PUBLIC_WINDOW_SCOPE
+    return {ok: false, error_code: code, error: code === "full_desktop_unavailable"
+      ? "完整桌面采集尚未通过隐私验证，当前不可用。请单独确认专用公开窗口范围。"
+      : config?.capture_scope === PUBLIC_WINDOW_SCOPE
       ? `专用窗口预览已安全停止（${code}）。请重新检查窗口身份、前台排除和本机识字组件。`
       : "隐私预览失败。请检查本机识字组件或选择其他显示器。"};
   }
@@ -1170,7 +1154,9 @@ handleDesktopRequest("openbutler:start-builtin-capture", async (_event, config) 
     return {ok: true, ...state};
   } catch (error) {
     const code = /^[a-z_]{1,80}$/.test(error?.message || "") ? error.message : "capture_start_failed";
-    return {ok: false, error_code: code, error: error?.message === "privacy_preview_required"
+    return {ok: false, error_code: code, error: code === "full_desktop_unavailable"
+      ? "完整桌面采集尚未通过隐私验证，当前不可用。请单独确认专用公开窗口范围。"
+      : error?.message === "privacy_preview_required"
       ? "请先查看遮挡预览，再开始记录。" : "未能开始记录。请检查本机服务和授权。"};
   }
 });

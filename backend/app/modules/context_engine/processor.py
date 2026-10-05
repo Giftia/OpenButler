@@ -69,7 +69,7 @@ _TEMPORAL_CLAIM = re.compile(
     r"较(?:前|之前|此前)|新增|增加了|多了|发生.{0,4}变化|从.{1,30}改(?:为|成)|"
     r"(?:compared|comparison|previous|prior|earlier|last\s+(?:frame|sample)|has\s+changed|now\s+includes\s+another)", re.I)
 _FAILURE_REASONS = frozenset({"model_unavailable", "processing_busy", "invalid_model_result", "invalid_source_grounding", "invalid_temporal_comparison",
-    "authorization_revoked", "capture_paused", "session_expired", "evidence_changed",
+    "authorization_revoked", "capture_paused", "session_expired", "evidence_changed", "full_desktop_unavailable",
     "temporal_context_changed", "record_or_evidence_unavailable", "observation_not_pending",
     "invalid_association_result", "current_facts_changed", "association_not_pending",
     "prompt_limit_exceeded", "description_limit_exceeded", "post_mask_ocr_required",

@@ -98,16 +98,20 @@ test("new requests, close/reopen, and StrictMode lifecycle reject stale replies"
   assert.equal(gate.isCurrent(reopened), false);
 });
 
-test("activation guards require loaded latest preview and explicit confirmation", () => {
+test("activation keeps full desktop closed; public-window approval stays scoped to a loaded current preview", () => {
   const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   const activation = app.slice(app.indexOf("function PreviewActivation("), app.indexOf("function FirstRunGuide("));
-  assert.match(activation, /preview\.fresh && !!preview\.bounds/);
-  assert.match(activation, /preview\.privacyMode === privacyMode/);
-  assert.match(activation, /!previewGate\.current\.isCurrent\(preview\.ticket\) \|\| !confirmed/);
-  assert.match(activation, /if \(!previewGate\.current\.isCurrent\(ticket\)\) return/);
-  assert.match(activation, /previewDataUrl\.startsWith\("data:image\/png;base64,"\)/);
-  assert.match(activation, /previewGate\.current\.close\(\)/);
-  assert.match(activation, /operation\.current = "start"/);
-  assert.match(activation, /await pauseFailedStart\(\)/);
-  assert.doesNotMatch(activation, /localStorage|sessionStorage|getDisplayMedia|captureScreen/);
+  assert.match(activation, /const fullDesktopAvailable = false/);
+  assert.equal((activation.match(/if \(operation\.current \|\| editing \|\| statusData\?\.recording.active \|\| !fullDesktopAvailable\) return/g) ?? []).length, 2);
+  assert.match(activation, /fullDesktopAvailable && captureScope === "screen"/);
+  assert.doesNotMatch(activation, /getCaptureDisplays|full_desktop.supported|localStorage|sessionStorage|getDisplayMedia|captureScreen/);
+  const publicWindow = readFileSync(new URL("../src/components/PublicWindowCaptureSetup.tsx", import.meta.url), "utf8");
+  assert.match(publicWindow, /preview\.fresh && !!preview\.bounds/);
+  assert.match(publicWindow, /preview\.configKey === configKey && gate\.current\.isCurrent\(preview\.ticket\)/);
+  assert.match(publicWindow, /!confirmed \|\| !fresh \|\| !preview/);
+  assert.match(publicWindow, /if \(!gate\.current\.isCurrent\(ticket\)\) return/);
+  assert.match(publicWindow, /previewDataUrl\.startsWith\("data:image\/png;base64,"\)/);
+  assert.match(publicWindow, /gate\.current\.close\(\)/);
+  assert.match(publicWindow, /operation\.current = "start"/);
+  assert.match(publicWindow, /await pauseFailedStart\(\)/);
 });

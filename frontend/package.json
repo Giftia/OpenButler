@@ -53,7 +53,7 @@
     "test:phase1-ui": "node scripts/check-phase1-ui.cjs",
     "test:preview-model-settings": "node scripts/check-preview-model-settings.mjs",
     "test:mask-editor": "node scripts/check-mask-editor.mjs",
-    "test:mask-editor-dom": "node scripts/check-mask-editor-dom.cjs",
+    "test:mask-editor-dom": "node scripts/check-full-desktop-gate-dom.cjs && node scripts/check-mask-editor-dom.cjs",
     "test:agent-loop": "node scripts/check-agent-loop-dom.cjs",
     "test:planner-model-settings": "node scripts/check-planner-model-settings-dom.cjs",
     "test:natural-chat": "node scripts/check-natural-chat-dom.cjs",

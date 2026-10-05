@@ -111,7 +111,7 @@ function mainHarness({packaged = false, spawnThrows = false, healthOk = true, fe
   const source = fs.readFileSync(path.resolve(__dirname, "../src/main.cjs"), "utf8");
   const controls = vm.runInContext(source +
     "\n({startBackend, stopBackend, restartBackend, createWindow, privateApi, stopBackendForLifecycle, quitApplication," +
-    "getWindow: () => mainWindow, getState: () => backendState, getToken: () => backendSessionToken, getSessionRoutes: () => sessionModelRoutes, stopOwnedSessionBackend, secureModelStorageAvailable, readEncryptedModelRoutes, setControllers: (a,b) => {captureController=a; publicWindowController=b;}})", context);
+    "getWindow: () => mainWindow, getState: () => backendState, getToken: () => backendSessionToken, getSessionRoutes: () => sessionModelRoutes, stopOwnedSessionBackend, secureModelStorageAvailable, readEncryptedModelRoutes, captureDisplays, captureSelectedDisplay, setWindowProvider: value => {publicWindowProvider=value;}, setControllers: (a,b) => {captureController=a; publicWindowController=b;}})", context);
   return {...controls, app, fakeProcess, handlers, children, calls, writes, logs, requests, exits, forceKills};
 }
 
@@ -689,4 +689,76 @@ test("a pending full-screen startup cannot switch to a replacement window source
   assert.equal(result.ok, false);
   assert.equal(result.error_code, 'capture_already_active');
   h.setControllers(null, null); h.stopBackend();
+});
+
+// Runtime tests use the actual IPC handlers; renderer capability values and old
+// consent/preview/controller state cannot opt into the disabled source.
+test("full desktop remains unavailable on every platform before screen enumeration", async () => {
+  for (const platform of ["win32", "linux", "darwin"]) {
+    const h = mainHarness({platform});
+    await h.createWindow();
+    h.setWindowProvider({available: () => true, probe: async () => true,
+      platform: "synthetic-public-window", lockState: "unlocked", lockProtectionSupported: true});
+    const window = h.getWindow();
+    const event = {sender: window.webContents, senderFrame: window.webContents.mainFrame};
+    const capabilities = await h.handlers.get("openbutler:get-capture-capabilities")(event);
+    assert.equal(capabilities.public_window.supported, true);
+    assert.equal(capabilities.full_desktop.supported, false);
+    assert.equal(capabilities.full_desktop.reason, "full_desktop_unavailable");
+    assert.equal((await h.handlers.get("openbutler:get-capture-displays")(event)).length, 0);
+    await assert.rejects(h.captureSelectedDisplay("screen:0:0"), /full_desktop_unavailable/);
+    h.stopBackend();
+  }
+});
+
+test("stale desktop IPC preview and start cannot reach controllers or resume after cancel", async () => {
+  const h = mainHarness();
+  await h.createWindow();
+  const window = h.getWindow();
+  const event = {sender: window.webContents, senderFrame: window.webContents.mainFrame};
+  let captures = 0, pauses = 0;
+  const legacy = {previewMasked: async () => { captures++; }, start: async () => { captures++; },
+    pause: async () => { pauses++; return {active: false}; }};
+  const inputs = [undefined, {}, {display_id: "screen:0:0", excluded_apps: ["password"], masks: []},
+    {capture_scope: "full_screen", confirmed: true}, {capture_scope: "full_desktop"},
+    {full_desktop: {supported: true}, capture_scope: "screen"}];
+  const count = h.requests.length;
+  for (const staleState of [{}, {active: true}, {starting: true}, {busy: true}, {preview: {when: 0}}]) {
+    h.setControllers({...legacy, ...staleState}, null);
+    for (const input of inputs) {
+      for (const channel of ["openbutler:get-masked-capture-preview", "openbutler:start-builtin-capture"]) {
+        const result = await h.handlers.get(channel)(event, input);
+        assert.equal(result.ok, false);
+        assert.equal(result.error_code, "full_desktop_unavailable");
+        assert.match(result.error, /尚未通过隐私验证/);
+      }
+    }
+    assert.equal((await h.handlers.get("openbutler:pause-builtin-capture")(event)).ok, true);
+    const resumed = await h.handlers.get("openbutler:start-builtin-capture")(event, inputs[2]);
+    assert.equal(resumed.error_code, "full_desktop_unavailable");
+  }
+  assert.equal(captures, 0);
+  assert.equal(pauses, 5);
+  assert.equal(h.requests.length, count);
+  assert.deepEqual(h.writes, []);
+  h.stopBackend();
+});
+
+test("dedicated public-window IPC still selects its own explicit controller", async () => {
+  const h = mainHarness();
+  await h.createWindow();
+  const window = h.getWindow();
+  const event = {sender: window.webContents, senderFrame: window.webContents.mainFrame};
+  let previews = 0, starts = 0;
+  h.setControllers(null, {previewMasked: async config => {
+    assert.equal(config.capture_scope, "dedicated_public_window"); previews++; return {ok: true};
+  }, start: async config => {
+    assert.equal(config.capture_scope, "dedicated_public_window"); starts++; return {active: true};
+  }});
+  const config = {capture_scope: "dedicated_public_window"};
+  assert.equal((await h.handlers.get("openbutler:get-masked-capture-preview")(event, config)).ok, true);
+  assert.equal((await h.handlers.get("openbutler:start-builtin-capture")(event, config)).ok, true);
+  assert.equal(previews, 1); assert.equal(starts, 1);
+  h.setControllers(null, null);
+  h.stopBackend();
 });

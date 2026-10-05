@@ -237,20 +237,15 @@ class CoverageTests(unittest.TestCase):
         for key in ("id", "captured_at", "evidence_id", "provenance", "consent_revision"):
             self.assertEqual(before[key], after[key])
 
-    def test_full_screen_duplicate_can_end_gap_without_extra_observation(self):
-        self.store.configure(CaptureSettings(display_id="screen_1", excluded_apps=["password-manager"], confirmed=True))
+    def test_public_window_duplicate_can_end_gap_without_extra_observation(self):
+        self.configure()
         self.store.start()
-        image = BytesIO()
-        Image.new("RGB", (40, 20)).save(image, format="PNG")
-        def sample():
-            return self.store.ingest(MaskedObservation(display_id="screen_1", captured_at=self.now,
-                masked_png_base64=base64.b64encode(image.getvalue()).decode(), local_ocr_complete=True, masks_applied=True))
-        sample()
+        self.sample()
         self.store.pause()
         self.now += timedelta(seconds=10)
         self.store.start()
         self.assertIsNone(self.events("paused")[0]["gap_end_at"])
-        self.assertTrue(sample()["duplicate"])
+        self.assertTrue(self.sample()["duplicate"])
         self.assertEqual(len(self.store.list_records()), 1)
         self.assertEqual(self.events("paused")[0]["gap_end_at"], self.now.isoformat())
 

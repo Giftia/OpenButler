@@ -4,7 +4,8 @@ This is a separate, explicitly selected source scope (`dedicated_public_window`)
 implemented by the OpenButler desktop product. Linux uses X11; the Windows
 development provider uses `CreateForWindow(HWND)` with `hwnd:` identities and
 `windows_wgc_hwnd` provenance. Neither provider falls back to screen capture.
-The generic provider contract and whole-desktop privacy gates are unchanged.
+The generic provider contract is unchanged. Whole-desktop capture is unavailable
+on every platform until its separate privacy acceptance gates are satisfied.
 Linux lock state remains **unknown**, with lock protection unsupported.
 
 ### Windows development validation

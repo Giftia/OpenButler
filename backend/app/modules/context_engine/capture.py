@@ -35,6 +35,21 @@ RETENTION_DAYS = 7
 STATES = Literal["recorded_pending", "processing", "ready", "model_unavailable"]
 
 
+def capture_source_available(source_kind, provenance) -> bool:
+    # Whole-desktop capture has no verified provider-wide exclusion/lock gate.
+    # Client confirmation, OCR and masks cannot establish that guarantee. Keep
+    # the legacy schema/read path, but only the dedicated-window contract may
+    # authorize new capture, including a start from persisted legacy consent.
+    return (source_kind == "public_window" and isinstance(provenance, dict)
+            and provenance.get("source_kind") == "public_window"
+            and provenance.get("capture_scope") == "dedicated_public_window")
+
+
+def require_available_capture_source(source_kind, provenance) -> None:
+    if not capture_source_available(source_kind, provenance):
+        raise PermissionError("full_desktop_unavailable")
+
+
 def synchronized(method):
     @wraps(method)
     def guarded(self, *args, **kwargs):
@@ -317,6 +332,7 @@ class CaptureStore:
             self._processing_cancel = Event()
 
     def configure(self, settings: CaptureSettings) -> dict:
+        require_available_capture_source(settings.source_kind, provenance_of(settings))
         if not settings.confirmed:
             raise PermissionError("authorization_required")
         if settings.source_kind == "public_window":
@@ -348,8 +364,10 @@ class CaptureStore:
     @synchronized
     def start(self) -> None:
         with self._connect() as conn:
-            row = conn.execute("SELECT consented,provenance FROM context_capture_settings WHERE id=1").fetchone()
+            row = conn.execute("SELECT consented,provenance,source_kind FROM context_capture_settings WHERE id=1").fetchone()
             authorized = bool(row and row[0])
+        if row:
+            require_available_capture_source(row[2], json.loads(row[1]))
         if row and json.loads(row[1]).get("source_kind") == "public_window":
             if datetime.fromisoformat(json.loads(row[1])["session_expires_at"].replace("Z", "+00:00")) <= self._clock():
                 raise PermissionError("public_window_session_expired")
@@ -392,7 +410,7 @@ class CaptureStore:
             count = conn.execute("SELECT count(*) FROM context_observations").fetchone()[0]
         provenance = json.loads(row[5]) if row else {}
         return {"configured": bool(row), "authorized": bool(row and row[1]),
-                "active": bool(row and row[2]), "record_count": count,
+                "active": bool(row and row[2] and capture_source_available(row[3], provenance)), "record_count": count,
                 "source_kind": row[3] if row else None, "consent_revision": row[4] if row else None,
                 "provenance": provenance,
                 "lock_protection_supported": provenance.get("lock_protection_supported"),
@@ -417,10 +435,13 @@ class CaptureStore:
 
     @synchronized
     def ingest(self, observation: MaskedObservation) -> dict:
+        require_available_capture_source(observation.source_kind, provenance_of(observation))
         generation = self._generation
         with self._connect() as conn:
             row = conn.execute("""SELECT display_id,consented,active,source_kind,consent_revision,provenance,last_capture_at,last_sampling_sequence
                 FROM context_capture_settings WHERE id=1""").fetchone()
+        if row:
+            require_available_capture_source(row[3], json.loads(row[5]))
         allowed = bool(row and row[1] and row[2] and row[0] == observation.display_id
                        and row[3] == observation.source_kind
                        and observation.local_ocr_complete and observation.masks_applied)
@@ -657,10 +678,12 @@ class CaptureStore:
         except (ValueError, TypeError):
             return None
         with self._connect() as conn:
-            row = conn.execute("""SELECT evidence_id,expires_at FROM context_observations
+            row = conn.execute("""SELECT evidence_id,expires_at,source_kind,provenance,consent_revision FROM context_observations
                 WHERE id=? AND (state='model_unavailable' OR (state='recorded_pending' AND processing_reason='queue_full'))""", (event_id,)).fetchone()
         if not row or datetime.fromisoformat(row[1]) <= self._clock():
             return None
+        require_available_capture_source(row[2], json.loads(row[3]))
+        self.with_processing_consent(lambda: None, expected_revision=row[4], require_active=True)
         image = self.evidence(row[0])
         if image is None:
             return None
@@ -699,6 +722,7 @@ class CaptureStore:
             row = conn.execute("SELECT * FROM context_observations WHERE id=?", (event_id,)).fetchone()
         if row is None:
             raise ValueError("record_or_evidence_unavailable")
+        require_available_capture_source(row["source_kind"], json.loads(row["provenance"]))
         eligible = row["state"] == "recorded_pending" or (retry and row["state"] == "model_unavailable")
         if not eligible:
             raise ValueError("observation_not_pending")
@@ -754,8 +778,10 @@ class CaptureStore:
             if self._revocation_requested.is_set() or self._generation != generation:
                 raise PermissionError("capture_consent_revoked")
             with self._connect() as conn:
-                row = conn.execute("""SELECT consented,active,consent_revision,provenance
+                row = conn.execute("""SELECT consented,active,consent_revision,provenance,source_kind
                     FROM context_capture_settings WHERE id=1""").fetchone()
+            if row and require_active:
+                require_available_capture_source(row[4], json.loads(row[3]))
             if (not row or not row[0] or (require_active and not row[1])
                     or (expected_revision is not None and row[2] != expected_revision)):
                 raise PermissionError("capture_consent_revoked")
@@ -777,6 +803,7 @@ class CaptureStore:
         if row is None or row["state"] not in ("recorded_pending", "processing"):
             raise ValueError("observation_not_pending")
         result = self._public_record(row)
+        require_available_capture_source(result["source_kind"], result["provenance"])
         if sha256(image).hexdigest() != result["image_digest"]:
             raise ValueError("evidence_changed")
         result["_fingerprint"] = self.owned_evidence_fingerprint(result["evidence_id"])
@@ -800,6 +827,7 @@ class CaptureStore:
         if row is None or row["state"] not in states:
             raise ValueError("evidence_changed")
         current = self._public_record(row)
+        require_available_capture_source(current["source_kind"], current["provenance"])
         for key in ("captured_at", "source_kind", "consent_revision", "provenance", "image_digest", "evidence_id",
                     "post_mask_ocr_text", "post_mask_ocr_image_digest", "post_mask_ocr_engine"):
             if current[key] != original[key]:

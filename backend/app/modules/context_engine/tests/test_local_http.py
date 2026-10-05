@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import secrets
 import socket
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,11 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener, ProxyHandler
 
 from PIL import Image
+
+from app.modules.context_engine.tests.capture_fixture import (
+    public_window_provenance, seed_historical_observation, seed_legacy_capture_settings,
+)
+from app.modules.context_engine.tests.test_capture import ClosingConnection
 
 
 class LocalHttpTests(unittest.TestCase):
@@ -110,21 +116,46 @@ class LocalHttpTests(unittest.TestCase):
         code, status = self.fetch("/api/context-engine/status", {"X-OpenButler-Session": self.token})
         self.assertEqual(status["state"], "foundation_only")
         self.assertTrue(status["capture_available"])
+        self.assertFalse(status["full_desktop_available"])
+        self.assertEqual(status["full_desktop_reason"], "full_desktop_unavailable")
+        self.assertEqual(status["supported_capture_scopes"], ["dedicated_public_window"])
         self.assertFalse(status["recording"]["configured"])
         self.assertTrue(status["model_routes_available"])
 
+    def test_full_desktop_requests_are_rejected_even_with_valid_session(self):
+        headers = {"X-OpenButler-Session": self.token, "Content-Type": "application/json"}
+        before = self.fetch("/api/context-engine/status", headers)[1]["recording"]
+        for source in ({}, {"source_kind": "full_screen", "capture_scope": "full_screen"}):
+            settings = {"display_id": "synthetic_display", "excluded_apps": ["password-manager"],
+                        "confirmed": True, **source}
+            code, body = self.fetch("/api/context-engine/capture/configure", headers, json.dumps(settings).encode())
+            self.assertEqual((code, body["detail"]), (403, "full_desktop_unavailable"))
+            output = BytesIO()
+            Image.new("RGB", (24, 24), "black").save(output, format="PNG")
+            event = {"display_id": "synthetic_display", "captured_at": datetime.now(timezone.utc).isoformat(),
+                     "masked_png_base64": base64.b64encode(output.getvalue()).decode(),
+                     "local_ocr_complete": True, "masks_applied": True,
+                     "source_verified_before": True, "source_verified_after": True, **source}
+            code, body = self.fetch("/api/context-engine/observations", headers, json.dumps(event).encode())
+            self.assertEqual((code, body["detail"]), (403, "full_desktop_unavailable"))
+        self.assertEqual(self.fetch("/api/context-engine/status", headers)[1]["recording"], before)
+
     def test_synthetic_capture_requires_session_consent_and_keeps_unready_state(self):
         headers = {"X-OpenButler-Session": self.token, "Content-Type": "application/json"}
-        settings = {"display_id": "test_display", "excluded_apps": ["password-manager"],
+        metadata = public_window_provenance(datetime.now(timezone.utc), width=24, height=24)
+        settings = {**metadata, "display_id": "x11:100", "excluded_apps": ["password-manager"],
                     "masks": [], "confirmed": True}
         payload = json.dumps(settings).encode()
         self.assertEqual(self.fetch("/api/context-engine/capture/configure", data=payload)[0], 401)
-        self.assertEqual(self.fetch("/api/context-engine/capture/configure", headers, payload)[0], 200)
+        code, configured = self.fetch("/api/context-engine/capture/configure", headers, payload)
+        self.assertEqual(code, 200)
         self.assertEqual(self.fetch("/api/context-engine/capture/start", headers, b"{}")[0], 200)
         self.assertTrue(self.fetch("/api/context-engine/status", headers)[1]["recording"]["active"])
         output = BytesIO()
         Image.new("RGB", (24, 24), "black").save(output, format="PNG")
-        event = {"display_id": "test_display", "captured_at": datetime.now(timezone.utc).isoformat(),
+        event = {**metadata, "display_id": "x11:100", "captured_at": datetime.now(timezone.utc).isoformat(),
+                 "consent_revision": configured["consent_revision"], "source_verified_before": True,
+                 "source_verified_after": True, "sampling_sequence": 1, "sampling_gap_ms": 0,
                  "masked_png_base64": base64.b64encode(output.getvalue()).decode(),
                  "local_ocr_complete": False, "masks_applied": True}
         code, body = self.fetch("/api/context-engine/observations", headers, json.dumps(event).encode())
@@ -160,6 +191,37 @@ class LocalHttpTests(unittest.TestCase):
         self.assertEqual(paused["coverage_events"][0]["reason"], "user_paused")
         self.assertIsNone(paused["coverage_events"][0]["gap_end_at"])
         self.assertEqual(self.fetch("/api/context-engine/observations")[0], 401)
+
+    def test_z_stale_desktop_consent_cannot_restart_through_authenticated_api(self):
+        headers = {"X-OpenButler-Session": self.token, "Content-Type": "application/json"}
+        connect = lambda: sqlite3.connect(Path(self.tmp.name) / "openbutler.sqlite3", factory=ClosingConnection)
+        with connect() as conn:
+            previous = conn.execute("SELECT * FROM context_capture_settings WHERE id=1").fetchone()
+        try:
+            for active in (False, True):
+                seed_legacy_capture_settings(connect, active=active)
+                event = seed_historical_observation(connect, datetime.now(timezone.utc))
+                with connect() as conn:
+                    before = conn.execute("SELECT * FROM context_capture_settings WHERE id=1").fetchone()
+                    history = conn.execute("SELECT * FROM context_observations").fetchall()
+                    coverage = conn.execute("SELECT * FROM context_capture_coverage").fetchall()
+                code, body = self.fetch("/api/context-engine/capture/start", headers, b"{}")
+                self.assertEqual((code, body["detail"]), (403, "full_desktop_unavailable"))
+                code, body = self.fetch(f"/api/context-engine/observations/{event}/retry", headers, b"{}")
+                self.assertEqual((code, body), (200,
+                    {"ok": False, "queued": False, "reason": "full_desktop_unavailable"}))
+                self.assertFalse(self.fetch("/api/context-engine/status", headers)[1]["recording"]["active"])
+                with connect() as conn:
+                    self.assertEqual(conn.execute("SELECT * FROM context_capture_settings WHERE id=1").fetchone(), before)
+                    self.assertEqual(conn.execute("SELECT * FROM context_observations").fetchall(), history)
+                    self.assertEqual(conn.execute("SELECT * FROM context_capture_coverage").fetchall(), coverage)
+        finally:
+            with connect() as conn:
+                if previous is None:
+                    conn.execute("DELETE FROM context_capture_settings WHERE id=1")
+                else:
+                    conn.execute("INSERT OR REPLACE INTO context_capture_settings VALUES (" +
+                                 ",".join("?" for _ in previous) + ")", previous)
 
 
 if __name__ == "__main__":

@@ -3630,7 +3630,10 @@ function PreviewActivation({status, mandatory, onChooseDemo, onChooseReal, onDis
 }) {
   const [modelSetupOpen, setModelSetupOpen] = useState(false);
   const [localSetup, setLocalSetup] = useState(status === "real_setup_started" || status === "completed");
-  const [captureScope, setCaptureScope] = useState<"screen" | "public_window">(() => window.openbutlerDesktop?.getCaptureWindows ? "public_window" : "screen");
+  // Full-desktop privacy checks are not verified. This gate is intentionally
+  // independent of capability reports, including missing or stale supported:true.
+  const fullDesktopAvailable = false;
+  const [captureScope, setCaptureScope] = useState<"screen" | "public_window" | null>(() => window.openbutlerDesktop?.getCaptureWindows ? "public_window" : null);
   const [capabilities, setCapabilities] = useState<CaptureCapabilities | null>(null);
   const [displays, setDisplays] = useState<Array<{id: string; label: string}>>([]);
   const [displayId, setDisplayId] = useState("");
@@ -3654,14 +3657,12 @@ function PreviewActivation({status, mandatory, onChooseDemo, onChooseReal, onDis
   useEffect(() => {
     if (!localSetup) return;
     let cancelled = false;
-    void Promise.all([getContextEngineStatus(), (captureScope === "screen" ? window.openbutlerDesktop?.getCaptureDisplays?.() : undefined) ?? Promise.resolve([]), window.openbutlerDesktop?.getCaptureCapabilities?.() ?? Promise.resolve(null)])
-      .then(([current, available, capability]) => {
+    void Promise.all([getContextEngineStatus(), window.openbutlerDesktop?.getCaptureCapabilities?.() ?? Promise.resolve(null)])
+      .then(([current, capability]) => {
         if (cancelled) return;
         setStatusData(current);
         setCapabilities(capability);
         setLocalPrivacyMode(current.privacy_mode);
-        setDisplays(available);
-        setDisplayId((previous) => previous || available[0]?.id || "");
       })
       .catch(() => { if (!cancelled) setMessage("本机录制服务暂不可用，请稍后重试。"); });
     return () => { cancelled = true; };
@@ -3701,7 +3702,7 @@ function PreviewActivation({status, mandatory, onChooseDemo, onChooseReal, onDis
   const editDisabled = !statusData || busy === "start" || busy === "privacy" || !!statusData.recording.active;
 
   async function checkPreview() {
-    if (operation.current || editing || statusData?.recording.active || !(statusData?.capture_available && (capabilities?.full_desktop.supported ?? true))) return;
+    if (operation.current || editing || statusData?.recording.active || !fullDesktopAvailable) return;
     const config = captureConfig();
     if (!config || !window.openbutlerDesktop?.getMaskedCapturePreview) return;
     invalidatePreview();
@@ -3756,7 +3757,7 @@ function PreviewActivation({status, mandatory, onChooseDemo, onChooseReal, onDis
   }
 
   async function beginRecording() {
-    if (operation.current || editing || statusData?.recording.active || !(statusData?.capture_available && (capabilities?.full_desktop.supported ?? true))) return;
+    if (operation.current || editing || statusData?.recording.active || !fullDesktopAvailable) return;
     const config = captureConfig();
     if (!config || !previewCurrent || !preview || !previewGate.current.isCurrent(preview.ticket) || !confirmed || !window.openbutlerDesktop?.startBuiltinCapture) return;
     // Consume this approval before awaiting the bridge so a double-click cannot reuse it.
@@ -3815,7 +3816,7 @@ function PreviewActivation({status, mandatory, onChooseDemo, onChooseReal, onDis
         <div className="first-run-copy">
           <p className="eyebrow">0.2.0 Preview · 首次激活</p>
           <h2 id="preview-activation-title">开始使用</h2>
-          <p>选录制范围，检查遮挡，再开始自动截图。模型可稍后配置。</p>
+          <p>选择专用公开窗口，单独授权并检查遮挡后再开始。模型可稍后配置。</p>
           <div className="activation-choice-grid">
             {onChooseLocalChat && <button className="activation-choice" disabled={busy === "start"} onClick={() => leaveSetup(onChooseLocalChat)}>
               <MessageSquareText size={17} /><strong>先聊天</strong><span>文字保存在本机，不录屏</span>
@@ -3829,7 +3830,7 @@ function PreviewActivation({status, mandatory, onChooseDemo, onChooseReal, onDis
           </div>
           <button className="secondary first-run-model-entry" aria-expanded={modelSetupOpen} aria-controls="activation-model-settings" disabled={busy === "start"}
             onClick={() => setModelSetupOpen((open) => !open)}>{modelSetupOpen ? "收起模型设置" : "配置模型"}</button>
-          <small>配置模型不会开始录制</small><details><summary>使用说明</summary><small>仅支持专用公开窗口或当前平台支持的屏幕范围。打开模型设置只读取已保存状态，点击测试才调用模型。</small></details>
+          <small>配置模型不会开始录制</small><details><summary>使用说明</summary><small>完整桌面隐私检查尚未验证，当前不可用。专用公开窗口需单独授权。打开模型设置只读取已保存状态，点击测试才调用模型。</small></details>
           {modelSetupOpen && <PreviewModelSettings sectionId="activation-model-settings" onSaved={async () => {
             const current = await getContextEngineStatus(); setStatusData(current);
           }} />}
@@ -3839,10 +3840,12 @@ function PreviewActivation({status, mandatory, onChooseDemo, onChooseReal, onDis
           <div className="local-setup-head"><strong>录制范围</strong><p>更改设置后，请重新预览</p></div>
           <div className="capture-source-choice" role="group" aria-label="选择自动记录来源">
             <button className="secondary" aria-pressed={captureScope === "public_window"} disabled={!!busy || editing || !!statusData?.recording.active || !window.openbutlerDesktop?.getCaptureWindows} onClick={() => { invalidatePreview(); setPreview(null); setCaptureScope("public_window"); }}>专用公开窗口</button>
-            <button className="secondary" aria-pressed={captureScope === "screen"} disabled={!!busy || editing || !!statusData?.recording.active || capabilities?.full_desktop.supported === false} onClick={() => { invalidatePreview(); setPreview(null); setCaptureScope("screen"); }}>整个屏幕{capabilities?.full_desktop.supported === false ? "（当前不可用）" : ""}</button>
+            <button className="secondary" aria-pressed={false} disabled aria-describedby="full-desktop-unavailable">整个屏幕（当前不可用）</button>
           </div>
-          {capabilities?.full_desktop.supported === false && <p className="capture-capability-warning">完整桌面采集当前不可用：{capabilities.full_desktop.reason === "lock_state_unknown" ? "无法验证锁屏状态" : "当前平台尚未通过采集与锁屏保护检查"}。专用公开窗口需单独确认范围。</p>}
-          {captureScope === "public_window" ? <PublicWindowCaptureSetup active={!!statusData?.recording.active} capabilities={capabilities} onComplete={onComplete} onStartingChange={(starting) => setBusy(starting ? "start" : null)} /> : <>
+          <p id="full-desktop-unavailable" className="capture-capability-warning">完整桌面采集当前不可用：隐私检查尚未验证。专用公开窗口需单独授权。</p>
+          {captureScope === "public_window" && window.openbutlerDesktop?.getCaptureWindows && <PublicWindowCaptureSetup active={!!statusData?.recording.active} capabilities={capabilities} onComplete={onComplete} onStartingChange={(starting) => setBusy(starting ? "start" : null)} />}
+          {!window.openbutlerDesktop?.getCaptureWindows && <p role="status">当前版本未提供专用公开窗口采集。不会改录整个屏幕；已有记录保持不变。</p>}
+          {fullDesktopAvailable && captureScope === "screen" && <>
           <div className="local-setup-status">
             <StatusItem label="录制能力" value={statusData?.capture_available ? "可用" : "待连接"} />
             <StatusItem label="当前状态" value={statusData?.recording.active ? "记录中" : "未录制"} />
@@ -3859,14 +3862,14 @@ function PreviewActivation({status, mandatory, onChooseDemo, onChooseReal, onDis
           </fieldset>
           <p className="policy-note">当前只启用本机记录。选择基础隐私也不会自动调用外部模型。</p>
           {statusData?.recording.active && <p className="policy-note">录制正在运行。请先返回今日暂停，再更改范围。</p>}
-          <button className="secondary" onClick={() => void checkPreview()} disabled={!!busy || editing || statusData?.recording.active || !(statusData?.capture_available && (capabilities?.full_desktop.supported ?? true)) || !window.openbutlerDesktop?.getMaskedCapturePreview}>检查隐私预览</button>
+          <button className="secondary" onClick={() => void checkPreview()} disabled={!!busy || editing || statusData?.recording.active || !fullDesktopAvailable || !window.openbutlerDesktop?.getMaskedCapturePreview}>检查隐私预览</button>
           <MaskEditor key={preview?.ticket.requestId ?? "no-preview"} masks={masks} canvas={preview} disabled={editDisabled} editing={editing}
             onChange={(next) => changeConfig(() => setMasks(next))} onEditStart={invalidatePreview} onEditingChange={setEditing}
             onImageLoad={(bounds) => { if (preview) loadedPreview(preview.ticket, bounds); }}
             onImageError={() => { invalidatePreview(); setPreview(null); setMessage("隐私预览图片无法显示，请重新预览；录制尚未开始。"); }} />
           <label className="preview-confirm"><input type="checkbox" checked={confirmed} disabled={!previewCurrent || !!busy || editing || !!statusData?.recording.active}
             onChange={(event) => { if (previewCurrent && preview && previewGate.current.isCurrent(preview.ticket) && !busy && !editing) setConfirmed(event.target.checked); }} /> 我已检查最新预览，同意按上述范围录制</label>
-          <button className="primary" onClick={() => void beginRecording()} disabled={!!busy || editing || statusData?.recording.active || !previewCurrent || !confirmed || !(statusData?.capture_available && (capabilities?.full_desktop.supported ?? true)) || !window.openbutlerDesktop?.startBuiltinCapture}>开始记录</button>
+          <button className="primary" onClick={() => void beginRecording()} disabled={!!busy || editing || statusData?.recording.active || !previewCurrent || !confirmed || !fullDesktopAvailable || !window.openbutlerDesktop?.startBuiltinCapture}>开始记录</button>
           {statusData?.recording.active && <button className="secondary" onClick={() => leaveSetup(onComplete)}>返回今日</button>}
           {message && <p className="policy-note" role="status">{message}</p>}
           </>}
