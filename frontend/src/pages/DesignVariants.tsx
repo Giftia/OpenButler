@@ -1,4 +1,5 @@
 import {useEffect, useState} from "react";
+import {replaceAppPath} from "../lib/navigation";
 import {getButlerHome, getButlerTimeline} from "../lib/api";
 import {buildTodayHomeViewModel, type ActivationMode} from "../lib/butlerUiAdapter";
 import {toTimelineMoment, type TimelineMoment} from "../lib/timelineUiAdapter";
@@ -67,7 +68,7 @@ const designSampleEvents = [
 ];
 
 function navigateClient(path: string) {
-  window.history.replaceState(null, "", path);
+  replaceAppPath(path);
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 

@@ -2649,28 +2649,53 @@ class ButlerCoreService:
                     criterion(
                         "context_engine_skeleton",
                         "context_engine 内核骨架和 Apache-2.0 来源声明存在",
-                        (root / "backend" / "app" / "modules" / "context_engine").exists()
-                        and (root / "THIRD_PARTY_NOTICES.md").exists(),
+                        all((root / path).is_file() for path in [
+                            "backend/app/modules/context_engine/foundation.py",
+                            "backend/app/modules/context_engine/tests/test_foundation.py",
+                            "backend/app/modules/context_engine/PROVENANCE.yaml",
+                            "THIRD_PARTY_NOTICES.md",
+                        ]),
                         [
-                            {"kind": "file", "path": "backend/app/modules/context_engine"},
+                            {"kind": "file", "path": "backend/app/modules/context_engine/foundation.py"},
+                            {"kind": "file", "path": "backend/app/modules/context_engine/tests/test_foundation.py"},
                             {"kind": "file", "path": "THIRD_PARTY_NOTICES.md"},
                         ],
                     ),
                     criterion(
                         "local_session_and_origin",
                         "本地 API 有会话鉴权和 Origin 限制",
-                        (root / "backend" / "app" / "security" / "local_session.py").exists()
-                        and (root / "backend" / "app" / "security" / "origin_policy.py").exists(),
+                        all((root / path).is_file() for path in [
+                            "backend/app/security/local_session.py",
+                            "backend/app/security/origin_policy.py",
+                            "backend/app/modules/context_engine/tests/test_local_session.py",
+                            "backend/app/modules/context_engine/tests/test_local_http.py",
+                            "desktop/src/local-api.cjs",
+                        ]),
                         [
                             {"kind": "file", "path": "backend/app/security/local_session.py"},
                             {"kind": "file", "path": "backend/app/security/origin_policy.py"},
+                            {"kind": "file", "path": "backend/app/modules/context_engine/tests/test_local_http.py"},
                         ],
+                        {"verification_scope": "source_contract_only", "packaged_acceptance": "not_verified"},
                     ),
                     criterion(
                         "central_privacy_guard",
                         "统一 PrivacyGuard 覆盖采集、模型、截图、迁移和外部写入",
-                        (root / "backend" / "app" / "security" / "privacy_guard.py").exists(),
-                        [{"kind": "file", "path": "backend/app/security/privacy_guard.py"}],
+                        all((root / path).is_file() for path in [
+                            "backend/app/security/privacy_guard.py",
+                            "backend/app/modules/context_engine/privacy.py",
+                            "backend/app/modules/context_engine/capture.py",
+                            "backend/app/modules/context_engine/tests/test_capture.py",
+                            "backend/app/modules/context_engine/migration.py",
+                            "backend/app/modules/context_engine/tests/test_migration.py",
+                            "backend/app/modules/context_engine/external_actions.py",
+                            "backend/app/modules/context_engine/tests/test_external_actions.py",
+                        ]),
+                        [
+                            {"kind": "file", "path": "backend/app/security/privacy_guard.py"},
+                            {"kind": "file", "path": "backend/app/modules/context_engine/privacy.py"},
+                        ],
+                        {"verification_scope": "operation_boundary", "capture_status": "not_verified"},
                     ),
                     criterion(
                         "minecontext_read_only_compatibility",

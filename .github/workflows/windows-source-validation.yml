@@ -1,0 +1,203 @@
+name: OpenButler Development Source Validation
+
+on:
+  push:
+    branches: ["dev/windows-wgc-20261002", "dev/device-model-catalog-20261002", "dev/source-grounding-20261003"]
+
+# Source-only validation: no installer, native desktop capture, external model,
+# screenshots, or runtime artifact uploads. Main and existing workflows unchanged.
+permissions:
+  contents: read
+
+jobs:
+  butler-core:
+    name: Butler Core
+    if: github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: python -m pip install -r backend/requirements.txt
+      - run: python -m unittest discover -s backend/app/modules/butler_core/tests
+        env:
+          PYTHONPATH: backend
+
+  pc-activity:
+    name: PC Activity
+    if: github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: python -m pip install -r backend/requirements.txt
+      - run: python -m unittest discover -s backend/app/modules/pc_activity_context/tests
+        env:
+          PYTHONPATH: backend
+
+  workstation-vision:
+    name: Workstation Vision
+    if: github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: python -m pip install -r backend/requirements.txt
+      - run: python -m unittest discover -s backend/app/modules/workstation_vision/tests
+        env:
+          PYTHONPATH: backend
+
+  context-engine:
+    name: Context Engine
+    if: github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: python -m pip install -r backend/requirements.txt
+      - name: Run Context Engine and local security tests
+        run: python -m unittest discover -s backend/app/modules/context_engine/tests
+        env:
+          PYTHONPATH: backend
+      - name: Run Model Gateway transport and policy tests
+        run: python -m unittest discover -s backend/app/modules/model_gateway/tests
+        env:
+          PYTHONPATH: backend
+      - name: Run Local Goal Runtime durability and boundary tests
+        run: python -m unittest discover -s backend/app/modules/agent_runtime/tests
+        env:
+          PYTHONPATH: backend
+
+  frontend:
+    name: Frontend Build
+    if: github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:local-proxy
+      - run: npm run test:phase1-ui
+      - run: npm run test:preview-model-settings
+      - run: npm run test:mask-editor
+      - run: npm run test:mask-editor-dom
+      - run: npm run test:agent-loop
+      - run: npm run test:planner-model-settings
+      - run: npm run test:natural-chat
+      - run: npm run test:model-catalog
+      - name: Synthetic capture, queue, model setup and analysis UI contracts
+        shell: bash
+        run: |
+          for suite in activation-model-settings session-local-model local-model-discovery public-window context-queue observation-analysis; do
+            node "scripts/check-$suite-dom.cjs"
+          done
+
+  desktop-contract:
+    name: Desktop Contract
+    if: github.event.repository.private == false
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm ci --ignore-scripts
+        working-directory: desktop
+      - run: npm run build:frontend
+        working-directory: desktop
+      - run: node desktop/scripts/check-desktop-contract.mjs
+      - run: node desktop/scripts/check-local-session.cjs
+      - run: node desktop/scripts/check-local-session-main.cjs
+      - run: node desktop/scripts/check-model-routes-persistence.cjs
+      - run: node desktop/scripts/check-capture-controller.cjs
+      - name: Compile the Windows WGC helper without running capture
+        shell: pwsh
+        run: ./desktop/scripts/build-windows-public-window.ps1
+      - name: Synthetic selected-window and Windows provenance contracts
+        run: node --test desktop/scripts/check-public-window.cjs desktop/scripts/check-windows-public-window.cjs desktop/scripts/check-local-model-discovery.cjs desktop/scripts/check-model-catalog.cjs
+      - run: node desktop/scripts/check-capture-providers.cjs
+      - run: node desktop/scripts/check-desktop-frontend-assets.mjs
+
+  loop-governance:
+    name: Loop Governance
+    if: github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: tools/loop
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: tools/loop/package-lock.json
+      - run: npm ci --registry=https://registry.npmjs.org
+      - run: npm test
+      - run: npm run audit:governance -- --no-write
+
+  nightly-controller:
+    name: Nightly Controller
+    if: github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: node --test tests
+        working-directory: tools/nightly
+
+

@@ -7,11 +7,24 @@ import sqlite3
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from threading import RLock
 from typing import Any, Literal
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from app.security.local_session import LocalSessionMiddleware, LocalSessionPolicy, SESSION_HEADER
+from app.modules.context_engine.audit import init_privacy_audit, PrivacyAuditLedger
+from app.modules.context_engine.privacy import AuditedPrivacyGuard
+from app.modules.context_engine.capture import init_capture_store
+from app.modules.context_engine.router import create_context_engine_router
+from app.modules.model_gateway.router import create_model_settings_router
+from app.modules.model_gateway import Gateway
+from app.modules.agent_runtime.service import RuntimeService
+from app.modules.agent_runtime.router import create_agent_runtime_router
+from app.modules.agent_runtime.supervisor import RuntimeSupervisor
+from app.modules.agent_runtime.planner_control import PlannerControl
+from app.modules.agent_runtime.conversation_service import ConversationService
 
 from app.modules.butler_core import init_butler_core_db
 from app.modules.butler_core.router import (
@@ -44,6 +57,7 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.getenv("OPENBUTLER_DATA_DIR", BASE_DIR.parent / "data"))
 DB_PATH = DATA_DIR / "openbutler.sqlite3"
 PLUGIN_DIR = BASE_DIR / "plugins"
+PRIVACY_DISPATCH_LOCK = RLock()
 
 PrivacyMode = Literal["basic", "strict"]
 
@@ -114,6 +128,8 @@ def init_db() -> None:
         init_workstation_vision_db(conn)
         init_pc_activity_context_db(conn)
         init_butler_core_db(conn)
+        init_privacy_audit(conn)
+        init_capture_store(conn)
 
 
 def row_to_event(row: sqlite3.Row) -> dict[str, Any]:
@@ -132,7 +148,9 @@ def get_privacy_mode() -> PrivacyMode:
 
 
 def set_privacy_mode(mode: PrivacyMode) -> None:
-    with db() as conn:
+    # Linearize a committed mode change with active model dispatch. An already
+    # dispatched call may finish, but no old-mode call starts after this commit.
+    with PRIVACY_DISPATCH_LOCK, db() as conn:
         conn.execute(
             """
             INSERT INTO settings(key, value)
@@ -359,11 +377,12 @@ app = FastAPI(
     description="Local-first AI butler prototype API with privacy guard and plugin manifests.",
 )
 
+local_session_policy = LocalSessionPolicy.from_environ()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=list(local_session_policy.origins.allowed),
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", SESSION_HEADER],
 )
 
 configure_workstation_vision(DB_PATH)
@@ -373,13 +392,53 @@ app.include_router(workstation_vision_router)
 app.include_router(vision_router)
 app.include_router(pc_activity_router)
 app.include_router(butler_router)
+model_settings_router = create_model_settings_router(
+    db, get_privacy_mode, set_privacy_mode, dispatch_lock=PRIVACY_DISPATCH_LOCK)
+app.include_router(create_context_engine_router(
+    db, get_privacy_mode, DATA_DIR,
+    model_settings_router.gateway, model_settings_router.current_authorization))
+app.include_router(model_settings_router)
+
+# Product goal-loop runtime is separate from capture and development automation.
+# Never mount it on the public/demo adapter or without a valid local session.
+agent_runtime = None
+agent_runtime_supervisor = None
+agent_planner_control = None
+agent_conversations = None
+if (local_session_policy.mode == "local" and local_session_policy.preview_builtin
+        and local_session_policy.token is not None):
+    agent_runtime_path = DATA_DIR / "agent_runtime.sqlite3"
+    agent_runtime = RuntimeService(agent_runtime_path)
+    # This gateway is text-only/local-only and has its own dispatch lock. It
+    # never inherits the capture-model destination or credential consent.
+    agent_planner_control = PlannerControl(agent_runtime, gateway_factory=lambda: Gateway(
+        AuditedPrivacyGuard(PrivacyAuditLedger(db)), privacy_mode_getter=get_privacy_mode))
+    agent_runtime.planner = agent_planner_control
+    agent_conversations = ConversationService(agent_runtime, agent_planner_control)
+    agent_runtime_supervisor = RuntimeSupervisor(agent_runtime)
+    app.include_router(create_agent_runtime_router(
+        agent_runtime, agent_runtime_supervisor, command_db_path=agent_runtime_path,
+        planner_control=agent_planner_control, conversation_service=agent_conversations))
 
 
 @app.on_event("startup")
 def startup() -> None:
     init_db()
+    with db() as conn:
+        init_capture_store(conn, reset_active=True)
     seed_events_if_empty()
     seed_vercel_demo_if_enabled()
+    if agent_runtime_supervisor is not None:
+        agent_runtime_supervisor.start()
+
+
+@app.on_event("shutdown")
+def stop_agent_runtime() -> None:
+    if agent_runtime_supervisor is not None:
+        # SQLite contention itself is bounded at 15s. Do not report successful
+        # shutdown when a custom planner or worker outlives the join budget.
+        if not agent_runtime_supervisor.stop(timeout=20.0):
+            raise RuntimeError("local_runtime_shutdown_timeout")
 
 
 @app.middleware("http")
@@ -389,6 +448,10 @@ async def ensure_vercel_demo_data(request, call_next):
         seed_events_if_empty()
         seed_vercel_demo_if_enabled()
     return await call_next(request)
+
+
+# Authenticate before request-time initialization or any source-touching route.
+app.add_middleware(LocalSessionMiddleware, policy=local_session_policy)
 
 
 @app.get("/health")

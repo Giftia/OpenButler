@@ -4,7 +4,28 @@ Last accepted run: 2026-07-23T23:15:37+08:00
 Current level: L2 active
 Canonical branch: `main`
 Active objective: `OB-GOAL-034`
-loop-pause-all: false
+loop-pause-all: true
+
+## Manual Preview Delivery (2026-09-22)
+
+The user approved interactive implementation of 0.2.0 Preview: built-in capture
+to timeline and daily review. Scheduled execution and automatic merge remain
+paused. OB-GOAL-034 remains the only active objective. Work starts with #24,
+followed by #25-#27, without reading existing MineContext data or using real
+data for model tests. No stable installation or data directory is modified.
+
+The schedules below are historical configuration, not current execution proof.
+
+## Interactive Preview Checkpoint (2026-09-23)
+
+The isolated 0.2.0 Preview worktree contains a synthetic-tested built-in
+capture/model/result path. Installer `0.2.0-preview.20260923.3` and its
+unpacked packaged startup smoke passed. The standalone Preview was installed
+and its startup/exit smoke passed with isolated test data. Uninstall lifecycle,
+real-screen privacy review, actual model connection and user acceptance remain
+pending.
+No scheduled task or auto-merge was resumed;
+`loop-pause-all` remains true. OB-GOAL-034 is still the only active goal.
 
 ## High Priority
 

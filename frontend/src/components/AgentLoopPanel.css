@@ -1,0 +1,71 @@
+/* Scoped to the Preview local-goal control surface. Phase 1 UI is unchanged. */
+.agent-loop { --loop-line: #dce5e4; --loop-ink: #153632; --loop-muted: #56716d; color: var(--loop-ink); display: grid; gap: 20px; max-width: 1440px; margin: 0 auto; }
+.agent-loop * { box-sizing: border-box; }
+.agent-loop .loop-header { display: flex; gap: 20px; justify-content: space-between; align-items: flex-start; }
+.agent-loop h1 { margin: 4px 0 10px; font-size: clamp(25px, 3vw, 36px); letter-spacing: -.025em; }
+.agent-loop h2 { margin: 0; font-size: 19px; }
+.agent-loop h3 { margin: 0 0 8px; font-size: 16px; }
+.agent-loop p { line-height: 1.65; margin: 8px 0; }
+.agent-loop .loop-kicker { margin: 0; color: #397065; font-size: 11px; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
+.agent-loop .loop-caption, .agent-loop small { color: var(--loop-muted); line-height: 1.6; }
+.agent-loop .loop-boundary { border: 1px solid #c9ddd7; background: #edf5f1; border-radius: 16px; padding: 14px 18px; }
+.agent-loop .loop-boundary p { margin: 2px 0; }
+.agent-loop .loop-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.agent-loop button { min-height: 40px; border: 1px solid var(--loop-line); border-radius: 10px; background: #fff; padding: 8px 13px; color: var(--loop-ink); font: inherit; font-size: 13px; cursor: pointer; transition: background .15s, border-color .15s; }
+.agent-loop button:hover:not(:disabled) { background: #eef5f2; border-color: #83a69d; }
+.agent-loop button:disabled { cursor: not-allowed; opacity: .55; }
+.agent-loop button:focus-visible, .agent-loop a:focus-visible, .agent-loop input:focus-visible, .agent-loop textarea:focus-visible, .agent-loop select:focus-visible, .agent-loop summary:focus-visible { outline: 3px solid #427fca; outline-offset: 3px; }
+.agent-loop button.loop-primary { background: #174e43; color: #fff; border-color: #174e43; }
+.agent-loop button.loop-primary:hover:not(:disabled) { background: #103b32; }
+.agent-loop button.loop-danger { color: #96392e; }
+.agent-loop .loop-status { display: inline-flex; gap: 5px; align-items: center; padding: 5px 9px; border: 1px solid #cfdfd9; border-radius: 100px; background: #edf4f0; color: #315f53; font-size: 12px; white-space: nowrap; }
+.agent-loop .loop-status[data-status="active"] { background: #e6f3eb; color: #27633d; }
+.agent-loop .loop-status[data-status="waiting"], .agent-loop .loop-status[data-status="candidate"] { background: #fcf4e5; color: #855b16; border-color: #efdfbd; }
+.agent-loop .loop-status[data-status="paused"], .agent-loop .loop-status[data-status="cancelled"] { background: #f2f3f3; color: #63716e; }
+.agent-loop .loop-grid { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(330px, .88fr); gap: 20px; align-items: start; }
+.agent-loop .loop-column { display: grid; gap: 20px; min-width: 0; }
+.agent-loop .loop-card { border: 1px solid var(--loop-line); border-radius: 18px; background: #fff; padding: 20px; min-width: 0; }
+.agent-loop .loop-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.agent-loop .loop-empty { color: var(--loop-muted); padding: 22px 16px; background: #f6f8f7; border: 1px dashed #d8e3df; border-radius: 12px; }
+.agent-loop .loop-timeline { list-style: none; padding: 0; margin: 0; display: grid; gap: 13px; max-height: 520px; overflow: auto; overscroll-behavior: contain; }
+.agent-loop .loop-message { padding: 14px; border-radius: 12px; background: #f5f8f6; border: 1px solid #e3ece7; overflow-wrap: anywhere; }
+.agent-loop .loop-message[data-role="user"] { background: #eaf2ed; border-color: #d4e5db; }
+.agent-loop .loop-message-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; color: var(--loop-muted); font-size: 11px; }
+.agent-loop .loop-message p { white-space: pre-wrap; }
+.agent-loop .loop-composer { display: grid; gap: 12px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--loop-line); }
+.agent-loop label { display: grid; gap: 7px; font-size: 13px; font-weight: 600; }
+.agent-loop textarea, .agent-loop input, .agent-loop select { width: 100%; max-width: 100%; padding: 10px 12px; border-radius: 9px; border: 1px solid #cbdad4; background: #fff; color: var(--loop-ink); font: inherit; font-weight: 400; }
+.agent-loop textarea { resize: vertical; min-height: 100px; }
+.agent-loop .loop-form-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.agent-loop .loop-goal-list { display: grid; gap: 8px; max-height: 290px; overflow: auto; }
+.agent-loop button.loop-goal-choice { text-align: left; display: grid; gap: 7px; padding: 12px; width: 100%; }
+.agent-loop .loop-goal-choice[aria-pressed="true"] { border-color: #477c6c; background: #edf5f0; box-shadow: inset 3px 0 #477c6c; }
+.agent-loop .loop-goal-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.agent-loop .loop-id { font: 11px ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--loop-muted); overflow-wrap: anywhere; }
+.agent-loop .loop-detail { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--loop-line); }
+.agent-loop .loop-facts { display: grid; gap: 10px; margin: 16px 0; }
+.agent-loop .loop-facts > div { display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 10px; font-size: 13px; }
+.agent-loop .loop-facts dt { color: var(--loop-muted); }
+.agent-loop .loop-facts dd { margin: 0; overflow-wrap: anywhere; }
+.agent-loop .loop-plan { margin: 10px 0 16px; padding-left: 22px; line-height: 1.7; font-size: 13px; }
+.agent-loop .loop-plan li { padding: 4px 0; }
+.agent-loop .loop-evidence { margin-top: 10px; padding-top: 9px; border-top: 1px dashed #d1ddd5; font-size: 12px; }
+.agent-loop .loop-evidence summary { cursor: pointer; color: #315f53; }
+.agent-loop .loop-evidence ul { margin: 9px 0 0; padding-left: 18px; }
+.agent-loop .loop-evidence li { margin: 7px 0; overflow-wrap: anywhere; }
+.agent-loop .loop-notice-list, .agent-loop .loop-source-list { display: grid; gap: 12px; }
+.agent-loop .loop-notice { padding: 14px; border: 1px solid #e0e7e2; border-radius: 12px; }
+.agent-loop .loop-notice[data-unread="true"] { border-color: #9bbda8; background: #f4f8f3; }
+.agent-loop .loop-notice .loop-controls { margin-top: 10px; }
+.agent-loop .loop-source { border-bottom: 1px solid #e5ece7; padding: 0 0 14px; }
+.agent-loop .loop-source:last-child { border: 0; padding-bottom: 0; }
+.agent-loop .loop-source .loop-controls { margin-top: 10px; }
+.agent-loop .loop-feedback { border-radius: 12px; border: 1px solid #b5cfd1; padding: 12px 16px; background: #edf5f6; line-height: 1.6; font-size: 13px; }
+.agent-loop .loop-feedback[role="alert"] { background: #fff5ef; border-color: #e7c1b2; color: #843d2a; }
+.agent-loop .loop-confirm { margin-top: 12px; padding: 13px; border-radius: 10px; background: #fff4ee; border: 1px solid #e8c8b9; }
+.agent-loop .loop-confirm p { font-size: 13px; }
+.agent-loop .loop-check { display: flex; align-items: flex-start; gap: 8px; line-height: 1.55; font-weight: 400; }
+.agent-loop .loop-check input { width: auto; margin-top: 3px; }
+@media (max-width: 1000px) { .agent-loop .loop-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) { .agent-loop .loop-header { flex-direction: column; } .agent-loop .loop-card { padding: 16px; } .agent-loop .loop-form-row { grid-template-columns: 1fr; } .agent-loop .loop-facts > div { grid-template-columns: 65px minmax(0, 1fr); } }
+@media (prefers-reduced-motion: reduce) { .agent-loop button { transition: none; } }

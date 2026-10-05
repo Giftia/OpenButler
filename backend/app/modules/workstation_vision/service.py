@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from app.integrations.local_eyes_adapter import LocalEyesAdapter, LocalEyesUnavailable
+from app.security.privacy_compat import restrict_legacy_setting
 
 from .detectors.attention import estimate_attention
 from .detectors.fatigue import detect_fatigue
@@ -109,6 +110,9 @@ class WorkstationVisionService:
         current = self.get_settings().model_dump()
         current.update(payload)
         settings = WorkstationVisionSettings.model_validate(current)
+        settings.save_raw_frames = restrict_legacy_setting(
+            action="screenshot_copy", mode=settings.privacy_mode, enabled=settings.save_raw_frames,
+        )
         if settings.privacy_mode == "strict" and settings.save_raw_frames:
             settings.save_raw_frames = False
         with self.connect() as conn:
@@ -140,6 +144,9 @@ class WorkstationVisionService:
     def start_session(self, request: StartSessionRequest) -> dict[str, Any]:
         if not request.user_confirmed:
             raise ValueError("User confirmation is required before starting workstation vision.")
+        request.save_raw_frames = restrict_legacy_setting(
+            action="screenshot_copy", mode=request.privacy_mode, enabled=request.save_raw_frames,
+        )
         if request.privacy_mode == "strict" and request.save_raw_frames:
             request.save_raw_frames = False
         adapter = self.adapter()

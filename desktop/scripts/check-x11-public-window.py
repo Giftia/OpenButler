@@ -1,0 +1,217 @@
+"""Synthetic API tests; do not open X11 or read any screen pixels."""
+import ctypes as C
+import importlib.util
+import io
+from pathlib import Path
+import unittest
+from PIL import Image
+
+spec = importlib.util.spec_from_file_location('window_source', Path(__file__).parents[1] / 'src/x11-public-window.py')
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+
+class NativeSourceTests(unittest.TestCase):
+    def test_unique_active_window(self):
+        for values in ([123], [123, 0]):
+            self.assertEqual(module.unique_window_property(values), 123)
+        for values in ([], [0], [0, 123], [123, 456], [123, 0, 0]):
+            with self.assertRaisesRegex(ValueError, 'foreground_unknown'):
+                module.unique_window_property(values)
+
+    def fixture(self, wrong_size=False):
+        source = module.X11WindowSource.__new__(module.X11WindowSource)
+        source.d, source.root = 1, 99
+        source.prepared = True
+        source.owned_redirect = None
+        source.pinned_pixmap = 456
+        source.bound_visual = {'visual_id': 33, 'visual_class': 4, 'depth': 24,
+                               'red_mask': 0xff0000, 'green_mask': 0xff00, 'blue_mask': 0xff}
+        source.selected = {'window_id': 'x11:123', 'content_bounds': {'x': 10, 'y': 20, 'width': 4, 'height': 3}}
+        source.inspect = lambda: {'source_identity': source.selected}
+        source.sync = lambda: None
+        pixels = (C.c_ubyte * 48)(*([30, 20, 10, 0] * 12))
+        value = module.XImage(width=4, height=3, format=2, data=C.addressof(pixels), byte_order=0,
+                              depth=24, bytes_per_line=16, bits_per_pixel=32,
+                              red_mask=0xff0000, green_mask=0xff00, blue_mask=0xff)
+        calls = []
+
+        class Xlib:
+            def XGetGeometry(self, _display, drawable, root, x, y, w, h, border, depth):
+                calls.append(('geometry', drawable))
+                w._obj.value, h._obj.value, border._obj.value, depth._obj.value = (5 if wrong_size else 4), 3, 0, 24
+                return 1
+
+            def XGetImage(self, _display, drawable, *_args):
+                calls.append(('image', drawable))
+                return C.pointer(value)
+
+            def XDestroyImage(self, _image):
+                calls.append(('destroy',))
+
+            def XFreePixmap(self, _display, pixmap):
+                calls.append(('free', pixmap))
+
+            def XSync(self, _display, _discard):
+                calls.append(('sync',))
+
+            def XCreateGC(self, _display, drawable, mask, values):
+                calls.append(('create_gc', drawable, mask, values))
+                return 777
+
+            def XFreeGC(self, _display, gc):
+                calls.append(('free_gc', gc))
+
+            def XSetFunction(self, _display, gc, function):
+                calls.append(('function', gc, function))
+
+            def XSetPlaneMask(self, _display, gc, mask):
+                calls.append(('planes', gc, mask))
+
+            def XSetClipMask(self, _display, gc, mask):
+                calls.append(('clip', gc, mask))
+
+            def XSetForeground(self, _display, gc, color):
+                calls.append(('foreground', gc, color))
+
+            def XFillRectangle(self, _display, drawable, gc, x, y, w, h):
+                calls.append(('fill', drawable, gc, x, y, w, h))
+                C.memset(C.addressof(pixels), 0, len(pixels))
+
+            def XSendEvent(self, _display, window, propagate, event_mask, event):
+                calls.append(('expose', window, propagate, event_mask, event._obj.window))
+                return 1
+
+        class Composite:
+            def XCompositeNameWindowPixmap(self, _display, window):
+                calls.append(('name', window))
+                return 456
+
+            def XCompositeRedirectWindow(self, _display, window, mode):
+                calls.append(('redirect', window, mode))
+
+            def XCompositeUnredirectWindow(self, _display, window, mode):
+                calls.append(('unredirect', window, mode))
+
+        source.x, source.composite = Xlib(), Composite()
+        return source, calls, pixels
+
+    def test_selected_named_pixmap_pixels_and_cleanup(self):
+        source, calls, pixels = self.fixture()
+        metadata, png = source.acquire()
+        with Image.open(io.BytesIO(png)) as image:
+            self.assertEqual(image.size, (4, 3))
+            self.assertEqual(image.getpixel((2, 1)), (10, 20, 30))
+        self.assertEqual(metadata['capture_method'], 'xcomposite_named_window_pixmap')
+        self.assertEqual(calls, [('geometry', 456), ('image', 456), ('destroy',)])
+        self.assertTrue(all(value == 0 for value in pixels))
+        png[:] = b'\0' * len(png)
+
+    def test_wrong_pixmap_bounds_never_read_pixels(self):
+        source, calls, _pixels = self.fixture(wrong_size=True)
+        with self.assertRaisesRegex(ValueError, 'pixmap_bounds_changed'):
+            source.acquire()
+        self.assertEqual(calls, [('geometry', 456)])
+
+    def test_prepare_is_exact_clear_sync_expose_and_own_cleanup_without_pixels(self):
+        source, calls, _pixels = self.fixture()
+        source.prepared = False
+        source.pinned_pixmap = None
+        source.sync = lambda: calls.append(('sync',))
+        self.assertEqual(source.prepare()['pixels_acquired'], False)
+        self.assertEqual(source.owned_redirect, 123)
+        self.assertTrue(source.prepared)
+        self.assertEqual(source.pinned_pixmap, 456)
+        self.assertIn(('function', 777, 3), calls)
+        self.assertIn(('planes', 777, module.U(-1).value), calls)
+        self.assertIn(('clip', 777, 0), calls)
+        fill = calls.index(('fill', 456, 777, 0, 0, 4, 3))
+        self.assertEqual(calls[fill + 1], ('sync',))
+        self.assertIn(('expose', 123, 0, 1 << 15, 123), calls)
+        self.assertFalse(any(call[0] == 'image' for call in calls))
+        source.release_redirect()
+        source.release_redirect()
+        self.assertEqual([call for call in calls if call[0] == 'unredirect'], [('unredirect', 123, 0)])
+        self.assertIsNone(source.owned_redirect)
+        self.assertIsNone(source.pinned_pixmap)
+        self.assertFalse(source.prepared)
+
+    def test_clear_failure_releases_own_redirect_without_repaint_or_read(self):
+        source, calls, _pixels = self.fixture()
+        source.prepared = False
+        source.pinned_pixmap = None
+
+        def checked_sync():
+            if calls and calls[-1][0] == 'fill':
+                raise ValueError('clear_failed')
+
+        source.sync = checked_sync
+        with self.assertRaisesRegex(ValueError, 'clear_failed'):
+            source.prepare()
+        self.assertFalse(source.prepared)
+        self.assertIsNone(source.owned_redirect)
+        self.assertIn(('unredirect', 123, 0), calls)
+        self.assertFalse(any(call[0] in ('image', 'expose') for call in calls))
+        with self.assertRaisesRegex(ValueError, 'window_preparation_required'):
+            source.acquire()
+
+    def test_identity_loss_after_clear_aborts_before_repaint_and_read(self):
+        source, calls, _pixels = self.fixture()
+        source.prepared = False
+        source.pinned_pixmap = None
+        inspections = 0
+
+        def inspect():
+            nonlocal inspections
+            inspections += 1
+            if inspections == 3:
+                raise ValueError('window_identity_changed')
+            return {'source_identity': source.selected}
+
+        source.inspect = inspect
+        with self.assertRaisesRegex(ValueError, 'window_identity_changed'):
+            source.prepare()
+        self.assertFalse(any(call[0] in ('image', 'expose') for call in calls))
+        self.assertEqual([call for call in calls if call[0] == 'unredirect'], [('unredirect', 123, 0)])
+
+    def test_unprepared_source_cannot_read_even_if_a_pixmap_exists(self):
+        source, calls, _pixels = self.fixture()
+        source.prepared = False
+        with self.assertRaisesRegex(ValueError, 'window_preparation_required'):
+            source.acquire()
+        self.assertEqual(calls, [])
+
+    def test_capture_never_switches_to_new_parent_initialized_backing(self):
+        source, calls, _pixels = self.fixture()
+        source.prepared = False
+        source.pinned_pixmap = None
+        source.prepare()
+        source.composite.XCompositeNameWindowPixmap = lambda *_args: 789
+        metadata, png = source.acquire()
+        self.assertEqual([call[1] for call in calls if call[0] == 'fill'], [456])
+        self.assertEqual([call[1] for call in calls if call[0] == 'image'], [456])
+        self.assertFalse(metadata['content_nonblack'])
+        png[:] = b'\0' * len(png)
+        source.release_redirect()
+
+    def test_pixmap_zero_masks_require_exact_authoritative_truecolor_visual(self):
+        source, _calls, pixels = self.fixture()
+        value = module.XImage(width=4, height=3, format=2, data=C.addressof(pixels),
+                              byte_order=0, depth=24, bytes_per_line=16, bits_per_pixel=32)
+        self.assertTrue(module.valid_pixel_format(value, source.bound_visual, 4, 3))
+        self.assertFalse(module.valid_pixel_format(value, None, 4, 3))
+        self.assertFalse(module.valid_pixel_format(value, {**source.bound_visual, 'visual_class': 5}, 4, 3))
+        self.assertFalse(module.valid_pixel_format(value, {**source.bound_visual, 'red_mask': 0xff}, 4, 3))
+        for field, invalid in [('red_mask', 0xff0000), ('blue_mask', 0xff0000),
+                               ('format', 1), ('xoffset', 1), ('byte_order', 1),
+                               ('bits_per_pixel', 24), ('bytes_per_line', 20), ('depth', 32)]:
+            old = getattr(value, field)
+            setattr(value, field, invalid)
+            self.assertFalse(module.valid_pixel_format(value, source.bound_visual, 4, 3), field)
+            setattr(value, field, old)
+        value.red_mask, value.green_mask, value.blue_mask = 0xff0000, 0xff00, 0xff
+        self.assertTrue(module.valid_pixel_format(value, source.bound_visual, 4, 3))
+
+
+if __name__ == '__main__':
+    unittest.main()
