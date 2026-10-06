@@ -33,11 +33,21 @@ class TrialInstallerTests(unittest.TestCase):
         include=(desktop/'installer/installer-windows-trial.nsh').read_text()
         templates=desktop/'node_modules/app-builder-lib/templates/nsis'
         self.assertIn('!macro customCheckAppRunning',include)
-        self.assertIn('!macro customUnInit\n  !insertmacro customCheckAppRunning',include)
+        uninit=include.split('!macro customUnInit\n',1)[1].split('!macroend',1)[0]
+        self.assertLess(uninit.index('!insertmacro openbutlerRequireCurrentUser'),uninit.index('!insertmacro customCheckAppRunning'))
         for file in ['installSection.nsh','uninstaller.nsh']:
             self.assertIn('!insertmacro CHECK_APP_RUNNING',(templates/file).read_text())
         install=(templates/'installSection.nsh').read_text()
         self.assertLess(install.index('!insertmacro CHECK_APP_RUNNING'),install.index('!insertmacro uninstallOldVersion'))
+        self.assertLess(install.index('!insertmacro CHECK_APP_RUNNING'),install.index('!insertmacro installApplicationFiles'))
+        init=(templates/'installer.nsi').read_text().split('Function .onInit',1)[1].split('FunctionEnd',1)[0]
+        self.assertLess(init.index('!insertmacro initMultiUser'),init.index('!insertmacro customInit'))
+        mode=(templates/'multiUserUi.nsh').read_text()
+        self.assertLess(mode.index('${UAC_IsInnerInstance}'),mode.index('!insertmacro customInstallMode'))
+        self.assertLess(mode.index('${isForAllUsers}'),mode.index('${if} $isForceCurrentInstall == "1"'))
+        uninit=(templates/'uninstaller.nsh').read_text().split('Function un.onInit',1)[1].split('FunctionEnd',1)[0]
+        self.assertLess(uninit.index('call un.checkAppRunning'),uninit.index('!insertmacro initMultiUser'))
+        self.assertLess(uninit.index('!insertmacro initMultiUser'),uninit.index('!insertmacro customUnInit'))
         self.assertIn('!ifmacrodef customCheckAppRunning',(templates/'include/allowOnlyOneInstallerInstance.nsh').read_text())
         self.assertIn('!insertmacro customUnInit',(templates/'uninstaller.nsh').read_text())
         self.assertNotIn('taskkill',include.lower());self.assertNotIn('stop-process',guard.read_text().lower())

@@ -5,9 +5,30 @@
 !define APP_FILENAME "OpenButlerWindowsTrial"
 !define OPENBUTLER_TRIAL_STOP_CHECK "${__FILEDIR__}\check-windows-trial-stopped.ps1"
 
+; Inner instances skip builder's install-section running check. Refuse them
+; and every non-current-user route before the mode page or any app mutation.
+!macro openbutlerRequireCurrentUser
+  ${If} ${UAC_IsInnerInstance}
+  ${OrIf} ${isForAllUsers}
+  ${OrIf} $installMode != "CurrentUser"
+    SetErrorLevel 87
+    Quit
+  ${EndIf}
+!macroend
+
+; The assisted mode page must not offer a later switch to all-users mode.
+!macro customInstallMode
+  StrCpy $isForceCurrentInstall "1"
+  StrCpy $isForceMachineInstall "0"
+!macroend
+
 ; Both installer and uninstaller use this override instead of builder's
 ; image-name cleanup. Never stop a process: require an already stopped Trial.
 !macro customCheckAppRunning
+  ; Silent assisted installs can change mode again inside the install section.
+  !ifndef BUILD_UNINSTALLER
+    !insertmacro openbutlerRequireCurrentUser
+  !endif
   StrCmp $INSTDIR "$LOCALAPPDATA\Programs\OpenButlerWindowsTrial" +3
   SetErrorLevel 87
   Quit
@@ -28,10 +49,14 @@
 ; Assisted interactive uninstall does not always call CHECK_APP_RUNNING.
 ; Check before any removal, including a silent upgrade's old-version uninstall.
 !macro customUnInit
+  ; Silent uninstall invokes the shared running check before mode init;
+  ; require CurrentUser here, after initMultiUser, to preserve that early check.
+  !insertmacro openbutlerRequireCurrentUser
   !insertmacro customCheckAppRunning
 !macroend
 
 !macro customInit
+  !insertmacro openbutlerRequireCurrentUser
   ; .onInit runs after directory resolution and before the install section,
   ; including existing-version uninstall, extraction and registry writes.
   StrCmp $INSTDIR "$LOCALAPPDATA\Programs\OpenButlerWindowsTrial" checkTrialCache

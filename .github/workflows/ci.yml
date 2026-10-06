@@ -119,6 +119,8 @@ jobs:
       - run: npm run build:frontend
         working-directory: desktop
       - run: node desktop/scripts/check-desktop-contract.mjs
+      - run: python desktop/scripts/check-windows-trial-installer-scope.py
+      - run: python desktop/scripts/check-windows-trial-installer.py
       - run: node desktop/scripts/check-local-session.cjs
       - run: node desktop/scripts/check-local-session-main.cjs
       - run: node desktop/scripts/check-model-routes-persistence.cjs

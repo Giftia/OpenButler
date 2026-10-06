@@ -64,7 +64,10 @@ build.directories = {...build.directories, output};
 build.artifactName = undefined;
 build.win = {...build.win, artifactName: `${artifactPrefix}-Setup-${previewVersion}.\${ext}`};
 build.nsis = {...build.nsis, include: parallelRc ? "installer/installer-windows-rc.nsh" : isolatedTrial ? "installer/installer-windows-trial.nsh" : "installer/installer-preview.nsh", shortcutName: productName};
-if (isolatedTrial || parallelRc) build.nsis.allowToChangeInstallationDirectory = false;
+if (isolatedTrial || parallelRc) {
+  build.nsis.allowToChangeInstallationDirectory = false;
+  build.nsis.allowElevation = false;
+}
 build.extraMetadata = {version: previewVersion, productName, openbutlerChannel: "preview", openbutlerPreviewVersion: previewVersion};
 build.extraResources = build.extraResources.map((resource) => resource.to === "backend/openbutler-backend.exe"
   ? {from: previewBackend, to: `backend/${backendName}`}
