@@ -1,0 +1,164 @@
+{
+  "catalogVersion": "2026-10-02.v1",
+  "verifiedAt": "2026-10-02",
+  "entries": [
+    {
+      "id": "ministral-3-3b",
+      "name": "Ministral 3 3B",
+      "family": "ministral-3",
+      "backend": "ollama",
+      "model": "ministral-3:3b-instruct-2512-q4_K_M",
+      "manifestDigest": "sha256:f04aa1c738f64e13c625b82ae92504fc0260fa6723b509ed1ece0fa188179b1d",
+      "downloadBytes": 2953840808,
+      "roles": [
+        "image",
+        "text"
+      ],
+      "license": {
+        "name": "Apache-2.0",
+        "url": "https://ollama.com/library/ministral-3:3b-instruct-2512-q4_K_M/blobs/43070e2d4e53"
+      },
+      "sourceUrl": "https://ollama.com/library/ministral-3:3b-instruct-2512-q4_K_M",
+      "quantization": "Q4_K_M",
+      "notes": [
+        "官方模型条目；大小为完整资源合计，缓存可能减少传输量。",
+        "尚未验证所选运行设备的内存需求、速度或截图任务质量。"
+      ],
+      "assets": [
+        {
+          "digest": "sha256:12d848b3c47b6e7f93897fb9f8ba7d2d6d9417e6794e029f8450669cfa430793",
+          "size": 514,
+          "mediaType": "application/vnd.docker.container.image.v1+json"
+        },
+        {
+          "digest": "sha256:910e4bf4e2338f181e99796d7452404e85c1b6bbbf8cd0bb094672cf9b6f2f22",
+          "size": 2953825504,
+          "mediaType": "application/vnd.ollama.image.model"
+        },
+        {
+          "digest": "sha256:24c6226aca35b16350187fb9125e7cb4e746795c78edd3cb1de45654c7e77181",
+          "size": 3413,
+          "mediaType": "application/vnd.ollama.image.template"
+        },
+        {
+          "digest": "sha256:43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1",
+          "size": 11356,
+          "mediaType": "application/vnd.ollama.image.license"
+        },
+        {
+          "digest": "sha256:e0daf17ff83eace4813f9e8554b262f6cc33ad880ff8df41a156ff9ef5522ddb",
+          "size": 21,
+          "mediaType": "application/vnd.ollama.image.params"
+        }
+      ],
+      "downloadSupported": true,
+      "memoryEvidence": "unknown",
+      "speedEvidence": "unknown"
+    },
+    {
+      "id": "gemma4-e2b",
+      "name": "Gemma 4 E2B",
+      "family": "gemma4",
+      "backend": "ollama",
+      "model": "gemma4:e2b-it-qat",
+      "manifestDigest": "sha256:07ea59a474013479c8b6b802bef095c40e964a1d776ba02f264c0e30e1aede0c",
+      "downloadBytes": 4336358185,
+      "roles": [
+        "image",
+        "text"
+      ],
+      "license": {
+        "name": "Apache-2.0",
+        "url": "https://ollama.com/library/gemma4:e2b-it-qat/blobs/0d542e0c8804"
+      },
+      "sourceUrl": "https://ollama.com/library/gemma4:e2b-it-qat",
+      "quantization": "QAT Q4_0 / BF16 projector",
+      "notes": [
+        "官方模型条目；大小为完整资源合计，缓存可能减少传输量。",
+        "尚未验证所选运行设备的内存需求、速度或截图任务质量。"
+      ],
+      "assets": [
+        {
+          "digest": "sha256:e382105d2ac3bee2c4f45647365e2feb906eddac1b6ff44cbaeb28e4c7629286",
+          "size": 545,
+          "mediaType": "application/vnd.docker.container.image.v1+json"
+        },
+        {
+          "digest": "sha256:58c187648007cab392bd5678b87e862c3e8794017deb945feea2cf256195e96a",
+          "size": 986833312,
+          "mediaType": "application/vnd.ollama.image.projector"
+        },
+        {
+          "digest": "sha256:3646b4c147cd235a44d91df1546d3b7d8e29b547dbe4e1f80856419aa455e6fd",
+          "size": 3349514112,
+          "mediaType": "application/vnd.ollama.image.model"
+        },
+        {
+          "digest": "sha256:0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+          "size": 10174,
+          "mediaType": "application/vnd.ollama.image.license"
+        },
+        {
+          "digest": "sha256:56380ca2ab89f1f68c283f4d50863c0bcab52ae3f1b9a88e4ab5617b176f71a3",
+          "size": 42,
+          "mediaType": "application/vnd.ollama.image.params"
+        }
+      ],
+      "downloadSupported": true,
+      "memoryEvidence": "unknown",
+      "speedEvidence": "unknown"
+    },
+    {
+      "id": "qwen3-4b-instruct",
+      "name": "Qwen3 4B Instruct 2507",
+      "family": "qwen3",
+      "backend": "ollama",
+      "model": "qwen3:4b-instruct-2507-q4_K_M",
+      "manifestDigest": "sha256:0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0",
+      "downloadBytes": 2497293803,
+      "roles": [
+        "text"
+      ],
+      "license": {
+        "name": "Apache-2.0",
+        "url": "https://ollama.com/library/qwen3:4b-instruct-2507-q4_K_M/blobs/d18a5cc71b84"
+      },
+      "sourceUrl": "https://ollama.com/library/qwen3:4b-instruct-2507-q4_K_M",
+      "quantization": "Q4_K_M",
+      "notes": [
+        "官方模型条目；大小为完整资源合计，缓存可能减少传输量。",
+        "尚未验证所选运行设备的内存需求、速度或截图任务质量。"
+      ],
+      "assets": [
+        {
+          "digest": "sha256:b72accf9724e93698c57cbd3b1af2d3341b3d05ec2089d86d273d97964853cd2",
+          "size": 487,
+          "mediaType": "application/vnd.docker.container.image.v1+json"
+        },
+        {
+          "digest": "sha256:85e4a5b7b8ef0e48af0e8658f5aaab9c2324c76c1641493f4d1e25fce54b18b9",
+          "size": 2497280480,
+          "mediaType": "application/vnd.ollama.image.model"
+        },
+        {
+          "digest": "sha256:eade0a07cac7712787bbce23d12f9306adb4781d873d1df6e16f7840fa37afec",
+          "size": 1379,
+          "mediaType": "application/vnd.ollama.image.template"
+        },
+        {
+          "digest": "sha256:d18a5cc71b84bc4af394a31116bd3932b42241de70c77d2b76d69a314ec8aa12",
+          "size": 11338,
+          "mediaType": "application/vnd.ollama.image.license"
+        },
+        {
+          "digest": "sha256:0914c7781e001948488d937994217538375b4fd8c1466c5e7a625221abd3ea7a",
+          "size": 119,
+          "mediaType": "application/vnd.ollama.image.params"
+        }
+      ],
+      "downloadSupported": true,
+      "memoryEvidence": "unknown",
+      "speedEvidence": "unknown"
+    }
+  ]
+}

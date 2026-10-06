@@ -48,8 +48,8 @@ const expectations = [
   ["main implements single instance", main.includes("requestSingleInstanceLock") && main.includes("second-instance")],
   ["main has desktop load error page", main.includes("loadDesktopErrorPage") && main.includes("did-fail-load")],
   ["main writes packaged smoke state", main.includes("OPENBUTLER_DESKTOP_SMOKE_FILE") && main.includes("bodyTextLength")],
-  ["main stops backend process tree on quit", main.includes("function killProcessTree") && main.includes('taskkill", ["/PID", String(pid), "/T", "/F"') && main.includes("OPENBUTLER_DESKTOP_SMOKE_QUIT_AFTER_MS")],
-  ["main kills only the active channel backend image", main.includes("function killProcessByImageName") && main.includes("killProcessByImageName(backendImageName)")],
+  ["main confirms owned backend process-tree stop", main.includes("function stopOwnedSessionBackend") && main.includes('taskkill", ["/PID", String(child.pid), "/T", "/F"') && main.includes("exitObserved") && main.includes("terminationAccepted") && main.includes("OPENBUTLER_DESKTOP_SMOKE_QUIT_AFTER_MS")],
+  ["main never kills by image or stale status PID", !main.includes('"/IM"') && !main.includes("cleanupStaleBackendProcessesOnce") && !main.includes("backendProcess?.pid ?? backendState.pid")],
   ["main cleans backend on will-quit and process exit", main.includes('app.on("will-quit"') && main.includes('process.on("exit"')],
   ["backend entry guards missing standard streams", backendEntry.includes("_ensure_standard_streams") && backendEntry.includes("sys.stderr is None")],
   ["backend entry disables uvicorn default log config", backendEntry.includes("log_config=None") && backendEntry.includes("access_log=False")],
@@ -84,3 +84,4 @@ if (failed.length) {
 }
 
 console.log("desktop contract ok");
+

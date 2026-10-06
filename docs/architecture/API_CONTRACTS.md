@@ -142,3 +142,7 @@ Best when:
 - evidence requires lazy loading or extra redaction rules.
 
 Do not implement this endpoint as part of architecture alignment unless a separate task is opened.
+
+## Desktop device model catalog
+
+The finite Electron-only catalog, explicit Ollama host inspection and allowlisted download IPC are documented in [Device model catalog v1](DEVICE_MODEL_CATALOG.md). They are not FastAPI or OpenClaw endpoints. Catalog/status reads do not probe services; downloads never activate model routes or start capture. Disconnected pulls retain an unknown-server-state lock rather than claiming cancellation.

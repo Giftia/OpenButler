@@ -4,9 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
+    "dev": "vite --host 127.0.0.1",
     "build": "tsc && vite build",
-    "preview": "vite preview --host 0.0.0.0",
+    "preview": "vite preview --host 127.0.0.1",
+    "test:local-proxy": "node scripts/check-local-proxy.mjs",
     "smoke:routes": "node scripts/smoke-routes.mjs",
     "smoke:butler-demo": "node scripts/smoke-butler-demo-api.mjs",
     "smoke:butler-reset": "node scripts/smoke-butler-demo-reset.mjs",
@@ -22,6 +23,7 @@
     "smoke:assistant-natural-control": "node scripts/smoke-assistant-natural-control.mjs",
     "smoke:desktop-runtime-bridge": "node scripts/smoke-desktop-runtime-bridge.mjs",
     "smoke:local-mode-activation": "node scripts/smoke-local-mode-activation.mjs",
+    "smoke:preview-builtin-capture": "node scripts/smoke-preview-builtin-capture.mjs",
     "smoke:nightly-acceptance": "node scripts/check-nightly-acceptance-center.mjs",
     "smoke:demo-local-boundary": "node scripts/smoke-demo-local-boundary.mjs",
     "smoke:butler-l1-audit": "node scripts/smoke-butler-l1-audit.mjs",
@@ -47,7 +49,16 @@
     "test:metrics-trend-panel": "node scripts/check-butler-metrics-trend-panel.mjs",
     "test:inbox-evidence-panel": "node scripts/check-butler-inbox-evidence-panel.mjs",
     "test:mvp-report-panel": "node scripts/check-butler-mvp-report-panel.mjs",
-    "test:data-insufficient-drill-script": "node scripts/check-butler-data-insufficient-drill-script.mjs"
+    "test:data-insufficient-drill-script": "node scripts/check-butler-data-insufficient-drill-script.mjs",
+    "test:phase1-ui": "node scripts/check-phase1-ui.cjs",
+    "test:preview-model-settings": "node scripts/check-preview-model-settings.mjs",
+    "test:mask-editor": "node scripts/check-mask-editor.mjs",
+    "test:mask-editor-dom": "node scripts/check-full-desktop-gate-dom.cjs && node scripts/check-mask-editor-dom.cjs",
+    "test:agent-loop": "node scripts/check-agent-loop-dom.cjs",
+    "test:planner-model-settings": "node scripts/check-planner-model-settings-dom.cjs",
+    "test:natural-chat": "node scripts/check-natural-chat-dom.cjs",
+    "test:capture-coverage": "node scripts/check-capture-coverage-dom.cjs",
+    "test:model-catalog": "node scripts/check-model-catalog-dom.cjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
@@ -59,6 +70,7 @@
   },
   "devDependencies": {
     "@types/react": "^19.2.15",
-    "@types/react-dom": "^19.2.3"
+    "@types/react-dom": "^19.2.3",
+    "jsdom": "26.1.0"
   }
 }

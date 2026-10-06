@@ -1,0 +1,13 @@
+schema_version: 1
+module: OpenButler Context Engine
+upstream_reference:
+  project: MineContext
+  url: https://github.com/volcengine/MineContext
+  license: Apache-2.0
+derived_files: []
+copied_files: []
+rules:
+  - This foundation contains no copied or derived upstream implementation.
+  - Future copies or adaptations must record upstream URL, immutable revision, upstream and local repository-relative paths, license, and modification summary.
+  - Preserve upstream copyright and applicable NOTICE obligations in the same change.
+  - Never record personal paths, credentials, activity, screenshots, or raw output here.

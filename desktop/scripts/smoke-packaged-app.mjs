@@ -6,7 +6,7 @@ import {fileURLToPath} from "node:url";
 const desktopRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const channel = process.argv.includes("--channel=preview") ? "preview" : "stable";
 const executableName = channel === "preview" ? "OpenButler Preview.exe" : "OpenButler.exe";
-const backendName = channel === "preview" ? "openbutler-backend-preview.exe" : "openbutler-backend.exe";
+const backendName = process.env.OPENBUTLER_EXPECTED_BACKEND_IMAGE || (channel === "preview" ? "openbutler-backend-preview.exe" : "openbutler-backend.exe");
 const distName = channel === "preview" ? "dist-preview" : "dist";
 const exePath = process.env.OPENBUTLER_DESKTOP_EXE_PATH || resolve(desktopRoot, distName, "win-unpacked", executableName);
 const smokeDir = resolve(desktopRoot, ".tmp", `packaged-smoke-${channel}`);
@@ -15,6 +15,12 @@ const userDataDir = resolve(smokeDir, "user-data");
 
 if (!existsSync(exePath)) {
   throw new Error(`Packaged app not found: ${exePath}`);
+}
+if (channel === "preview") {
+  for (const script of ["active-app.ps1", "visible-apps.ps1"]) {
+    const scriptPath = resolve(dirname(exePath), "resources", "app.asar.unpacked", "src", script);
+    if (!existsSync(scriptPath)) throw new Error(`Packaged capture script missing: ${script}`);
+  }
 }
 
 rmSync(smokeDir, {recursive: true, force: true});

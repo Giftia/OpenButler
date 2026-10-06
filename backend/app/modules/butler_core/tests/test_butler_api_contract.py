@@ -422,7 +422,7 @@ class ButlerApiContractTests(unittest.TestCase):
         objective = objectives["OB-GOAL-034"]
         self.assertEqual(objective["status"], "needs_attention")
         self.assertEqual(objective["title"], "Secure Integrated Context Engine")
-        self.assertEqual(objective["proven_count"], objective["criteria_count"] - 3)
+        self.assertEqual(objective["proven_count"], objective["criteria_count"] - 1)
         self.assertEqual(objective["priority"], "P0")
         self.assertTrue(objective["success_criteria"])
         self.assertEqual(objective["source_ref"]["path"], ".openbutler/goals.yaml")
@@ -430,8 +430,9 @@ class ButlerApiContractTests(unittest.TestCase):
             self.assertTrue(criterion["evidence_refs"])
             self.assertTrue(criterion["evidence_boundary"])
         criteria = {item["id"]: item for item in objective["criteria"]}
-        self.assertEqual(criteria["context_engine_skeleton"]["status"], "needs_attention")
-        self.assertEqual(criteria["local_session_and_origin"]["status"], "needs_attention")
+        self.assertEqual(criteria["context_engine_skeleton"]["status"], "proven")
+        self.assertEqual(criteria["local_session_and_origin"]["status"], "proven")
+        self.assertEqual(criteria["local_session_and_origin"]["details"]["packaged_acceptance"], "not_verified")
         self.assertEqual(criteria["central_privacy_guard"]["status"], "needs_attention")
         self.assertEqual(criteria["minecontext_read_only_compatibility"]["status"], "proven")
         self.assertEqual(criteria["redacted_status_interfaces"]["status"], "proven")
@@ -503,7 +504,7 @@ class ButlerApiContractTests(unittest.TestCase):
         self.assertGreaterEqual(response["summary"]["success_criteria_count"], 6)
         self.assertEqual(response["summary"]["missing_evidence"], 0)
         self.assertEqual(response["summary"]["out_of_scope"], 0)
-        self.assertEqual(response["summary"]["needs_attention"], 3)
+        self.assertEqual(response["summary"]["needs_attention"], 1)
         self.assertFalse(response["privacy"]["external_model_used"])
         self.assertFalse(response["privacy"]["external_model_allowed"])
         self.assertEqual(response["privacy"]["minecontext_source_deleted"], 0)
@@ -514,8 +515,8 @@ class ButlerApiContractTests(unittest.TestCase):
         goal = objectives["OB-GOAL-034"]
         self.assertEqual(goal["objective_status"], "needs_attention")
         checks = {item["success_criterion"]: item for item in goal["success_criteria"]}
-        self.assertEqual(checks["context_engine 内核骨架和 Apache-2.0 来源声明存在"]["verification_result"], "needs_attention")
-        self.assertEqual(checks["本地 API 有会话鉴权和 Origin 限制"]["verification_result"], "needs_attention")
+        self.assertEqual(checks["context_engine 内核骨架和 Apache-2.0 来源声明存在"]["verification_result"], "proven")
+        self.assertEqual(checks["本地 API 有会话鉴权和 Origin 限制"]["verification_result"], "proven")
         self.assertEqual(checks["统一 PrivacyGuard 覆盖采集、模型、截图、迁移和外部写入"]["verification_result"], "needs_attention")
         self.assertEqual(checks["旧 MineContext 仅作为只读迁移兼容层"]["verification_result"], "proven")
         self.assertEqual(checks["普通状态接口不返回密钥、绝对路径、截图或 raw output"]["verification_result"], "proven")
