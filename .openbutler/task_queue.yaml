@@ -1,4 +1,19 @@
 tasks:
+  - id: OB-CTX-001
+    title: "Context Engine foundation and provenance"
+    goal_id: OB-GOAL-034
+    priority: P0
+    status: in_progress
+    issue_url: "https://github.com/Giftia/OpenButler/issues/24"
+    done_when:
+      - "Typed foundation and redacted capability status exist without source access"
+      - "Provenance is explicit and unit tests pass"
+      - "Independent review and CI verify the candidate; no automatic merge"
+    evidence:
+      - "backend/app/modules/context_engine/foundation.py"
+      - "backend/app/modules/context_engine/tests/test_foundation.py"
+      - "docs/product/PREVIEW_020_DELIVERY.md"
+
   - id: OB-TASK-270
     title: "建立 canonical main 与公开仓库安全基线"
     goal_id: OB-GOAL-027

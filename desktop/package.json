@@ -12,6 +12,11 @@
     "dist": "node scripts/build-installer.mjs",
     "dist:preview": "node scripts/build-preview-installer.mjs",
     "dist:release": "node scripts/build-stable-release.mjs",
+    "check:offline-ocr": "node scripts/copy-offline-ocr-assets.cjs && node scripts/check-offline-ocr.cjs",
+    "predev": "node scripts/copy-offline-ocr-assets.cjs",
+    "prepack": "node scripts/copy-offline-ocr-assets.cjs",
+    "predist": "node scripts/copy-offline-ocr-assets.cjs",
+    "predist:release": "node scripts/copy-offline-ocr-assets.cjs",
     "check": "node scripts/check-desktop-contract.mjs",
     "smoke:packaged": "node scripts/smoke-packaged-app.mjs",
     "smoke:preview-packaged": "node scripts/smoke-packaged-app.mjs --channel=preview",
@@ -23,6 +28,10 @@
     "appId": "moe.giftia.openbutler",
     "productName": "OpenButler",
     "asar": true,
+    "asarUnpack": [
+      "node_modules/**/*",
+      "src/*.ps1"
+    ],
     "files": [
       "src/**/*",
       "package.json"
@@ -31,6 +40,10 @@
       {
         "from": "assets",
         "to": "assets"
+      },
+      {
+        "from": ".tmp/ocr-languages",
+        "to": "ocr-languages"
       },
       {
         "from": "../frontend/dist",
@@ -57,7 +70,15 @@
     }
   },
   "devDependencies": {
+    "@expo-google-fonts/roboto": "0.4.3",
+    "@tesseract.js-data/chi_sim": "1.0.0",
+    "@tesseract.js-data/eng": "1.0.0",
     "electron": "^31.7.7",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "pureimage": "0.4.20"
+  },
+  "dependencies": {
+    "pngjs": "7.0.0",
+    "tesseract.js": "6.0.1"
   }
 }

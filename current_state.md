@@ -1,10 +1,22 @@
 # OpenButler Current State
 
-Updated: 2026-08-14
+Updated: 2026-09-23
 
 ## Current Stage
 
 The only active product objective is `OB-GOAL-034: Secure Integrated Context Engine`.
+
+The 0.2.0 Preview implementation is proceeding interactively, starting with
+#24-#27. Automatic schedules and automatic merges remain paused. The release
+scope and gates are in `docs/product/PREVIEW_020_DELIVERY.md`. The following
+automation history is not evidence of a current product delivery.
+
+An isolated worktree now has a `0.2.0-preview.20260923.3` installer, synthetic
+backend/frontend checks for built-in recording, and unpacked plus installed
+Preview startup/exit smoke with isolated test data. It is not evidence of
+real screen privacy performance, a real model connection, uninstall lifecycle,
+or human acceptance. The stable installation and MineContext source data remain
+untouched.
 
 OpenButler has completed the L1 governance bootstrap and is recording delegated L2 through the current governance pull request. The original local Codex heartbeat remains paused. PR #18 and #19 are merged, and the Windows scheduler has a successful supervised dry-run readback.
 
@@ -29,10 +41,11 @@ Already implemented and tested:
 - React/Vite ordinary-user product shell and Windows Electron shell.
 - Local-mode activation flow with redacted preview boundaries.
 
-Important gaps before the Integrated Context Engine can start:
+Important gaps on canonical `main` and in the broader parity roadmap; the
+isolated Preview branch implements only the first capture-to-review slice:
 
 - No unified local API authentication or central PrivacyGuard.
-- No internal `context_engine` implementation yet; MineContext remains an external read-only compatibility source.
+- Internal `context_engine` has a typed foundation candidate only; capture and processing are not implemented. MineContext remains an external read-only compatibility source.
 - No three-route image, text, and Embedding model gateway with protected secret storage.
 - No verified migration preview and read-only copy path for existing MineContext data.
 - No feature-parity implementation for capture, activities, reports, tasks, search, and memory.

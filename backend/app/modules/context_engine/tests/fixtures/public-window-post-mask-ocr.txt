@@ -1,0 +1,21 @@
+File Edit Search View Document Help
+
+qwen35-evaluation.txt
+
+Qwen3.5 local model evaluation
+
+Question
+Can the small local model support OpenButler's public-window trial?
+
+/ollama.com/library/qwen3.5:2b-q4 KM
+
+Working checklist
+
+- Review measured text and image results
+
+- Separate speed from answer correctness
+
+- Identify the next real-window acceptance check
+
+review in progress
+image test42 recognized; exact reply failed

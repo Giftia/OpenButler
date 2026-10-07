@@ -12,6 +12,7 @@ from app.integrations.minecontext import MineContextAdapter
 from app.integrations.minecontext.config import MineContextSettings
 from app.integrations.minecontext.errors import MineContextError
 from app.integrations.minecontext.normalizer import pc_event_from_activity, redact_sensitive_text
+from app.security.privacy_compat import restrict_legacy_setting
 
 from .schemas import PCActivitySettings
 from .timeline.activity_timeline import app_usage, domain_usage, focus_blocks
@@ -124,6 +125,14 @@ class PCActivityContextService:
         current = self.get_settings().model_dump()
         current.update(payload)
         settings = PCActivitySettings.model_validate(current)
+        settings.minecontext.external_model_allowed = restrict_legacy_setting(
+            action="model_external", mode=settings.privacy_mode,
+            enabled=settings.minecontext.external_model_allowed,
+        )
+        settings.minecontext.copy_screenshot_evidence = restrict_legacy_setting(
+            action="screenshot_copy", mode=settings.privacy_mode,
+            enabled=settings.minecontext.copy_screenshot_evidence,
+        )
         if settings.privacy_mode == "strict":
             settings.minecontext.external_model_allowed = False
             settings.minecontext.copy_screenshot_evidence = False
@@ -209,6 +218,9 @@ class PCActivityContextService:
     ) -> dict[str, Any]:
         settings = self.get_settings()
         effective_copy_screenshots = bool(copy_screenshots and settings.privacy_mode != "strict")
+        effective_copy_screenshots = effective_copy_screenshots and restrict_legacy_setting(
+            action="screenshot_copy", mode=settings.privacy_mode, enabled=effective_copy_screenshots,
+        )
         warnings = [
             "dry-run 预览不会写入 OpenButler 数据库",
             "不会修改 MineContext 原始数据",

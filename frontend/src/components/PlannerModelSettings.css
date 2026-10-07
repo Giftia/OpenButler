@@ -1,0 +1,17 @@
+/* Narrow Preview text-planner controls. Never styles Phase 1 model settings. */
+.agent-loop .planner-model-settings .planner-status-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+.agent-loop .planner-model-settings .planner-status-grid > div { padding: 12px 14px; border: 1px solid var(--loop-line); border-radius: 10px; background: #f7faf8; }
+.agent-loop .planner-model-settings dt { color: var(--loop-muted); font-size: 12px; margin-bottom: 6px; }
+.agent-loop .planner-model-settings dd { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.agent-loop .planner-model-settings .planner-selection { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+.agent-loop .planner-model-settings .planner-selection label { flex: 1 1 260px; }
+.agent-loop .planner-model-settings .planner-selection small { flex: 1 0 100%; }
+.agent-loop .planner-model-settings .planner-configuration { padding-top: 14px; border-top: 1px solid var(--loop-line); }
+.agent-loop .planner-model-settings .planner-configuration summary { cursor: pointer; color: #315f53; font-size: 14px; font-weight: 600; }
+.agent-loop .planner-model-settings .planner-consent { display: flex; align-items: flex-start; gap: 9px; font-weight: 400; line-height: 1.65; }
+.agent-loop .planner-model-settings .planner-consent input { width: auto; margin-top: 5px; flex: 0 0 auto; }
+.agent-loop .loop-proposal { border: 1px dashed #c6cfe4; border-radius: 12px; padding: 14px; background: #f7f8fd; margin: 14px 0; overflow-wrap: anywhere; }
+.agent-loop .loop-proposal .loop-plan { margin-bottom: 8px; }
+.agent-loop .loop-proposal .loop-proposal-summary { white-space: pre-wrap; }
+.agent-loop .loop-proposal .loop-proposal-boundary { color: #54516d; font-size: 12px; }
+@media (max-width: 600px) { .agent-loop .planner-model-settings .planner-status-grid { grid-template-columns: minmax(0, 1fr); } }

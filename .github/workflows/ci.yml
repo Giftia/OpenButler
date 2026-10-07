@@ -65,14 +65,16 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - run: python -m pip install -r backend/requirements.txt
-      - name: Run Context Engine tests when present
-        shell: bash
-        run: |
-          if [ -d backend/app/modules/context_engine/tests ]; then
-            python -m unittest discover -s backend/app/modules/context_engine/tests
-          else
-            echo "Context Engine tests are not present yet."
-          fi
+      - name: Run Context Engine and local security tests
+        run: python -m unittest discover -s backend/app/modules/context_engine/tests
+        env:
+          PYTHONPATH: backend
+      - name: Run Model Gateway transport and policy tests
+        run: python -m unittest discover -s backend/app/modules/model_gateway/tests
+        env:
+          PYTHONPATH: backend
+      - name: Run Local Goal Runtime durability and boundary tests
+        run: python -m unittest discover -s backend/app/modules/agent_runtime/tests
         env:
           PYTHONPATH: backend
 
@@ -91,6 +93,14 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run build
+      - run: npm run test:local-proxy
+      - run: npm run test:phase1-ui
+      - run: npm run test:preview-model-settings
+      - run: npm run test:mask-editor
+      - run: npm run test:mask-editor-dom
+      - run: npm run test:agent-loop
+      - run: npm run test:planner-model-settings
+      - run: npm run test:natural-chat
 
   desktop-contract:
     name: Desktop Contract
@@ -104,9 +114,17 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
         working-directory: frontend
+      - run: npm ci --ignore-scripts
+        working-directory: desktop
       - run: npm run build:frontend
         working-directory: desktop
       - run: node desktop/scripts/check-desktop-contract.mjs
+      - run: python desktop/scripts/check-windows-trial-installer-scope.py
+      - run: python desktop/scripts/check-windows-trial-installer.py
+      - run: node desktop/scripts/check-local-session.cjs
+      - run: node desktop/scripts/check-local-session-main.cjs
+      - run: node desktop/scripts/check-model-routes-persistence.cjs
+      - run: node desktop/scripts/check-capture-controller.cjs
       - run: node desktop/scripts/check-desktop-frontend-assets.mjs
 
   loop-governance:

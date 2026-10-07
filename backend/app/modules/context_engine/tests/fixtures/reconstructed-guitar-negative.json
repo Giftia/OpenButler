@@ -1,0 +1,8 @@
+{
+  "provenance": "Reconstructed from the verified prior report of the 2026-10-02 captured public-window failure. The original raw JSON and screenshot are not part of this fixture; this is not a fresh real-model replay.",
+  "source_ocr": "qwen35-evaluation. txt @\nguitar notes\nstandard tuning e a d g b e\n",
+  "unsupported_summary": "当前画面显示吉他标准调弦，琴弦上标记有'a'、'd'、'g'等音符。",
+  "prior_reported_raw_response_sha256": "9902d73c06aa38c8cb4136f5af4dd466a840e27d022b8c1a0d999ae08ad02d8d",
+  "prior_reported_image_sha256": "0a2cda25eed553b7370996258385d0aa857967de684be4e76d45bf61d39b48f5",
+  "hash_note": "These identify the earlier artifacts, not this reconstructed fixture. They cannot be reverified from the files currently available."
+}
