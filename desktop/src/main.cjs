@@ -14,12 +14,39 @@ const {createModelCatalog} = require("./model-catalog.cjs");
 const {createJournal} = require("./model-catalog-journal.cjs");
 const packageMetadata = require("../package.json");
 
+// This single unpacked Nightly identity never inherits a legacy profile or
+// caller-supplied configuration. Validate before profile I/O, services or lock.
+const isWindowsNightly = packageMetadata.openbutlerVariant === "windows-nightly-unpacked-v1";
+const hasNightlyMetadata = isWindowsNightly || Object.entries(packageMetadata).some(([key, value]) =>
+  (key.startsWith("openbutler") || ["productName", "name", "version"].includes(key))
+    && /nightly/i.test(String(value)));
+if (hasNightlyMetadata) {
+  if (!isWindowsNightly || packageMetadata.productName !== "OpenButler Nightly Windows"
+      || packageMetadata.openbutlerChannel !== "preview"
+      || packageMetadata.openbutlerAppId !== "moe.giftia.openbutler.nightly.windows"
+      || !/^0\.2\.0-nightly\.\d{8}\.[1-9]\d*$/.test(packageMetadata.version || "")
+      || !/^[a-f0-9]{40}$/.test(packageMetadata.openbutlerSourceCommit || "")
+      || !/^[a-f0-9]{40}$/.test(packageMetadata.openbutlerSourceTree || "")
+      || !app.isPackaged || process.platform !== "win32" || process.arch !== "x64") {
+    throw new Error("nightly_identity_invalid");
+  }
+  if (Object.keys(process.env).some(key =>
+    (/^OPENBUTLER_/i.test(key) && !(key === "OPENBUTLER_STARTUP_DIAGNOSTICS" && process.env[key] === "1"))
+      || /^MINECONTEXT_/i.test(key)) || process.argv.length !== 1) {
+    throw new Error("nightly_launch_override_forbidden");
+  }
+  app.setPath("userData", path.join(app.getPath("appData"), "OpenButler Nightly Windows Fresh"));
+} else if (packageMetadata.openbutlerVariant !== undefined || packageMetadata.openbutlerAppId !== undefined) {
+  throw new Error("desktop_variant_invalid");
+}
+
 const desktopChannel = process.env.OPENBUTLER_DESKTOP_CHANNEL
   || packageMetadata.openbutlerChannel
   || (String(packageMetadata.productName || "").includes("Preview") ? "preview" : "stable");
 const isPreviewChannel = desktopChannel === "preview";
 const isWindowsRc = packageMetadata.productName === "OpenButler Preview Windows RC";
-const backendImageName = isWindowsRc ? "openbutler-backend-windows-rc.exe"
+const backendImageName = isWindowsNightly ? "openbutler-backend-windows-nightly.exe"
+  : isWindowsRc ? "openbutler-backend-windows-rc.exe"
   : packageMetadata.productName === "OpenButler Preview Windows Trial"
   ? "openbutler-backend-windows-trial.exe"
   : isPreviewChannel ? "openbutler-backend-preview.exe" : "openbutler-backend.exe";
@@ -79,7 +106,9 @@ const discoverLocalModels = createLocalModelDiscovery();
 // Construction and catalog/status reads do not probe any model endpoint.
 const builtinModelCatalog = createModelCatalog({...createJournal(userDataDir)});
 
-if (process.env.OPENBUTLER_DESKTOP_USER_DATA_DIR) {
+if (isWindowsNightly) {
+  // Already selected and validated before constructing application services.
+} else if (process.env.OPENBUTLER_DESKTOP_USER_DATA_DIR) {
   app.setPath("userData", process.env.OPENBUTLER_DESKTOP_USER_DATA_DIR);
 } else if (isPreviewChannel) {
   app.setPath("userData", path.join(app.getPath("appData"),
@@ -599,6 +628,7 @@ async function launchBackend(generation) {
     let args;
     const options = {env, windowsHide: true, stdio: "ignore"};
 
+    if (isWindowsNightly && !fs.existsSync(packagedExe)) throw new Error("nightly_backend_missing");
     if (app.isPackaged && fs.existsSync(packagedExe)) {
       command = packagedExe;
       args = [];
@@ -805,6 +835,12 @@ async function createWindow() {
   restrictNavigation(mainWindow.webContents, frontendIndexPath());
 
   mainWindow.on("close", (event) => {
+    if (isWindowsNightly) {
+      // Keep repeated closes from destroying the window during an unconfirmed stop.
+      event.preventDefault();
+      void quitApplication();
+      return;
+    }
     if (isQuitting) return;
     event.preventDefault();
     mainWindow.hide();

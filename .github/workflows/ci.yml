@@ -123,6 +123,7 @@ jobs:
       - run: python desktop/scripts/check-windows-trial-installer.py
       - run: node desktop/scripts/check-local-session.cjs
       - run: node desktop/scripts/check-local-session-main.cjs
+      - run: node --test desktop/scripts/check-nightly-unpacked.test.mjs
       - run: node desktop/scripts/check-model-routes-persistence.cjs
       - run: node desktop/scripts/check-capture-controller.cjs
       - run: node desktop/scripts/check-desktop-frontend-assets.mjs
