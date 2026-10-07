@@ -9,6 +9,8 @@
     "build:frontend": "node scripts/build-frontend-for-desktop.mjs",
     "build:backend": "pyinstaller --noconfirm desktop_backend.spec",
     "pack": "npm run build:frontend && electron-builder --dir",
+    "pack:nightly": "node scripts/build-nightly-unpacked.mjs",
+    "check:nightly": "node --test scripts/check-nightly-unpacked.test.mjs",
     "dist": "node scripts/build-installer.mjs",
     "dist:preview": "node scripts/build-preview-installer.mjs",
     "dist:release": "node scripts/build-stable-release.mjs",
