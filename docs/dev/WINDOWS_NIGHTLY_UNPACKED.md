@@ -39,6 +39,18 @@ goal adoption and goal automation remain unavailable. Missing own packaged
 backend is a startup failure, with no Python/development fallback. Existing
 owned-child shutdown semantics remain in effect.
 
+## Close and minimize
+
+For this Nightly only, title-bar Close or Alt+F4 stops local recording and uses
+the existing quit flow to stop its owned backend before exiting. Repeated Close
+requests keep the window visible while the same shutdown is pending. If the
+owned process-tree stop fails or its child exit is unconfirmed, the window stays
+open with an error, and the existing stop guard blocks normal exit and backend
+replacement. A timed-out capture-pause acknowledgment still follows the existing
+bounded shutdown path; successful process exit alone does not prove a persisted
+pause. Minimize still hides to the tray and does not stop recording. Stable,
+Preview, Trial and RC retain their existing close-to-hide behavior.
+
 ## Build after review
 
 Use a reviewed clean checkout and its locked dependencies on Windows x64,
@@ -79,9 +91,11 @@ node --test desktop/scripts/check-nightly-unpacked.test.mjs
 
 The VM tests prove profile-before-lock/I/O ordering, owned backend data path,
 strict/built-in settings, no implicit capture/model call, rejected overrides,
-missing-backend failure, and old-variant compatibility. Builder mocks test
-fresh inputs, x64-only output, failure propagation and changed-source rejection;
-they do not prove Windows compiler or Electron packaging execution.
+missing-backend failure, close/repeated-close shutdown and failed-stop window
+preservation, unchanged minimize behavior, and old-variant compatibility.
+Builder mocks test fresh inputs, x64-only output, failure propagation and
+changed-source rejection; they do not prove Windows compiler or Electron
+packaging execution.
 
 Before any program swap, independently verify the built ASAR metadata, all
 resource identities/hashes, offline OCR and helper placement, and the ordinary

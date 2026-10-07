@@ -835,6 +835,12 @@ async function createWindow() {
   restrictNavigation(mainWindow.webContents, frontendIndexPath());
 
   mainWindow.on("close", (event) => {
+    if (isWindowsNightly) {
+      // Keep repeated closes from destroying the window during an unconfirmed stop.
+      event.preventDefault();
+      void quitApplication();
+      return;
+    }
     if (isQuitting) return;
     event.preventDefault();
     mainWindow.hide();

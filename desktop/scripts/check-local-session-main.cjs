@@ -39,12 +39,22 @@ function mainHarness({packaged = false, spawnThrows = false, healthOk = true, fe
     constructor(options) {
       super();
       this.options = options;
+      this.visible = true;
+      this.destroyed = false;
+      this.hideCalls = 0;
       this.webContents = Object.assign(new EventEmitter(), {
         mainFrame: {url: "about:blank"}, isDestroyed: () => false,
         setWindowOpenHandler(handler) { this.openHandler = handler; },
       });
     }
-    isDestroyed() { return false; }
+    isDestroyed() { return this.destroyed; }
+    isVisible() { return this.visible; }
+    hide() { this.hideCalls++; this.visible = false; }
+    close() {
+      let prevented = false;
+      this.emit("close", {preventDefault() { prevented = true; }});
+      if (!prevented) { this.destroyed = true; this.visible = false; }
+    }
     async loadFile(file) { this.webContents.mainFrame.url = pathToFileURL(file).href; }
   }
   const fakeProcess = Object.assign(new EventEmitter(), {
@@ -204,6 +214,125 @@ test("Nightly missing packaged backend fails closed without Python fallback", as
   assert.equal((await h.startBackend()).running, false);
   assert.equal(h.children.length, 0);
   assert.equal(h.requests.length, 0);
+});
+
+test("Nightly close stops recording and repeated close waits for owned shutdown before exiting once", async () => {
+  let release;
+  const h = mainHarness({packaged: true, metadata: nightlyMetadata, childKillExits: false,
+    fetchBehavior: async url => String(url).endsWith("/capture/pause")
+      ? new Promise(resolve => { release = () => resolve({ok: true, json: async () => ({active: false})}); })
+      : {ok: true, json: async () => ({})}});
+  await h.createWindow();
+  const window = h.getWindow(), reasons = [];
+  const controllers = ["capture", "public-window"].map(name => ({active: true,
+    pause(reason) { this.active = false; reasons.push([name, reason]); return Promise.resolve(); }}));
+  h.setControllers(...controllers);
+  window.close();
+  window.close();
+  assert.equal(window.isDestroyed(), false);
+  assert.equal(window.isVisible(), true);
+  assert.equal(window.hideCalls, 0);
+  assert.ok(controllers.every(controller => !controller.active));
+  assert.deepEqual(reasons, [["capture", "shutdown"], ["public-window", "shutdown"]]);
+  assert.equal(h.requests.filter(request => String(request.url).endsWith("/capture/pause")).length, 1);
+  assert.equal(h.forceKills.length, 0);
+  assert.deepEqual(h.exits, []);
+  const quitting = h.quitApplication();
+  assert.equal(h.quitApplication(), quitting);
+  // Queue this checkpoint before releasing pause, ahead of the mocked stop timeout.
+  const afterPause = new Promise(resolve => setImmediate(resolve));
+  release();
+  await afterPause;
+  assert.equal(h.forceKills.length, 1);
+  assert.deepEqual(h.exits, [], "Accepted tree termination still needs an observed owned-child exit.");
+  window.close();
+  assert.equal(window.isDestroyed(), false);
+  assert.equal(window.isVisible(), true);
+  h.children[0].signalCode = "SIGKILL";
+  h.children[0].emit("exit", null, "SIGKILL");
+  assert.equal(await quitting, true);
+  assert.deepEqual(h.exits, [0]);
+  assert.equal(h.getState().running, false);
+  assert.equal(h.getToken(), "");
+  assert.equal(h.forceKills.length, 1);
+  assert.deepEqual(Array.from(h.forceKills[0][1]), ["/PID", String(h.children[0].pid), "/T", "/F"]);
+  assert.equal(h.children[0].signalCode, "SIGKILL");
+});
+
+for (const [failure, options] of [["failed tree termination", {treeKillStatus: 1}],
+  ["unobserved owned child exit", {childKillExits: false}]]) {
+  test(`Nightly repeated close preserves the visible window and error after ${failure}`, async () => {
+    let release;
+    const alerts = [];
+    const h = mainHarness({packaged: true, metadata: nightlyMetadata, ...options,
+      dialogImpl: {showMessageBox: async (window, message) => {
+        assert.equal(window.isDestroyed(), false);
+        assert.equal(window.isVisible(), true);
+        alerts.push(message);
+      }},
+      fetchBehavior: async url => String(url).endsWith("/capture/pause")
+        ? new Promise(resolve => { release = () => resolve({ok: true, json: async () => ({active: false})}); })
+        : {ok: true, json: async () => ({})}});
+    await h.createWindow();
+    const window = h.getWindow();
+    window.close();
+    window.close();
+    assert.equal(window.isDestroyed(), false);
+    assert.equal(window.isVisible(), true);
+    assert.equal(h.forceKills.length, 0);
+    assert.deepEqual(h.exits, []);
+    const quitting = h.quitApplication();
+    release();
+    assert.equal(await quitting, false);
+    assert.equal(alerts.length, 1);
+    assert.equal(alerts[0].type, "error");
+    assert.match(alerts[0].message, /尚未确认完全停止/);
+    window.close();
+    assert.equal(await h.quitApplication(), false);
+    assert.equal(window.isDestroyed(), false);
+    assert.equal(window.isVisible(), true);
+    assert.equal(window.hideCalls, 0);
+    assert.deepEqual(h.exits, []);
+    assert.equal(h.forceKills.length, 1);
+    assert.equal(alerts.length, 2);
+    await h.restartBackend();
+    assert.equal(h.children.length, 1, "An unconfirmed owned stop must still block replacement startup.");
+  });
+}
+
+test("Stable, Preview, Trial and RC close still hide without stopping their backend", async () => {
+  for (const productName of ["OpenButler", "OpenButler Preview", "OpenButler Preview Windows Trial", "OpenButler Preview Windows RC"]) {
+    const h = mainHarness({packaged: true, metadata: {productName,
+      openbutlerChannel: productName === "OpenButler" ? "stable" : "preview"}});
+    await h.createWindow();
+    const window = h.getWindow();
+    window.close();
+    assert.equal(window.isDestroyed(), false, productName);
+    assert.equal(window.isVisible(), false, productName);
+    assert.equal(window.hideCalls, 1, productName);
+    assert.equal(h.getState().running, true, productName);
+    assert.equal(h.requests.filter(request => String(request.url).endsWith("/capture/pause")).length, 0, productName);
+    assert.equal(h.forceKills.length, 0, productName);
+    assert.deepEqual(h.exits, [], productName);
+    await h.stopBackend();
+  }
+});
+
+test("Nightly minimize still hides without stopping its backend", async () => {
+  const h = mainHarness({packaged: true, metadata: nightlyMetadata});
+  await h.createWindow();
+  const window = h.getWindow();
+  let prevented = false;
+  window.emit("minimize", {preventDefault() { prevented = true; }});
+  assert.equal(prevented, true);
+  assert.equal(window.isDestroyed(), false);
+  assert.equal(window.isVisible(), false);
+  assert.equal(window.hideCalls, 1);
+  assert.equal(h.getState().running, true);
+  assert.equal(h.requests.filter(request => String(request.url).endsWith("/capture/pause")).length, 0);
+  assert.equal(h.forceKills.length, 0);
+  assert.deepEqual(h.exits, []);
+  await h.stopBackend();
 });
 
 test("existing Stable and controlled Preview, Trial, RC profile overrides remain compatible", async () => {
