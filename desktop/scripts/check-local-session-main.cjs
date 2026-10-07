@@ -9,7 +9,7 @@ const {execFileSync} = require("node:child_process");
 const localApi = require("../src/local-api.cjs");
 
 // Execute real main code with all Electron, OS, filesystem and network effects mocked.
-function mainHarness({packaged = false, spawnThrows = false, healthOk = true, fetchBehavior, discoveryImpl, catalogImpl, dialogImpl, platform = "win32", storage, childKillExits = true, treeKillStatus = 0, childPidBase = 200, renameThrows = false, lifecycleTimeout = false, productName = "OpenButler Preview"} = {}) {
+function mainHarness({packaged = false, spawnThrows = false, healthOk = true, fetchBehavior, discoveryImpl, catalogImpl, dialogImpl, platform = "win32", storage, childKillExits = true, treeKillStatus = 0, childPidBase = 200, renameThrows = false, lifecycleTimeout = false, productName = "OpenButler Preview", metadata, env = {}, argv = ["synthetic.exe"], arch = "x64", packagedBackendExists = true, startupEvents = []} = {}) {
   const handlers = new Map();
   const children = [];
   const calls = [];
@@ -29,29 +29,40 @@ function mainHarness({packaged = false, spawnThrows = false, healthOk = true, fe
   let now = 0;
   let port = 8200;
   const pathChanges = [];
+  const appPaths = {};
   const app = Object.assign(new EventEmitter(), {
-    isPackaged: packaged, getPath: () => path.resolve(__dirname, "synthetic-user"),
-    setPath(...args) { pathChanges.push(args); }, requestSingleInstanceLock: () => true, quit() {}, exit(code) { exits.push(code); },
+    isPackaged: packaged, getPath: key => appPaths[key] || path.resolve(__dirname, "synthetic-user"),
+    setPath(...args) { pathChanges.push(args); appPaths[args[0]] = args[1]; startupEvents.push("profile"); }, requestSingleInstanceLock: () => { startupEvents.push("lock"); return true; }, quit() {}, exit(code) { exits.push(code); },
     getVersion: () => "0.0.0-test", whenReady: () => ({then() {}}),
   });
   class BrowserWindow extends EventEmitter {
     constructor(options) {
       super();
       this.options = options;
+      this.visible = true;
+      this.destroyed = false;
+      this.hideCalls = 0;
       this.webContents = Object.assign(new EventEmitter(), {
         mainFrame: {url: "about:blank"}, isDestroyed: () => false,
         setWindowOpenHandler(handler) { this.openHandler = handler; },
       });
     }
-    isDestroyed() { return false; }
+    isDestroyed() { return this.destroyed; }
+    isVisible() { return this.visible; }
+    hide() { this.hideCalls++; this.visible = false; }
+    close() {
+      let prevented = false;
+      this.emit("close", {preventDefault() { prevented = true; }});
+      if (!prevented) { this.destroyed = true; this.visible = false; }
+    }
     async loadFile(file) { this.webContents.mainFrame.url = pathToFileURL(file).href; }
   }
   const fakeProcess = Object.assign(new EventEmitter(), {
-    platform, env: {}, resourcesPath: path.resolve(__dirname, "synthetic-resources"),
+    platform, arch, env, argv, resourcesPath: path.resolve(__dirname, "synthetic-resources"),
   });
   const fakeFs = {
-    existsSync: () => true, mkdirSync() {},
-    readFileSync() { throw new Error("No user data in synthetic tests."); },
+    existsSync: () => { startupEvents.push("fs"); return packagedBackendExists; }, mkdirSync() { startupEvents.push("fs"); },
+    readFileSync() { startupEvents.push("fs"); throw new Error("No user data in synthetic tests."); },
     writeFileSync(...args) { writes.push(args); },
     renameSync() { if (renameThrows) throw new Error("synthetic encrypted-file rename failure"); },
   };
@@ -116,15 +127,15 @@ function mainHarness({packaged = false, spawnThrows = false, healthOk = true, fe
         ? {...require("../src/local-model-discovery.cjs"), createLocalModelDiscovery: () => discoveryImpl} : require("../src/local-model-discovery.cjs");
       if (name === "./local-api.cjs") return {...localApi,
         createLocalApiRequest: (options) => localApi.createLocalApiRequest({...options, fetchImpl: fakeFetch})};
-      if (name === "../package.json") return {productName, openbutlerChannel: "preview"};
+      if (name === "../package.json") return metadata || {productName, openbutlerChannel: "preview"};
       throw new Error("Unexpected require: " + name);
     },
   });
   const source = fs.readFileSync(path.resolve(__dirname, "../src/main.cjs"), "utf8");
   const controls = vm.runInContext(source +
     "\n({startBackend, stopBackend, restartBackend, createWindow, privateApi, stopBackendForLifecycle, quitApplication," +
-    "getWindow: () => mainWindow, getState: () => backendState, getToken: () => backendSessionToken, getSessionRoutes: () => sessionModelRoutes, stopOwnedSessionBackend, secureModelStorageAvailable, readEncryptedModelRoutes, captureDisplays, captureSelectedDisplay, setWindowProvider: value => {publicWindowProvider=value;}, setControllers: (a,b) => {captureController=a; publicWindowController=b;}})", context);
-  return {...controls, app, fakeProcess, handlers, children, calls, writes, logs, requests, exits, forceKills, pathChanges};
+    "getWindow: () => mainWindow, getState: () => backendState, getToken: () => backendSessionToken, getSessionRoutes: () => sessionModelRoutes, stopOwnedSessionBackend, secureModelStorageAvailable, readEncryptedModelRoutes, captureDisplays, captureSelectedDisplay, setWindowProvider: value => {publicWindowProvider=value;}, getControllers: () => [captureController, publicWindowController], setControllers: (a,b) => {captureController=a; publicWindowController=b;}})", context);
+  return {...controls, app, fakeProcess, handlers, children, calls, writes, logs, requests, exits, forceKills, pathChanges, startupEvents};
 }
 
 test("parallel Windows RC has its own default profile and packaged backend", async () => {
@@ -138,6 +149,202 @@ test("parallel Windows RC has its own default profile and packaged backend", asy
     assert.equal((await h.startBackend()).running, true);
     assert.equal(path.basename(h.calls[0].command), image);
     h.stopBackend();
+  }
+});
+
+const nightlyMetadata = {
+  productName: "OpenButler Nightly Windows", openbutlerChannel: "preview",
+  openbutlerVariant: "windows-nightly-unpacked-v1", openbutlerAppId: "moe.giftia.openbutler.nightly.windows",
+  version: "0.2.0-nightly.20261007.1", openbutlerSourceCommit: "1".repeat(40), openbutlerSourceTree: "2".repeat(40),
+};
+
+test("Nightly ordinary launch selects fresh profile before lock or I/O and starts only its owned built-in backend", async () => {
+  const h = mainHarness({packaged: true, metadata: nightlyMetadata});
+  const profile = path.join(path.resolve(__dirname, "synthetic-user"), "OpenButler Nightly Windows Fresh");
+  assert.equal(h.pathChanges.length, 1);
+  assert.equal(h.pathChanges[0][1], profile);
+  assert.deepEqual(h.startupEvents, ["profile", "lock"]);
+  assert.deepEqual(Array.from(h.getControllers()), [null, null]);
+  assert.equal(h.requests.length, 0);
+  assert.equal(h.children.length, 0);
+  assert.equal((await h.startBackend()).running, true);
+  assert.equal(path.basename(h.calls[0].command), "openbutler-backend-windows-nightly.exe");
+  const env = h.calls[0].options.env;
+  assert.equal(env.OPENBUTLER_DATA_DIR, path.join(profile, "data"));
+  assert.equal(env.OPENBUTLER_PREVIEW_BUILTIN, "1");
+  assert.equal(env.OPENBUTLER_DEFAULT_PRIVACY_MODE, "strict");
+  assert.equal(env.OPENBUTLER_DISABLE_SEED_EVENTS, "1");
+  assert.equal(env.OPENBUTLER_COPY_SCREENSHOTS, "0");
+  assert.equal(env.OPENBUTLER_EXTERNAL_MODEL_ALLOWED, "0");
+  assert.equal(env.OPENBUTLER_EXTERNAL_WEBHOOK_ALLOWED, "0");
+  assert.ok(h.requests.every(request => new URL(request.url).pathname === "/health"));
+  assert.deepEqual(Array.from(await h.captureDisplays()), []);
+  await assert.rejects(h.captureSelectedDisplay(), /full_desktop_unavailable/);
+  assert.deepEqual(Array.from(h.getControllers()), [null, null]);
+  await h.stopBackend();
+});
+
+test("Nightly conflicting metadata or launch configuration fails before profile, lock, data, or spawn", () => {
+  const invalid = [
+    {metadata: {...nightlyMetadata, productName: "OpenButler"}},
+    {metadata: {...nightlyMetadata, openbutlerChannel: "stable"}},
+    {metadata: {...nightlyMetadata, openbutlerAppId: "moe.giftia.openbutler"}},
+    {metadata: {...nightlyMetadata, openbutlerVariant: undefined}},
+    {metadata: {...nightlyMetadata, openbutlerVariant: "windows-nightly-unpacked-v2"}},
+    {metadata: {...nightlyMetadata, version: "0.1.9"}},
+    {metadata: {...nightlyMetadata, openbutlerSourceCommit: "unknown"}},
+    {metadata: {productName: "OpenButler Nightly Windows", openbutlerChannel: "preview"}},
+    {metadata: {productName: "OpenButler", openbutlerChannel: "nightly"}},
+    {metadata: {productName: "OpenButler", openbutlerVariant: "other"}},
+    {packaged: false}, {platform: "linux"}, {arch: "arm64"},
+    {argv: ["synthetic.exe", "--user-data-dir=C:\\old-profile"]},
+    ...["OPENBUTLER_DESKTOP_USER_DATA_DIR", "OPENBUTLER_DESKTOP_CHANNEL", "OPENBUTLER_DATA_DIR",
+      "OPENBUTLER_MINECONTEXT_HOME", "MINECONTEXT_HOME", "OPENBUTLER_PREVIEW_BUILTIN",
+      "OPENBUTLER_DEPLOY_TARGET", "OPENBUTLER_ENABLE_DEMO_DATA", "OPENBUTLER_DESKTOP_SMOKE_FILE", "openbutler_data_dir"].map(key => ({env: {[key]: ""}})),
+  ];
+  for (const options of invalid) {
+    const startupEvents = [];
+    assert.throws(() => mainHarness({packaged: true, metadata: nightlyMetadata, ...options, startupEvents}), /(?:nightly|desktop_variant)_/);
+    assert.deepEqual(startupEvents, []);
+  }
+});
+
+test("Nightly missing packaged backend fails closed without Python fallback", async () => {
+  const h = mainHarness({packaged: true, metadata: nightlyMetadata, packagedBackendExists: false});
+  assert.equal((await h.startBackend()).running, false);
+  assert.equal(h.children.length, 0);
+  assert.equal(h.requests.length, 0);
+});
+
+test("Nightly close stops recording and repeated close waits for owned shutdown before exiting once", async () => {
+  let release;
+  const h = mainHarness({packaged: true, metadata: nightlyMetadata, childKillExits: false,
+    fetchBehavior: async url => String(url).endsWith("/capture/pause")
+      ? new Promise(resolve => { release = () => resolve({ok: true, json: async () => ({active: false})}); })
+      : {ok: true, json: async () => ({})}});
+  await h.createWindow();
+  const window = h.getWindow(), reasons = [];
+  const controllers = ["capture", "public-window"].map(name => ({active: true,
+    pause(reason) { this.active = false; reasons.push([name, reason]); return Promise.resolve(); }}));
+  h.setControllers(...controllers);
+  window.close();
+  window.close();
+  assert.equal(window.isDestroyed(), false);
+  assert.equal(window.isVisible(), true);
+  assert.equal(window.hideCalls, 0);
+  assert.ok(controllers.every(controller => !controller.active));
+  assert.deepEqual(reasons, [["capture", "shutdown"], ["public-window", "shutdown"]]);
+  assert.equal(h.requests.filter(request => String(request.url).endsWith("/capture/pause")).length, 1);
+  assert.equal(h.forceKills.length, 0);
+  assert.deepEqual(h.exits, []);
+  const quitting = h.quitApplication();
+  assert.equal(h.quitApplication(), quitting);
+  // Queue this checkpoint before releasing pause, ahead of the mocked stop timeout.
+  const afterPause = new Promise(resolve => setImmediate(resolve));
+  release();
+  await afterPause;
+  assert.equal(h.forceKills.length, 1);
+  assert.deepEqual(h.exits, [], "Accepted tree termination still needs an observed owned-child exit.");
+  window.close();
+  assert.equal(window.isDestroyed(), false);
+  assert.equal(window.isVisible(), true);
+  h.children[0].signalCode = "SIGKILL";
+  h.children[0].emit("exit", null, "SIGKILL");
+  assert.equal(await quitting, true);
+  assert.deepEqual(h.exits, [0]);
+  assert.equal(h.getState().running, false);
+  assert.equal(h.getToken(), "");
+  assert.equal(h.forceKills.length, 1);
+  assert.deepEqual(Array.from(h.forceKills[0][1]), ["/PID", String(h.children[0].pid), "/T", "/F"]);
+  assert.equal(h.children[0].signalCode, "SIGKILL");
+});
+
+for (const [failure, options] of [["failed tree termination", {treeKillStatus: 1}],
+  ["unobserved owned child exit", {childKillExits: false}]]) {
+  test(`Nightly repeated close preserves the visible window and error after ${failure}`, async () => {
+    let release;
+    const alerts = [];
+    const h = mainHarness({packaged: true, metadata: nightlyMetadata, ...options,
+      dialogImpl: {showMessageBox: async (window, message) => {
+        assert.equal(window.isDestroyed(), false);
+        assert.equal(window.isVisible(), true);
+        alerts.push(message);
+      }},
+      fetchBehavior: async url => String(url).endsWith("/capture/pause")
+        ? new Promise(resolve => { release = () => resolve({ok: true, json: async () => ({active: false})}); })
+        : {ok: true, json: async () => ({})}});
+    await h.createWindow();
+    const window = h.getWindow();
+    window.close();
+    window.close();
+    assert.equal(window.isDestroyed(), false);
+    assert.equal(window.isVisible(), true);
+    assert.equal(h.forceKills.length, 0);
+    assert.deepEqual(h.exits, []);
+    const quitting = h.quitApplication();
+    release();
+    assert.equal(await quitting, false);
+    assert.equal(alerts.length, 1);
+    assert.equal(alerts[0].type, "error");
+    assert.match(alerts[0].message, /尚未确认完全停止/);
+    window.close();
+    assert.equal(await h.quitApplication(), false);
+    assert.equal(window.isDestroyed(), false);
+    assert.equal(window.isVisible(), true);
+    assert.equal(window.hideCalls, 0);
+    assert.deepEqual(h.exits, []);
+    assert.equal(h.forceKills.length, 1);
+    assert.equal(alerts.length, 2);
+    await h.restartBackend();
+    assert.equal(h.children.length, 1, "An unconfirmed owned stop must still block replacement startup.");
+  });
+}
+
+test("Stable, Preview, Trial and RC close still hide without stopping their backend", async () => {
+  for (const productName of ["OpenButler", "OpenButler Preview", "OpenButler Preview Windows Trial", "OpenButler Preview Windows RC"]) {
+    const h = mainHarness({packaged: true, metadata: {productName,
+      openbutlerChannel: productName === "OpenButler" ? "stable" : "preview"}});
+    await h.createWindow();
+    const window = h.getWindow();
+    window.close();
+    assert.equal(window.isDestroyed(), false, productName);
+    assert.equal(window.isVisible(), false, productName);
+    assert.equal(window.hideCalls, 1, productName);
+    assert.equal(h.getState().running, true, productName);
+    assert.equal(h.requests.filter(request => String(request.url).endsWith("/capture/pause")).length, 0, productName);
+    assert.equal(h.forceKills.length, 0, productName);
+    assert.deepEqual(h.exits, [], productName);
+    await h.stopBackend();
+  }
+});
+
+test("Nightly minimize still hides without stopping its backend", async () => {
+  const h = mainHarness({packaged: true, metadata: nightlyMetadata});
+  await h.createWindow();
+  const window = h.getWindow();
+  let prevented = false;
+  window.emit("minimize", {preventDefault() { prevented = true; }});
+  assert.equal(prevented, true);
+  assert.equal(window.isDestroyed(), false);
+  assert.equal(window.isVisible(), false);
+  assert.equal(window.hideCalls, 1);
+  assert.equal(h.getState().running, true);
+  assert.equal(h.requests.filter(request => String(request.url).endsWith("/capture/pause")).length, 0);
+  assert.equal(h.forceKills.length, 0);
+  assert.deepEqual(h.exits, []);
+  await h.stopBackend();
+});
+
+test("existing Stable and controlled Preview, Trial, RC profile overrides remain compatible", async () => {
+  const stable = mainHarness({packaged: true, metadata: {productName: "OpenButler"}});
+  assert.equal(stable.pathChanges.length, 0);
+  await stable.startBackend();
+  assert.equal(path.basename(stable.calls[0].command), "openbutler-backend.exe");
+  assert.equal(stable.calls[0].options.env.OPENBUTLER_PREVIEW_BUILTIN, undefined);
+  await stable.stopBackend();
+  for (const productName of ["OpenButler Preview", "OpenButler Preview Windows Trial", "OpenButler Preview Windows RC"]) {
+    const h = mainHarness({productName, env: {OPENBUTLER_DESKTOP_USER_DATA_DIR: "/synthetic-controlled-test"}});
+    assert.equal(h.pathChanges[0][1], "/synthetic-controlled-test");
   }
 });
 
