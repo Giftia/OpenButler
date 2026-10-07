@@ -23,6 +23,7 @@ test('known configuration and service stops retain bounded causes without native
   assert.equal(captureStopReason('service_restarted'), 'shutdown');
   assert.equal(captureStopReason('before-quit'), 'shutdown');
   assert.equal(captureStopReason('private arbitrary error detail'), 'capture_error');
+  assert.equal(captureStopReason('window_identity_unverified'), 'source_unavailable');
 });
 function fixture() {
   const calls = {posts: [], configure: [], starts: 0, pauses: 0, pauseReasons: [], acquires: 0};
@@ -132,6 +133,18 @@ test('source loss during recording stops instead of silently skipping and resumi
   const result = await f.c.captureOnce();
   assert.equal(result.recorded, false); assert.equal(f.c.active, false);
   assert.equal(f.calls.posts.length, 0);
+  assert.equal(f.calls.pauseReasons.at(-1), 'source_unavailable');
+  await assert.rejects(f.c.start(config), /privacy_preview_required/);
+});
+
+test('ambiguous window identity still pauses without pixels and requires fresh preview', async () => {
+  const f = fixture(); await f.c.previewMasked(config); await f.c.start(config);
+  const acquires = f.calls.acquires;
+  f.provider.inspect = async () => { throw new Error('window_identity_unverified'); };
+  const result = await f.c.captureOnce();
+  assert.equal(result.recorded, false); assert.equal(f.c.active, false);
+  assert.equal(f.c.lastResult, 'window_identity_unverified');
+  assert.equal(f.calls.acquires, acquires); assert.equal(f.calls.posts.length, 0);
   assert.equal(f.calls.pauseReasons.at(-1), 'source_unavailable');
   await assert.rejects(f.c.start(config), /privacy_preview_required/);
 });

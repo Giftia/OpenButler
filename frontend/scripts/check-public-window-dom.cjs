@@ -95,7 +95,7 @@ const checks=[];const check=(name)=>checks.push(name);
   check("repeated preview clicks dispatch once; scope edits reject late masked results");
   await setup();await choose();responder=async()=>({...okay(),source_revision:undefined});await click("检查公开窗口隐私预览");assert.equal(document.querySelector(".preview-mask-surface img"),null);responder=async()=>({...okay(),previewDataUrl:"file:///raw.png"});await click("检查公开窗口隐私预览");assert.equal(document.querySelector(".preview-mask-surface img"),null);
   check("missing source revision and non-PNG preview URLs fail closed");
-  for (const [code, text] of [["window_source_unavailable","所选窗口采集暂不可用"],["foreground_unknown","无法确认当前前台窗口"],["window_identity_changed","标题、进程或尺寸已改变"],["opaque_visible_client_required","需要可见且不透明"],["isolated_pixmap_unavailable","无法取得此窗口的独立画面"],["post_mask_ocr_empty","遮挡后没有可识别的文字"],["post_mask_ocr_failed","遮挡后的再次本机识字失败"],["post_mask_ocr_too_large","不会截断文字"]]) {
+  for (const [code, text] of [["window_source_unavailable","所选窗口采集暂不可用"],["foreground_unknown","无法确认当前前台窗口"],["window_identity_changed","标题、进程或尺寸已改变"],["window_identity_unverified","窗口身份连续性无法确认，请重新预览"],["opaque_visible_client_required","需要可见且不透明"],["isolated_pixmap_unavailable","无法取得此窗口的独立画面"],["post_mask_ocr_empty","遮挡后没有可识别的文字"],["post_mask_ocr_failed","遮挡后的再次本机识字失败"],["post_mask_ocr_too_large","不会截断文字"]]) {
     await setup();await choose();responder=async()=>({ok:false,error_code:code,error:"RAW_PROVIDER_SECRET"});await click("检查公开窗口隐私预览");
     assert.ok(document.body.textContent.includes(text),code);assert.ok(document.body.textContent.includes("（"+code+"）"));assert.ok(!document.body.textContent.includes("RAW_PROVIDER_SECRET"));assert.equal(start().disabled,true);
   }
@@ -122,6 +122,10 @@ const checks=[];const check=(name)=>checks.push(name);
   for(const reason of ["session_expired","window_destroyed_unmapped_or_reconfigured","source_binding_mismatch","privacy_processing_failed","lock-screen","suspend"])assert.ok(capturePauseMessage(reason));
   assert.equal(typeof capturePauseMessage("__proto__"),"string");assert.equal(typeof capturePauseMessage("constructor"),"string");
   check("session panel matches native sourceIdentity, capture_scope and sessionExpiresAt contract and renders pause reasons");
+  await act(async()=>{root.render(React.createElement(CaptureSessionSummary,{state:{active:false,capture_scope:"dedicated_public_window",sourceIdentity:identity,lastResult:"window_identity_unverified"}}));await flush();});
+  assert.match(document.body.textContent,/窗口身份连续性无法确认，请重新预览/);
+  assert.ok(!document.body.textContent.includes("身份已改变"));
+  check("ambiguous identity events ask for a new preview without asserting a confirmed identity change");
   const item={captured_at:"2026-10-02T06:00:00Z",recorded_at:"2026-10-02T06:00:03Z",source_kind:"public_window",source_label:"专用公开窗口",summary:"Model guess",evidence_kind:"privacy_masked_captured_pixels",evidence_available:true,provenance:{source_identity:identity,sampling_interval_ms:10000,sampling_gap_ms:25000},temporal_context:{prior_observation_ids:["prior-id"],inference:true,coverage:"discrete_samples_only",note:"只能根据两次采样推断"}};
   await act(async()=>{root.render(React.createElement(CaptureObservationProvenance,{item}));await flush();});for(const text of ["实际截图（已隐私遮挡）","采集时间","入库时间","额外采样延迟 25 秒","连续上下文为推断","其他窗口的活动未知","不证明每次点击"])assert.ok(document.body.textContent.includes(text),text);
   check("record provenance separates observed screenshot/time/source/gaps from AI inference and incomplete coverage");
