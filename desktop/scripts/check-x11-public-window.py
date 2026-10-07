@@ -213,5 +213,60 @@ class NativeSourceTests(unittest.TestCase):
         self.assertTrue(module.valid_pixel_format(value, source.bound_visual, 4, 3))
 
 
+class IdentityDiagnosticTests(unittest.TestCase):
+    def fixture(self, kinds):
+        source, calls, _pixels = NativeSourceTests().fixture()
+        del source.inspect
+        source.invalid, source.identity_atoms = None, {101}
+        events = []
+        for kind in kinds:
+            event = (C.c_long * 24)()
+            C.cast(C.byref(event), C.POINTER(module.I))[0] = kind
+            event[5] = 101
+            events.append(event)
+
+        def next_event(_display, target):
+            event = events.pop(0)
+            C.memmove(target, C.byref(event), C.sizeof(event))
+
+        source.x.XPending = lambda _display: len(events)
+        source.x.XNextEvent = next_event
+        source.identity = lambda _window: source.selected
+        source.visual_info = lambda _window: source.bound_visual
+        source.foreground = lambda: source.selected
+        return source, calls
+
+    def test_single_or_repeated_property_events_still_stop_without_claiming_change(self):
+        for kinds in ([28], [28, 28]):
+            with self.subTest(kinds=kinds):
+                source, calls = self.fixture(kinds)
+                with self.assertRaisesRegex(ValueError, 'window_identity_unverified'):
+                    source.acquire()
+                self.assertFalse(any(call[0] == 'image' for call in calls))
+                self.assertEqual(source.invalid, 'window_identity_unverified')
+
+    def test_destroy_unmap_reparent_keep_stronger_diagnosis_in_either_event_order(self):
+        for kind in (17, 18, 21):
+            for kinds in ([kind, 28], [28, kind]):
+                with self.subTest(kinds=kinds):
+                    source, calls = self.fixture(kinds)
+                    with self.assertRaisesRegex(ValueError, 'window_destroyed_unmapped_or_reconfigured'):
+                        source.acquire()
+                    self.assertFalse(any(call[0] == 'image' for call in calls))
+
+    def test_observed_identity_mismatch_retains_changed_diagnosis(self):
+        source, calls = self.fixture([])
+        source.identity = lambda _window: {**source.selected, 'owner_process_start': 'different'}
+        with self.assertRaisesRegex(ValueError, 'window_identity_changed'):
+            source.acquire()
+        self.assertFalse(any(call[0] == 'image' for call in calls))
+
+    def test_property_event_cannot_downgrade_an_existing_observed_mismatch(self):
+        source, _calls = self.fixture([28])
+        source.invalid = 'window_identity_changed'
+        source.drain()
+        self.assertEqual(source.invalid, 'window_identity_changed')
+
+
 if __name__ == '__main__':
     unittest.main()

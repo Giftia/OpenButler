@@ -3,6 +3,7 @@ const knownFailures: Record<string, string> = {
   window_source_unavailable: "所选窗口采集暂不可用，请确认窗口仍然打开后重试。",
   foreground_unknown: "无法确认当前前台窗口，预览已安全停止。请将专用公开窗口保持可见后重试。",
   window_identity_changed: "所选窗口的标题、进程或尺寸已改变，请刷新列表并重新选择。",
+  window_identity_unverified: "窗口身份连续性无法确认，请重新预览并确认。",
   source_binding_mismatch: "采集来源与已选窗口身份不一致，请重新选择窗口。",
   opaque_visible_client_required: "需要可见且不透明的普通应用窗口。请取消最小化，并选择不透明的专用公开窗口。",
   isolated_pixmap_unavailable: "无法取得此窗口的独立画面，预览已安全停止；不会退回整屏采集。",

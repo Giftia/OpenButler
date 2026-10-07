@@ -84,6 +84,11 @@ window title, and client content bounds. Metadata is checked before and after
 capture, again after local OCR, and immediately before submission. X11 events
 invalidate destroyed/unmapped/reparented/resized sources and identity-property
 changes, preventing a recycled XID or transient title change from being reused.
+An identity-property notification does not prove that its value changed: X11 can
+also notify an identical rewrite. These ambiguous events still pause capture,
+reported as `window_identity_unverified` (identity continuity could not be
+confirmed), requiring a new preview. Observed identity mismatches and
+destroy/unmap/reconfigure events retain their distinct failure diagnostics.
 
 The only image read is `XGetImage` from a pinned
 `XCompositeNameWindowPixmap` for the selected opaque, visible 24-bit client.

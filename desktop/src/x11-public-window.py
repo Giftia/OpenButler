@@ -236,7 +236,10 @@ class X11WindowSource:
                         or (value.send_event and (value.x, value.y) != (bounds['x'], bounds['y'])):
                     self.invalid = 'window_destroyed_unmapped_or_reconfigured'
             if self.selected and kind == 28 and event[5] in self.identity_atoms:
-                self.invalid = 'window_identity_changed'
+                # The event carries no old/new values, so change is unproven.
+                # Keep any stronger destruction/reconfiguration diagnosis.
+                if self.invalid is None:
+                    self.invalid = 'window_identity_unverified'
         self.sync()
 
     def inspect(self):

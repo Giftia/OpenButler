@@ -14,6 +14,7 @@ export function capturePauseMessage(reason?: string | null): string {
     source_closed: "所选窗口已关闭，自动记录已暂停；不会切换到其他窗口。",
     source_identity_changed: "所选窗口身份已改变，自动记录已暂停；需重新选择并确认。",
     window_identity_changed: "所选窗口身份已改变，自动记录已暂停；需重新选择并确认。",
+    window_identity_unverified: "自动记录已暂停：窗口身份连续性无法确认，请重新预览并确认。",
     window_unavailable: "所选窗口暂不可用，自动记录已暂停；不会改录其他窗口或整个屏幕。",
     source_unavailable: "所选窗口暂不可用，自动记录已暂停；不会改录其他窗口或整个屏幕。",
     session_limit_reached: "本次授权的时限已到，自动记录已停止。重新开始需要新的隐私预览。",
