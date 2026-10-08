@@ -89,6 +89,10 @@ also notify an identical rewrite. These ambiguous events still pause capture,
 reported as `window_identity_unverified` (identity continuity could not be
 confirmed), requiring a new preview. Observed identity mismatches and
 destroy/unmap/reconfigure events retain their distinct failure diagnostics.
+When a property notification is pending, metadata-only inspection can establish
+an identity/visual mismatch and report `window_identity_changed`. Matching values
+do not restore continuity or permit pixel acquisition; metadata-read failures
+retain their failure diagnostics and the invalidation remains latched.
 
 The only image read is `XGetImage` from a pinned
 `XCompositeNameWindowPixmap` for the selected opaque, visible 24-bit client.

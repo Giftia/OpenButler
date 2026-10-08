@@ -223,6 +223,9 @@ class IdentityDiagnosticTests(unittest.TestCase):
             event = (C.c_long * 24)()
             C.cast(C.byref(event), C.POINTER(module.I))[0] = kind
             event[5] = 101
+            if kind == 22:
+                value = C.cast(C.byref(event), C.POINTER(module.ConfigureEvent)).contents
+                value.width, value.height, value.border_width = 5, 3, 0
             events.append(event)
 
         def next_event(_display, target):
@@ -245,8 +248,8 @@ class IdentityDiagnosticTests(unittest.TestCase):
                 self.assertFalse(any(call[0] == 'image' for call in calls))
                 self.assertEqual(source.invalid, 'window_identity_unverified')
 
-    def test_destroy_unmap_reparent_keep_stronger_diagnosis_in_either_event_order(self):
-        for kind in (17, 18, 21):
+    def test_lifecycle_events_keep_stronger_diagnosis_in_either_event_order(self):
+        for kind in (17, 18, 21, 22):
             for kinds in ([kind, 28], [28, kind]):
                 with self.subTest(kinds=kinds):
                     source, calls = self.fixture(kinds)
@@ -260,6 +263,86 @@ class IdentityDiagnosticTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'window_identity_changed'):
             source.acquire()
         self.assertFalse(any(call[0] == 'image' for call in calls))
+
+    def test_property_event_with_observed_mismatch_reports_changed_before_pixels(self):
+        for field in ('window_title', 'owner_pid', 'wm_class'):
+            for kinds in ([28], [28, 28]):
+                for predrain in (False, True):
+                    with self.subTest(field=field, kinds=kinds, predrain=predrain):
+                        source, calls = self.fixture(kinds)
+                        source.identity = lambda _window: {**source.selected, field: 'different'}
+                        if predrain:
+                            source.drain()  # The idle main loop drains before commands.
+                        with self.assertRaisesRegex(ValueError, '^window_identity_changed$'):
+                            source.acquire()
+                        self.assertEqual(source.invalid, 'window_identity_changed')
+                        self.assertFalse(any(call[0] == 'image' for call in calls))
+
+    def test_property_event_with_visual_mismatch_reports_changed_before_pixels(self):
+        source, calls = self.fixture([28])
+        source.visual_info = lambda _window: {**source.bound_visual, 'visual_id': 44}
+        with self.assertRaisesRegex(ValueError, '^window_identity_changed$'):
+            source.acquire()
+        self.assertEqual(source.invalid, 'window_identity_changed')
+        self.assertFalse(any(call[0] == 'image' for call in calls))
+
+    def test_restored_values_after_notifications_never_restore_capture(self):
+        source, calls = self.fixture([28, 28])
+        source.drain()
+        for _attempt in range(2):
+            with self.assertRaisesRegex(ValueError, '^window_identity_unverified$'):
+                source.acquire()
+            self.assertEqual(source.invalid, 'window_identity_unverified')
+        self.assertFalse(any(call[0] == 'image' for call in calls))
+
+    def test_metadata_failure_preserves_failure_and_property_latch(self):
+        for method, reason in (('identity', 'window_identity_unavailable'),
+                               ('visual_info', 'window_visual_unavailable')):
+            with self.subTest(method=method):
+                source, calls = self.fixture([28])
+                original = getattr(source, method)
+
+                def fail(_window):
+                    raise ValueError(reason)
+
+                setattr(source, method, fail)
+                with self.assertRaisesRegex(ValueError, '^' + reason + '$'):
+                    source.acquire()
+                self.assertEqual(source.invalid, 'window_identity_unverified')
+                setattr(source, method, original)
+                with self.assertRaisesRegex(ValueError, '^window_identity_unverified$'):
+                    source.acquire()
+                self.assertFalse(any(call[0] == 'image' for call in calls))
+
+    def test_lifecycle_during_metadata_read_retains_priority(self):
+        for kind in (17, 18, 21, 22):
+            source, calls = self.fixture([28])
+            pending = []
+            original_pending = source.x.XPending
+            original_next = source.x.XNextEvent
+            source.x.XPending = lambda display: original_pending(display) or len(pending)
+
+            def next_event(display, target):
+                if original_pending(display):
+                    return original_next(display, target)
+                event = pending.pop(0)
+                C.memmove(target, C.byref(event), C.sizeof(event))
+
+            def identity(_window):
+                if kind == 22:
+                    event = module.ConfigureEvent(type=22, width=5, height=3, border_width=0)
+                else:
+                    event = (C.c_long * 24)()
+                    C.cast(C.byref(event), C.POINTER(module.I))[0] = kind
+                pending.append(event)
+                return {**source.selected, 'window_title': 'different'}
+
+            source.x.XNextEvent = next_event
+            source.identity = identity
+            with self.subTest(kind=kind):
+                with self.assertRaisesRegex(ValueError, '^window_destroyed_unmapped_or_reconfigured$'):
+                    source.acquire()
+                self.assertFalse(any(call[0] == 'image' for call in calls))
 
     def test_property_event_cannot_downgrade_an_existing_observed_mismatch(self):
         source, _calls = self.fixture([28])
