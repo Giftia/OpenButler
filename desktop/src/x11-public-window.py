@@ -244,12 +244,21 @@ class X11WindowSource:
 
     def inspect(self):
         self.drain()
-        if not self.selected or self.invalid:
+        if not self.selected or (self.invalid and self.invalid != 'window_identity_unverified'):
             raise ValueError(self.invalid or 'window_selection_required')
         identity = self.identity(int(self.selected['window_id'].split(':')[1]))
         visual = self.visual_info(int(self.selected['window_id'].split(':')[1]))
+        if self.invalid == 'window_identity_unverified':
+            # Metadata may refine the diagnosis, never restore the binding.
+            # Lifecycle events received during these reads still take priority.
+            self.drain()
+            if self.invalid != 'window_identity_unverified':
+                raise ValueError(self.invalid)
         if identity != self.selected or visual != self.bound_visual:
             self.invalid = 'window_identity_changed'
+            raise ValueError(self.invalid)
+        if self.invalid:
+            # Equal values cannot rule out a transient change and restoration.
             raise ValueError(self.invalid)
         return {'source_identity': identity, 'foreground_identity': self.foreground(),
                 'lock_state': 'unknown', 'lock_protection_supported': False,
