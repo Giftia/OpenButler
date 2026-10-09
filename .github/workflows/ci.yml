@@ -69,6 +69,10 @@ jobs:
         run: python -m unittest discover -s backend/app/modules/context_engine/tests
         env:
           PYTHONPATH: backend
+      - name: Run Native Task Activity contracts
+        run: python -m unittest discover -s backend/app/modules/task_activity/tests
+        env:
+          PYTHONPATH: backend
       - name: Run Model Gateway transport and policy tests
         run: python -m unittest discover -s backend/app/modules/model_gateway/tests
         env:
@@ -101,6 +105,7 @@ jobs:
       - run: npm run test:agent-loop
       - run: npm run test:planner-model-settings
       - run: npm run test:natural-chat
+      - run: npm run test:task-activity
 
   desktop-contract:
     name: Desktop Contract

@@ -146,3 +146,7 @@ Do not implement this endpoint as part of architecture alignment unless a separa
 ## Desktop device model catalog
 
 The finite Electron-only catalog, explicit Ollama host inspection and allowlisted download IPC are documented in [Device model catalog v1](DEVICE_MODEL_CATALOG.md). They are not FastAPI or OpenClaw endpoints. Catalog/status reads do not probe services; downloads never activate model routes or start capture. Disconnected pulls retain an unknown-server-state lock rather than claiming cancellation.
+
+## Native task/activity Preview
+
+Authenticated local `/api/tasks` and `/api/task-activity` contracts, consent, source invalidation and time semantics are documented in [NATIVE_TASK_ACTIVITY.md](NATIVE_TASK_ACTIVITY.md). They are not mounted in the hosted demo and do not enable the goal executor.

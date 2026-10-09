@@ -1,6 +1,7 @@
 """Desktop session protected model settings; keys exist in process memory only."""
 
 import os
+from contextlib import contextmanager
 from threading import RLock
 from typing import Literal
 
@@ -140,6 +141,18 @@ def create_model_settings_router(connection_factory, get_privacy_mode, set_priva
                                           or external),
                                      redacted=True)
 
+    @contextmanager
+    def authorization_guard():
+        """Hold model authorization and routing stable through a caller's commit.
+
+        Enter before opening a SQLite transaction. This is the same settings
+        lock -> policy lock -> database order as update_settings, never its
+        inverse. No model request or configuration change occurs here.
+        """
+        with lock, policy_lock:
+            yield current_authorization()
+
     router.gateway = gateway  # type: ignore[attr-defined]
     router.current_authorization = current_authorization  # type: ignore[attr-defined]
+    router.authorization_guard = authorization_guard  # type: ignore[attr-defined]
     return router

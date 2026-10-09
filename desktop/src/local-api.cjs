@@ -1,7 +1,13 @@
 const {pathToFileURL} = require("node:url");
 
 const SESSION_HEADER = "X-OpenButler-Session";
+const SYNC_UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
+const TASK_SYNC_FAILURES = new Set([
+  "task_context_incomplete", "invalid_discovery_result", "discovery_source_mismatch",
+  "discovery_authorization_changed", "local_model_unavailable", "local_provider_failed",
+  "local_provider_timeout", "invalid_provider_response", "local_discovery_failed",
+]);
 
 function isFrontendUrl(url, indexPath) {
   return typeof url === "string" && url.split("#", 1)[0] === pathToFileURL(indexPath).href;
@@ -89,6 +95,26 @@ function createLocalApiRequest({getWindow, getFrontendIndexPath, getBackendState
           throw new Error("Private desktop endpoint.");
         }
       }
+      if (canonicalPath === "/api/tasks" || canonicalPath.startsWith("/api/tasks/")
+          || canonicalPath.startsWith("/api/task-activity/")) {
+        const id = "[a-z]+_[0-9a-f]{32}";
+        // Receipt routes are exact: no encoded spellings, queries, suffixes or
+        // generic CRUD authority on operation identifiers.
+        if ((canonicalPath === "/api/task-activity/sync" || canonicalPath.startsWith("/api/task-activity/sync/")) && apiPath !== canonicalPath) throw new Error("Invalid sync route.");
+        const readable = method === "GET" && (
+          canonicalPath === "/api/tasks" || new RegExp(`^/api/tasks/${id}$`).test(canonicalPath)
+          || /^\/api\/task-activity\/(settings|activities|discoveries|sync)$/.test(canonicalPath)
+          || new RegExp(`^/api/task-activity/sync/${SYNC_UUID}$`).test(canonicalPath));
+        const create = method === "POST" && (
+          ["/api/tasks", "/api/task-activity/activities", "/api/task-activity/sync"].includes(canonicalPath)
+          || new RegExp(`^/api/tasks/${id}/(?:resources|merge|unmerge)$`).test(canonicalPath)
+          || new RegExp(`^/api/task-activity/discoveries/${id}/resolve$`).test(canonicalPath)
+          || new RegExp(`^/api/task-activity/sync/${SYNC_UUID}/stop$`).test(canonicalPath));
+        const edit = method === "PATCH" && new RegExp(`^/api/tasks/${id}$`).test(canonicalPath);
+        const relate = method === "PUT" && (canonicalPath === "/api/task-activity/settings"
+          || new RegExp(`^/api/tasks/${id}/(?:checkpoint|runtime-goal|activities/${id})$`).test(canonicalPath));
+        if (!readable && !create && !edit && !relate) throw new Error("Private task endpoint.");
+      }
       if (canonicalPath.startsWith("/api/agent-runtime/")) {
         const base = "/api/agent-runtime";
         const id = "[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}";
@@ -151,13 +177,35 @@ function createLocalApiRequest({getWindow, getFrontendIndexPath, getBackendState
           return failure(502, "Local API redirect denied.");
         }
         if (!response.ok) {
+          // Only this fixed task diagnostic vocabulary may cross the bridge.
+          // Never expose model output, source text or arbitrary exception text.
+          if (method === "POST" && apiPath === "/api/task-activity/sync" && [409, 422].includes(status)) {
+            let code;
+            try {
+              const raw = await response.text();
+              if (raw.length <= 128 && !raw.includes(token)) {
+                const value = JSON.parse(raw);
+                if (value && typeof value === "object" && !Array.isArray(value)
+                    && Object.keys(value).length === 1 && (TASK_SYNC_FAILURES.has(value.detail)
+                      || status === 409 && ["version_conflict", "command_conflict"].includes(value.detail))) code = value.detail;
+              }
+            } catch { /* Unknown diagnostics remain opaque. */ }
+            if (!isTrustedSender(event, getWindow(), getFrontendIndexPath())
+                || getSessionToken() !== token || !getBackendState().running
+                || getBackendState().apiBase !== apiBase) {
+              return failure(503, "Local service unavailable.");
+            }
+            return code ? {...failure(status, "Local API request failed."), code}
+              : failure(status, "Local API request failed.");
+          }
           // A missing durable conversation receipt is useful for explicit
           // reconciliation, but never forward arbitrary backend error text.
           const receiptLookup = method === "GET" && new RegExp(
             "^/api/agent-runtime/conversations/[A-Za-z0-9][A-Za-z0-9_.:-]{0,99}/(?:turns|adoptions)/[A-Za-z0-9][A-Za-z0-9_.:-]{0,99}$"
           ).test(decodeURIComponent(url.pathname));
           const commandLookup = method === "GET" && /^\/api\/agent-runtime\/commands\/[A-Za-z0-9][A-Za-z0-9_.:-]{0,99}$/.test(decodeURIComponent(url.pathname));
-          const missingCode = commandLookup ? "runtime_command_not_found" : receiptLookup ? "runtime_item_not_found" : null;
+          const taskSyncLookup = method === "GET" && new RegExp(`^/api/task-activity/sync/${SYNC_UUID}$`).test(apiPath);
+          const missingCode = taskSyncLookup ? "task_sync_not_found" : commandLookup ? "runtime_command_not_found" : receiptLookup ? "runtime_item_not_found" : null;
           if (status === 404 && missingCode) {
             let missing = false;
             try {

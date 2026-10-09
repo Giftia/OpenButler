@@ -12,10 +12,11 @@ from .processor import failure_reason
 
 
 class ObservationQueue:
-    def __init__(self, captures, processor, *, capacity=4):
+    def __init__(self, captures, processor, *, capacity=4, on_processed=None):
         if type(capacity) is not int or not 1 <= capacity <= 16:
             raise ValueError("invalid_queue_capacity")
         self.captures, self.processor, self.capacity = captures, processor, capacity
+        self.on_processed = on_processed
         self._condition = Condition()
         self._pending = deque()
         self._running = None
@@ -88,6 +89,13 @@ class ObservationQueue:
                 image = self.captures.begin_processing(event_id, generation)
                 self.processor.process(event_id, image, expected_generation=generation,
                                        cancel_event=cancellation)
+                if self.on_processed is not None and not cancellation.is_set():
+                    # Task indexing is separately opted in. A task failure must
+                    # never relabel successful capture or echo private content.
+                    try:
+                        self.on_processed(event_id, cancel_event=cancellation)
+                    except Exception:
+                        pass  # Explicit task sync remains available for recovery.
             except Exception as error:
                 try:
                     self.captures.set_result(event_id, state="model_unavailable",

@@ -30,6 +30,8 @@ MAX_RESPONSE_BYTES = 1024 * 1024
 HTTP_TOTAL_TIMEOUT_SECONDS = 10
 LOCAL_MAX_TOTAL_TIMEOUT_SECONDS = 120
 LOCAL_MODEL_CONTEXT_TOKENS = 2048
+LOCAL_TASK_CONTEXT_TOKENS = 4096
+LOCAL_TASK_PROMPT_BYTES = 2560
 LOCAL_IMAGE_OUTPUT_TOKENS = 512
 LOCAL_TEXT_OUTPUT_TOKENS = 768
 LOCAL_MODEL_CPU_THREADS = 6
@@ -100,12 +102,32 @@ TEMPORAL_ASSOCIATION_JSON_SCHEMA = {
     },
     "required": ["relations"],
 }
+# Task discovery receives bounded, already-grounded source excerpts only. A
+# proposal is unverified task data, never a date, completion or execution claim.
+TASK_DISCOVERY_JSON_SCHEMA = {
+    "type": "object", "additionalProperties": False,
+    "properties": {
+        "proposals": {"type": "array", "minItems": 0, "maxItems": 4,
+            "items": {"type": "object", "additionalProperties": False,
+                "properties": {
+                    "title": {"type": "string", "minLength": 1, "maxLength": 200},
+                    "quote": {"type": "string", "minLength": 1, "maxLength": 200},
+                    "self_assigned": {"type": "boolean"},
+                    "unfinished": {"type": "boolean"},
+                    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                },
+                "required": ["title", "quote", "self_assigned", "unfinished", "confidence"],
+            }},
+    },
+    "required": ["proposals"],
+}
 _OBSERVATION_SCHEMA_ALLOWLIST = frozenset((
     _OBSERVATION_SCHEMA_JSON,
     json.dumps(OCR_SELECTION_JSON_SCHEMA, sort_keys=True, separators=(",", ":")),
     json.dumps(OBSERVATION_NO_PRIOR_JSON_SCHEMA, sort_keys=True, separators=(",", ":")),
     json.dumps(TEMPORAL_ASSOCIATION_JSON_SCHEMA, sort_keys=True, separators=(",", ":")),
     json.dumps(OCR_OBSERVATION_JSON_SCHEMA, sort_keys=True, separators=(",", ":")),
+    json.dumps(TASK_DISCOVERY_JSON_SCHEMA, sort_keys=True, separators=(",", ":")),
 ))
 
 
@@ -155,6 +177,13 @@ _PROBE_FONT = {
 
 class RouteError(Exception):
     """Public, content-free failure code."""
+
+
+class ProviderTimeoutError(RouteError):
+    """Typed deadline failure; preserve the existing shared Gateway API code."""
+
+    def __init__(self):
+        super().__init__('provider_connection_failed')
 
 
 @dataclass(frozen=True)
@@ -428,7 +457,9 @@ class HttpTransport:
             headers["Authorization"] = "Bearer " + route.api_key
         timeout = deadline - monotonic()
         if timeout <= 0:
-            raise RouteError("local_model_unverified" if metadata else "provider_connection_failed")
+            if metadata:
+                raise RouteError("local_model_unverified")
+            raise ProviderTimeoutError()
         expired = Event()
         finished = Event()
         conn = _PinnedHTTP(host, port, address, tls=scheme == "https",
@@ -480,7 +511,9 @@ class HttpTransport:
             if len(body) > response_limit:
                 raise RouteError("local_model_unverified" if metadata else "provider_response_too_large")
             if expired.is_set():
-                raise RouteError("local_model_unverified" if metadata else "provider_connection_failed")
+                if metadata:
+                    raise RouteError("local_model_unverified")
+                raise ProviderTimeoutError()
             def unique_object(pairs):
                 result = {}
                 for key, value in pairs:
@@ -493,9 +526,11 @@ class HttpTransport:
             if not isinstance(parsed, dict):
                 raise RouteError("local_model_unverified" if metadata else "invalid_provider_response")
             return parsed
-        except (OSError, TimeoutError, ssl.SSLError, http.client.HTTPException):
+        except (OSError, TimeoutError, ssl.SSLError, http.client.HTTPException) as error:
             if cancel_event is not None and cancel_event.is_set():
                 raise PermissionError("authorization_revoked") from None
+            if not metadata and (isinstance(error, TimeoutError) or expired.is_set()):
+                raise ProviderTimeoutError() from None
             raise RouteError("local_model_unverified" if metadata else "provider_connection_failed") from None
         except (UnicodeError, ValueError, RecursionError):
             raise RouteError("local_model_unverified" if metadata else "invalid_provider_response") from None
@@ -535,11 +570,16 @@ def synthetic_probe_png() -> bytes:
 
 
 def _payload(route: ModelRoute, prompt: str, image: bytes | None, *, json_schema: dict | None = None,
-             local_cpu_profile: Literal["observation"] | None = None) -> dict:
-    if local_cpu_profile not in (None, "observation"):
+             local_cpu_profile: Literal["observation", "task_discovery"] | None = None) -> dict:
+    if local_cpu_profile not in (None, "observation", "task_discovery"):
+        raise RouteError("invalid_local_cpu_profile")
+    if local_cpu_profile == "task_discovery" and (route.mode != "local" or image is not None
+            or json_schema != TASK_DISCOVERY_JSON_SCHEMA):
         raise RouteError("invalid_local_cpu_profile")
     if not prompt or len(prompt) > 10000:
         raise RouteError("invalid_prompt")
+    if local_cpu_profile == "task_discovery" and len(prompt.encode('utf-8')) > LOCAL_TASK_PROMPT_BYTES:
+        raise RouteError("task_context_incomplete")
     if image is not None:
         if not image or len(image) > MAX_IMAGE_BYTES or not (
             image.startswith(b"\x89PNG\r\n\x1a\n") or image.startswith(b"\xff\xd8\xff")
@@ -558,7 +598,7 @@ def _payload(route: ModelRoute, prompt: str, image: bytes | None, *, json_schema
         if schema is not None:
             payload["response_format"] = {"type": "json_schema", "json_schema": {
                 "name": "openbutler_observation", "strict": True, "schema": schema}}
-        if route.mode == "local" and local_cpu_profile == "observation":
+        if route.mode == "local" and local_cpu_profile in ("observation", "task_discovery"):
             payload["max_tokens"] = LOCAL_IMAGE_OUTPUT_TOKENS if image is not None else LOCAL_TEXT_OUTPUT_TOKENS
             payload["temperature"] = 0
         return payload
@@ -568,8 +608,8 @@ def _payload(route: ModelRoute, prompt: str, image: bytes | None, *, json_schema
     payload = {"model": route.model, "stream": False, "think": route.thinking, "messages": [message]}
     if schema is not None:
         payload["format"] = schema
-    if route.mode == "local" and local_cpu_profile == "observation":
-        payload["options"] = {"num_ctx": LOCAL_MODEL_CONTEXT_TOKENS,
+    if route.mode == "local" and local_cpu_profile in ("observation", "task_discovery"):
+        payload["options"] = {"num_ctx": LOCAL_TASK_CONTEXT_TOKENS if local_cpu_profile == "task_discovery" else LOCAL_MODEL_CONTEXT_TOKENS,
             "num_predict": LOCAL_IMAGE_OUTPUT_TOKENS if image is not None else LOCAL_TEXT_OUTPUT_TOKENS,
             "num_thread": min(LOCAL_MODEL_CPU_THREADS, max(1, os.cpu_count() or 1)), "temperature": 0}
     return payload
@@ -682,9 +722,9 @@ class Gateway:
               *, runtime: bool = False, dispatch_precondition: Callable[[], None] | None = None,
               strict_text_response: bool = False, json_schema: dict | None = None,
               cancel_event: Event | None = None,
-              local_cpu_profile: Literal["observation"] | None = None) -> str:
+              local_cpu_profile: Literal["observation", "task_discovery"] | None = None) -> str:
         payload = _payload(route, prompt, image, json_schema=json_schema, local_cpu_profile=local_cpu_profile)
-        strict_text_response = strict_text_response or json_schema is not None or local_cpu_profile == "observation"
+        strict_text_response = strict_text_response or json_schema is not None or local_cpu_profile in ("observation", "task_discovery")
 
         def privacy_request():
             mode = auth.privacy_mode
@@ -812,7 +852,7 @@ class Gateway:
                       dispatch_precondition: Callable[[], None] | None,
                       strict_text_response: bool = False, json_schema: dict | None = None,
                       cancel_event: Event | None = None,
-                      local_cpu_profile: Literal["observation"] | None = None) -> str:
+                      local_cpu_profile: Literal["observation", "task_discovery"] | None = None) -> str:
         with self._dispatch_lock:
             if (expected_configuration_revision is not None
                     and expected_configuration_revision != self.configuration_revision):
@@ -830,7 +870,7 @@ class Gateway:
                   dispatch_precondition: Callable[[], None] | None = None,
                   strict_text_response: bool = False, json_schema: dict | None = None,
                   cancel_event: Event | None = None,
-                  local_cpu_profile: Literal["observation"] | None = None) -> str:
+                  local_cpu_profile: Literal["observation", "task_discovery"] | None = None) -> str:
         return self._runtime_call("text", prompt, auth, None, expected_configuration_revision,
                                   dispatch_precondition, strict_text_response, json_schema, cancel_event, local_cpu_profile)
 
@@ -838,7 +878,7 @@ class Gateway:
                    expected_configuration_revision: int | None = None,
                    dispatch_precondition: Callable[[], None] | None = None,
                    strict_text_response: bool = False, cancel_event: Event | None = None,
-                   local_cpu_profile: Literal["observation"] | None = None) -> str:
+                   local_cpu_profile: Literal["observation", "task_discovery"] | None = None) -> str:
         return self._runtime_call("image", prompt, auth, image, expected_configuration_revision,
                                   dispatch_precondition, strict_text_response, cancel_event=cancel_event,
                                   local_cpu_profile=local_cpu_profile)
