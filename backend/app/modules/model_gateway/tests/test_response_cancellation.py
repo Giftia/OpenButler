@@ -6,7 +6,7 @@ import threading
 import time
 import unittest
 
-from app.modules.model_gateway.gateway import HttpTransport, ModelRoute, RouteError
+from app.modules.model_gateway.gateway import HttpTransport, ModelRoute, ProviderTimeoutError
 
 
 class Handler(LocalProviderMetadata, BaseHTTPRequestHandler):
@@ -98,7 +98,7 @@ class ResponseCancellationTests(unittest.TestCase):
     def test_partial_body_total_deadline_exits_without_server_release(self):
         self.transport = HttpTransport(local_total_timeout=.12)
         start = time.monotonic()
-        with self.assertRaises(RouteError):
+        with self.assertRaises(ProviderTimeoutError):
             self.transport.post(self.route, {'model': self.route.model, 'kind': 'body'})
         self.assertLess(time.monotonic() - start, .7)
         self.assertFalse(self.server.release.is_set())

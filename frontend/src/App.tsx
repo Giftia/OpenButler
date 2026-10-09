@@ -14,6 +14,7 @@ import type {PreviewTicket} from "./lib/privacyPreviewGate";
 import {currentAppPath, replaceAppPath} from "./lib/navigation";
 import {PreviewDailyReview} from "./components/PreviewDailyReview";
 import {AgentLoopPanel} from "./components/AgentLoopPanel";
+import {TaskWorkspace} from "./components/TaskWorkspace";
 import {ModelCatalog} from "./components/ModelCatalog";
 import type {ModelRole} from "./lib/modelCatalog";
 import {
@@ -144,6 +145,7 @@ type PageKey =
   | "achievements"
   | "chat"
   | "models"
+  | "tasks"
   | "workstation"
   | "pcActivity"
   | "butlerInbox"
@@ -157,6 +159,7 @@ type PageKey =
 
 const primaryNavItems: Array<{key: PageKey; label: string; icon: typeof Home}> = [
   {key: "butler", label: "今日", icon: Inbox},
+  {key: "tasks", label: "任务", icon: ClipboardCheck},
   {key: "timeline", label: "时间线", icon: CalendarDays},
   {key: "achievements", label: "成就", icon: Trophy},
   {key: "chat", label: "问管家", icon: MessageSquareText},
@@ -244,6 +247,7 @@ function routeForPage(key: PageKey) {
     achievements: "/achievements",
     chat: "/assistant",
     models: "/models",
+    tasks: "/tasks",
     privacy: "/me",
     dashboard: "/dashboard",
     pcActivity: "/pc-activity-context",
@@ -266,7 +270,7 @@ function navigateClient(path: string) {
 }
 
 function pageForPath(path: string): PageKey {
-  return path === "/models" ? "models" : path.includes("acceptance")
+  return path === "/tasks" ? "tasks" : path === "/models" ? "models" : path.includes("acceptance")
     ? "acceptance"
     : path.includes("design/mijia")
     ? "designMijia"
@@ -442,6 +446,7 @@ function App() {
     ),
     achievements: <AchievementsPage />,
     chat: isPreviewDesktop() ? <AgentLoopPanel /> : <Chat activationStatus={activationStatus} />,
+    tasks: <TaskWorkspace />,
     models: <PreviewModelSettings onSaved={async () => {}} />,
     workstation: <WorkstationVision privacyMode={privacyMode} />,
     pcActivity: <PCActivityContext privacyMode={privacyMode} />,
@@ -463,7 +468,7 @@ function App() {
         />
   }[page];
 
-  const activationGateOpen = !(isPreviewDesktop() && (page === "chat" || page === "models") && activationStatus === "dismissed") && page !== "acceptance" && !isDesignPage && activationStatus !== "demo_selected" && activationStatus !== "completed";
+  const activationGateOpen = !(isPreviewDesktop() && (page === "chat" || page === "models" || page === "tasks") && activationStatus === "dismissed") && page !== "acceptance" && !isDesignPage && activationStatus !== "demo_selected" && activationStatus !== "completed";
 
   if (activationGateOpen) {
     return (
@@ -505,7 +510,7 @@ function App() {
             </div>
           </div>
           <nav aria-label="OpenButler 主导航">
-            {primaryNavItems.map((item) => {
+            {primaryNavItems.filter((item) => item.key !== "tasks" || (isPreviewDesktop() && activationStatus !== "demo_selected")).map((item) => {
               const Icon = item.icon;
               return (
                 <button

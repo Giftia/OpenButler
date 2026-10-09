@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# FastAPI/Starlette TestClient used by native HTTP/composition contract tests.
+httpx==0.28.1

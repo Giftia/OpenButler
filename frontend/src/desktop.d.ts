@@ -1,5 +1,6 @@
 import type {ModelCatalogBridge} from "./lib/modelCatalog";
 import type {CaptureCapabilities, DesktopCaptureConfig, PublicWindowSource} from "./lib/captureTypes";
+import type {TaskRequestCode} from "./lib/taskActivityApi";
 export {};
 
 type BuiltinModelRoute = {
@@ -23,7 +24,7 @@ declare global {
       apiBase?: string;
       channel?: "stable" | "preview";
       requestApi?: (path: string, options?: {method?: string; body?: string | null}) => Promise<
-        {ok: true; status: number; data: unknown} | {ok: false; status: number; error: string; code?: "runtime_item_not_found" | "runtime_command_not_found"}
+        {ok: true; status: number; data: unknown} | {ok: false; status: number; error: string; code?: "runtime_item_not_found" | "runtime_command_not_found" | TaskRequestCode}
       >;
       getRuntime: () => Promise<{
         apiBase: string;

@@ -20,14 +20,14 @@ class CapturePauseRequest(BaseModel):
 
 
 def create_context_engine_router(connection_factory, privacy_mode_getter, data_dir: Path,
-                                 model_gateway=None, model_authorization=None) -> APIRouter:
+                                 model_gateway=None, model_authorization=None, *, observation_callback=None) -> APIRouter:
     router = APIRouter()
     ledger = PrivacyAuditLedger(connection_factory)
     captures = CaptureStore(connection_factory, data_dir, privacy_mode_getter)
     processor = (ObservationProcessor(captures, model_gateway, model_authorization)
                  if model_gateway is not None and model_authorization is not None else None)
 
-    queue = ObservationQueue(captures, processor) if processor is not None else None
+    queue = ObservationQueue(captures, processor, on_processed=observation_callback) if processor is not None else None
     router.organization_queue = queue
 
     @router.on_event("shutdown")
