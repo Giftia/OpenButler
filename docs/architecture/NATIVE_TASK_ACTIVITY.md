@@ -380,6 +380,7 @@ and capture CRUD against a database containing the task tables, then reopen with
 the new service. No real database migration/test is authorized by this change.
 
 ```sh
+python -m pip install -r backend/requirements-test.txt
 PYTHONPATH=backend python -m unittest discover -s backend/app/modules/task_activity/tests
 cd frontend && npm run test:task-activity && npm run build
 ```

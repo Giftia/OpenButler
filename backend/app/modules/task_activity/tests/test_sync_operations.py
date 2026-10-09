@@ -34,14 +34,24 @@ class SyncOperationTests(TaskFixture, unittest.TestCase):
         self.assertIsNotNone(result['operation'])
         return request, result['operation']
 
-    def wait(self, request):
-        deadline = time.monotonic() + 5
+    def wait(self, request, *, timeout=5, poll_interval=.005):
+        deadline = time.monotonic() + timeout
+        result = None
+        pause = Event()
         while time.monotonic() < deadline:
             result = self.service.sync_operation(request.command_id)['operation']
             if result and result['settled']:
                 return result
-            Event().wait(.005)
-        self.fail('Synthetic operation did not settle')
+            pause.wait(min(poll_interval, max(0, deadline - time.monotonic())))
+        execution = self.service._sync_coordinator.active
+        worker = execution.thread if execution else None
+        progress = None if result is None else {key: result[key] for key in (
+            'state', 'settled', 'selected', 'attempted', 'processed',
+            'activities_created', 'skipped_invalid', 'has_more', 'reason')}
+        self.fail(f'Synthetic operation did not settle within {timeout}s: '
+                  f'last_operation={progress!r}; worker_alive={bool(worker and worker.is_alive())}; '
+                  f'worker_finished={bool(execution and execution.finished.is_set())}; '
+                  f'settlement_failed={bool(execution and execution.settlement_failed.is_set())}')
 
     def blocking_model(self, *, empty=True):
         self.configure_model(empty=empty)
@@ -343,7 +353,10 @@ class SyncOperationTests(TaskFixture, unittest.TestCase):
         for i in range(202):
             self.source('TODO(me): Public rule ' + str(i))
         request, _ = self.start()
-        final = self.wait(request)
+        # This real 200-source batch performs 400+ durable transactions and
+        # 40,000+ source validations. Allow a batch-only storage budget and
+        # sparse status reads; small async tests retain their five-second bound.
+        final = self.wait(request, timeout=15, poll_interval=.05)
         self.assertEqual((final['selected'], final['attempted'], final['processed'], final['has_more']), (200, 200, 200, True))
         next_request, _ = self.start()
         self.assertEqual(self.wait(next_request)['processed'], 2)

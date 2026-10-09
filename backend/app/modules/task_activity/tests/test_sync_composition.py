@@ -23,10 +23,18 @@ from fastapi.testclient import TestClient
 from app import main
 
 assert main.task_activity is not None
+
+# Starlette 0.41.x has no TestClient client= option. Supply the synthetic
+# transport peer only; the real app, session middleware and lifespan still run.
+async def loopback_app(scope, receive, send):
+    if scope['type'] == 'http':
+        scope = {**scope, 'client': ('127.0.0.1', 34567)}
+    await main.app(scope, receive, send)
+
 with patch.object(main, 'init_db', wraps=main.init_db) as initialize, \
      patch.object(main, 'seed_events_if_empty', wraps=main.seed_events_if_empty) as seed, \
      patch.object(main, 'seed_vercel_demo_if_enabled', wraps=main.seed_vercel_demo_if_enabled) as demo_seed:
-    with TestClient(main.app, base_url='http://127.0.0.1', client=('127.0.0.1', 34567), follow_redirects=False) as client:
+    with TestClient(loopback_app, base_url='http://127.0.0.1', follow_redirects=False) as client:
         assert initialize.call_count == 1, 'Startup initialization remains mandatory'
         initialize.reset_mock(); seed.reset_mock(); demo_seed.reset_mock()
         auth = {'X-OpenButler-Session': 'a' * 64}
