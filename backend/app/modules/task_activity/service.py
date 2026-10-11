@@ -206,15 +206,62 @@ class TaskService:
         return hashlib.sha256(encode({key: source.get(key) for key in fields}).encode()).hexdigest()
 
     def _maintenance(self, conn):
-        for row in conn.execute('''SELECT a.id,a.source_record_id,r.evidence_fingerprint
+        self._validate_activities(conn, conn.execute('''SELECT a.id,a.source_record_id,r.evidence_fingerprint
                 FROM work_activities a LEFT JOIN work_extraction_receipts r
                 ON r.source_record_id=a.source_record_id
-                WHERE a.source='observation' AND a.valid=1''').fetchall():
+                WHERE a.source='observation' AND a.valid=1''').fetchall())
+
+    def _validate_activities(self, conn, rows):
+        for row in rows:
             source = self._source(conn, row['source_record_id'], existing=True)
             if (source is None or row['evidence_fingerprint'] is not None
                     and self._evidence_fingerprint(source) != row['evidence_fingerprint']):
                 conn.execute('UPDATE work_activities SET valid=0 WHERE id=?', (row['id'],))
         self._purge_invalid(conn)
+
+    def _maintain_observations(self, conn, record_ids):
+        # A scoped sweep, not an authorization cache. Re-read both the receipt
+        # and live source/media for every dependency in this transaction.
+        record_ids = set(record_ids)
+        if not record_ids:
+            return
+        rows = []
+        for record_id in record_ids:
+            rows.extend(conn.execute('''SELECT a.id,a.source_record_id,r.evidence_fingerprint
+                FROM work_activities a LEFT JOIN work_extraction_receipts r
+                ON r.source_record_id=a.source_record_id
+                WHERE a.source='observation' AND a.valid=1 AND a.source_record_id=?''',
+                (record_id,)).fetchall())
+        self._validate_activities(conn, rows)
+
+    def _maintain_rule_dependencies(self, conn, source, proposals):
+        # Exact-title reuse and same-topic links can depend on older evidence.
+        # Validate that complete dependency closure before reading eligibility;
+        # revisions alone do not cover OCR edits, file changes or clock expiry.
+        context = json.loads(source.get('temporal_context') or '{}')
+        prior_ids = {relation['prior_observation_id']
+            for relation in context.get('relations', [])
+            if isinstance(relation, dict) and relation.get('relation') == 'same_topic'
+            and isinstance(relation.get('prior_observation_id'), str)}
+        self._maintain_observations(conn, prior_ids)
+        task_ids = set()
+        for proposal in proposals:
+            task_ids.update(row[0] for row in conn.execute(
+                'SELECT id FROM work_tasks WHERE dedupe_key=?', (task_key(proposal.title),)))
+        for prior_id in prior_ids:
+            task_ids.update(row[0] for row in conn.execute('''SELECT l.task_id
+                FROM work_task_links l JOIN work_activities a ON a.id=l.activity_id
+                WHERE a.source_record_id=? AND a.valid=1 AND l.decision='accepted' ''', (prior_id,)))
+        # Merges are reversible. Origins on the root and all members, including
+        # members carrying explicit user corrections, remain in the closure.
+        roots = {self._root(conn, task_id) for task_id in task_ids}
+        origins = set()
+        for root in roots:
+            for member in self._members(conn, root):
+                origins.update(row[0] for row in conn.execute('''SELECT a.source_record_id
+                    FROM work_tasks t JOIN work_activities a ON a.id=t.origin_activity_id
+                    WHERE t.id=? AND a.source='observation' ''', (member,)))
+        self._maintain_observations(conn, origins - prior_ids)
 
     def _command(self, conn, request, kind):
         content = request.model_dump(mode='json')
@@ -574,38 +621,55 @@ class TaskService:
             return self._process_observation(observation_id, cancel_event=cancel_event)
 
     def _process_observation(self, observation_id, *, cancel_event=None, retry_incomplete=False,
-                             expected_settings_version=None, operation=None):
+                             expected_settings_version=None, operation=None,
+                             rule_batch=False, rule_batch_final=False):
         def cancelled():
             return self._closed.is_set() or bool(cancel_event is not None and cancel_event.is_set())
         if cancelled():
             return {'processed': False, 'reason': 'cancelled'}
         prepared = None
         with (operation.transaction() if operation else self.store.transaction()) as conn:
-            self._maintenance(conn)
+            def not_processed(reason):
+                # Keep the former full cleanup on rejected preparation as well
+                # as publication failures; only successful batch work is scoped.
+                if rule_batch:
+                    self._maintenance(conn)
+                return {'processed': False, 'reason': reason}
+
+            if rule_batch:
+                self._maintain_observations(conn, (observation_id,))
+            else:
+                self._maintenance(conn)
             settings = dict(conn.execute('SELECT * FROM work_task_settings WHERE id=1').fetchone())
             if expected_settings_version is not None and settings['version'] != expected_settings_version:
-                return {'processed': False, 'reason': 'discovery_authorization_changed'}
+                return not_processed('discovery_authorization_changed')
             if not settings['auto_discovery']:
-                return {'processed': False, 'reason': 'disabled'}
+                return not_processed('disabled')
+            if rule_batch and settings['provider'] != 'evidence_rules_v1':
+                return not_processed('discovery_authorization_changed')
             source = self._source(conn, observation_id)
             if source is None or parse_time(source['captured_at']) < parse_time(settings['enabled_at']):
-                return {'processed': False, 'reason': 'source_outside_scope'}
+                return not_processed('source_outside_scope')
             previous = conn.execute('SELECT id,valid FROM work_activities WHERE source_record_id=?', (observation_id,)).fetchone()
             if previous and not previous['valid']:
-                return {'processed': False, 'reason': 'source_invalidated'}
+                return not_processed('source_invalidated')
             receipt = conn.execute('SELECT * FROM work_extraction_receipts WHERE source_record_id=?', (observation_id,)).fetchone()
             if receipt and receipt['state'] == 'completed':
+                if rule_batch_final:
+                    self._maintenance(conn)
                 # Organization can add exact same-topic evidence later. Reconcile
                 # only in deterministic-rule mode; experimental model mode
                 # cannot turn optional associations into accepted task links.
                 # A completed receipt never reruns extraction.
                 if settings['provider'] == 'evidence_rules_v1':
+                    if rule_batch:
+                        self._maintain_rule_dependencies(conn, source, ())
                     self._reconcile_associations(conn, previous['id'], source, self._excerpts(source))
                 if cancelled():
                     raise TaskError('discovery_authorization_changed', 409)
                 return {'processed': True, 'activity_id': previous['id']}
             if receipt and not retry_incomplete:
-                return {'processed': False, 'reason': 'extraction_retry_required'}
+                return not_processed('extraction_retry_required')
             activity_id = previous['id'] if previous else 'activity_' + uuid4().hex
             excerpts = self._excerpts(source)
             revision, fingerprint = settings['version'], encode(source)
@@ -673,7 +737,13 @@ class TaskService:
                 with (operation.transaction() if operation else self.store.transaction()) as conn:
                     if operation:
                         operation.check_provider()
-                    self._maintenance(conn)
+                    if rule_batch and not rule_batch_final:
+                        self._maintain_observations(conn, (observation_id,))
+                    else:
+                        # The final source's sweep and terminal receipt commit
+                        # together. Unrelated older evidence cannot remain stale
+                        # after a successful explicit rule batch.
+                        self._maintenance(conn)
                     settings = conn.execute('SELECT * FROM work_task_settings WHERE id=1').fetchone()
                     source = self._source(conn, observation_id)
                     current = conn.execute('SELECT state,attempt FROM work_extraction_receipts WHERE source_record_id=?', (observation_id,)).fetchone()
@@ -687,6 +757,8 @@ class TaskService:
                     if not isinstance(proposals, list) or len(proposals) > 8 or any(not valid_proposal(p, excerpts) for p in proposals):
                         raise TaskError('invalid_discovery_result')
                     automatic = settings['provider'] == 'evidence_rules_v1'
+                    if rule_batch:
+                        self._maintain_rule_dependencies(conn, source, proposals)
                     for proposal in proposals:
                         key = task_key(proposal.title)
                         discovery = conn.execute('SELECT * FROM work_discoveries WHERE activity_id=? AND dedupe_key=?', (activity_id, key)).fetchone()
@@ -807,9 +879,12 @@ class TaskService:
                     operation.update(conn, state='complete', settled=1,
                                      reason=None if skipped_invalid else 'no_authorized_observations')
         results = []
-        for value in ids[:batch_limit]:
+        selected = ids[:batch_limit]
+        for index, value in enumerate(selected):
             result = self._process_observation(value, retry_incomplete=True,
                 expected_settings_version=settings['version'],
+                **({'rule_batch': True, 'rule_batch_final': index == len(selected) - 1}
+                   if settings['provider'] == 'evidence_rules_v1' else {}),
                 **({'operation': operation, 'cancel_event': operation.cancelled} if operation else {}))
             if operation and not result['processed']:
                 # A source/consent/settings fence is not a successful empty

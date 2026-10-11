@@ -323,6 +323,29 @@ original POST could still arrive. Its identity remains uncertain; an explicitly
 resubmitted admission uses the identical UUID/version. A genuinely new retry is
 permitted only after the prior request is known to be settled or not dispatched.
 
+Explicit deterministic-rule batches validate all retained Activity evidence at
+selection and again inside the final source's successful publication transaction.
+Intermediate preparation/publication validates the current observation and live
+dependencies instead of revalidating unrelated history for every item. Exact-title
+candidates and same-topic predecessors include their receipt fingerprints and the
+origins of merged roots and all members. Eligibility, suppression and user-link
+corrections are read again in the publication transaction; no consent/source-ID
+cache authorizes reuse. Current OCR, expiry and owned-file metadata remain live
+checks. No dependency count is truncated, and no transaction spans the batch.
+
+Automatic callbacks, model extraction, public reads and ordinary CRUD retain full
+maintenance. Rejected preparation and failed publication also retain full cleanup.
+An unrelated source changed during a batch is scrubbed by the next public read or
+the terminal sweep; source deletion and consent revocation remain synchronous.
+The optimization reduces repeated source/media/fingerprint checks, not every
+SQLite row scan. Dense legitimate dependency graphs and the retained global purge
+SQL can still be costly. Synthetic check counts are regression evidence, not a
+latency guarantee for a user's computer. Focused verification:
+
+```sh
+PYTHONPATH=backend python -m unittest app.modules.task_activity.tests.test_rule_batch_validation
+```
+
 JSDOM checks assert node identity, focus, expanded evidence, draft/version fences,
 privacy transitions and stale-response rejection. They do not measure browser
 scroll geometry; native UI acceptance must verify actual scrolling and Undo.
