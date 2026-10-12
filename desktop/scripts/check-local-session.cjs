@@ -330,3 +330,109 @@ test("command receipt absence forwards only bounded exact current command GET404
   changed = fixture(async () => response(missing, 404, {text:async () => { changed.session.token = tokenB; return JSON.stringify(missing); }}));
   assert.deepEqual(await changed.request(changed.event, route), {ok:false,status:503,error:"Local service unavailable."});
 });
+
+test("native user tasks expose inert records, never capture or execution authority", async () => {
+  const calls = [];
+  const f = fixture(async (...args) => { calls.push(args); return response(); });
+  const task = 'task_' + '1'.repeat(32), activity = 'activity_' + '2'.repeat(32), discovery = 'discovery_' + '3'.repeat(32);
+  for (const [method, route] of [
+    ['GET', '/api/tasks?include_archived=true'], ['POST', '/api/tasks'], ['GET', `/api/tasks/${task}`],
+    ['PATCH', `/api/tasks/${task}`], ['PUT', `/api/tasks/${task}/activities/${activity}`],
+    ['PUT', `/api/tasks/${task}/checkpoint`], ['PUT', `/api/tasks/${task}/runtime-goal`],
+    ['POST', `/api/tasks/${task}/resources`], ['POST', `/api/tasks/${task}/merge`], ['POST', `/api/tasks/${task}/unmerge`],
+    ['GET', '/api/task-activity/settings'], ['PUT', '/api/task-activity/settings'],
+    ['GET', '/api/task-activity/activities'], ['POST', '/api/task-activity/activities'],
+    ['GET', '/api/task-activity/discoveries'], ['POST', `/api/task-activity/discoveries/${discovery}/resolve`],
+    ['POST', '/api/task-activity/sync'], ['GET', '/api/task-activity/sync'],
+    ['GET', '/api/task-activity/sync/11111111-1111-4111-8111-111111111111'],
+    ['POST', '/api/task-activity/sync/11111111-1111-4111-8111-111111111111/stop'],
+  ]) assert.equal((await f.request(f.event, route, {method})).ok, true, `${method} ${route}`);
+  const admitted = calls.length;
+  for (const [method, route] of [
+    ['DELETE', `/api/tasks/${task}`], ['POST', `/api/tasks/${task}/execute`],
+    ['POST', `/api/tasks/${task}/activate`], ['POST', '/api/task-activity/observe'],
+    ['POST', '/api/task-activity/sources/grant'], ['POST', '/api/task-activity/settings'],
+    ['DELETE', '/api/task-activity/sync'], ['GET', `/api/tasks/${task}/checkpoint`],
+    ['PUT', `/api/tasks/${task}/activities/../../capture/start`],
+    ['POST', '/api/tasks/bad/merge'],
+  ]) assert.equal((await f.request(f.event, route, {method})).status, 400, `${method} ${route}`);
+  assert.equal(calls.length, admitted);
+  f.frame.url = 'https://untrusted.invalid';
+  assert.equal((await f.request(f.event, '/api/tasks')).status, 403);
+  assert.equal(calls.length, admitted);
+});
+
+test("task sync forwards only fixed diagnostics on exact current POST failure", async () => {
+  const route = '/api/task-activity/sync', options = {method: 'POST', body: '{}'};
+  const codes = ['task_context_incomplete', 'invalid_discovery_result', 'discovery_source_mismatch',
+    'discovery_authorization_changed', 'local_model_unavailable', 'local_provider_failed',
+    'local_provider_timeout', 'invalid_provider_response', 'local_discovery_failed'];
+  for (const code of codes) for (const status of [409, 422]) {
+    const f = fixture(async () => response({detail: code}, status));
+    assert.deepEqual(await f.request(f.event, route, options), {ok: false, status, error: 'Local API request failed.', code});
+  }
+  const known = {detail: 'discovery_source_mismatch'};
+  for (const [route, options, status] of [
+    ['/api/task-activity/sync?extra=1', {method: 'POST'}, 409],
+    ['/api/tasks', {method: 'POST'}, 409],
+    ['/api/task-activity/settings', {method: 'GET'}, 409],
+    ['/api/task-activity/sync', {method: 'POST'}, 500],
+  ]) {
+    const f = fixture(async () => response(known, status));
+    assert.equal((await f.request(f.event, route, options)).code, undefined);
+  }
+  for (const data of [{detail: 'unknown_conflict'}, {detail: 'PRIVATE_RAW_SENTINEL'}, {...known, extra: 'private'}, [known], {detail: tokenA}, {detail: 4}]) {
+    const f = fixture(async () => response(data, 409));
+    const result = await f.request(f.event, route, options);
+    assert.equal(result.code, undefined);
+    assert.ok(!JSON.stringify(result).includes('PRIVATE_RAW_SENTINEL'));
+  }
+  for (const raw of ['{', ' '.repeat(129) + JSON.stringify(known)]) {
+    const f = fixture(async () => response(null, 409, {text: async () => raw}));
+    assert.equal((await f.request(f.event, route, options)).code, undefined);
+  }
+  for (const invalidate of [f => f.session.token = tokenB, f => f.frame.url = 'https://untrusted.invalid', f => f.state.running = false]) {
+    let f;
+    f = fixture(async () => response(known, 409, {text: async () => {invalidate(f); return JSON.stringify(known);}}));
+    assert.deepEqual(await f.request(f.event, route, options), {ok: false, status: 503, error: 'Local service unavailable.'});
+  }
+});
+
+
+test("task Sync receipt paths admit only exact UUID GET/start POST/stop POST without query or encoded aliases", async () => {
+  const calls = [], id = "11111111-1111-4111-8111-111111111111", route = `/api/task-activity/sync/${id}`;
+  const f = fixture(async (...args) => {calls.push(args); return response();});
+  for (const [method, path] of [["GET", "/api/task-activity/sync"], ["POST", "/api/task-activity/sync"], ["GET", route], ["POST", `${route}/stop`]]) assert.equal((await f.request(f.event, path, {method})).ok, true);
+  const accepted = calls.length;
+  for (const [method, path] of [["GET", `${route}/stop`], ["POST", route], ["PUT", route], ["DELETE", route], ["HEAD", route], ["POST", `${route}/restart`], ["GET", `${route}/extra`], ["GET", `${route}/`], ["GET", `${route}?extra=1`], ["POST", `${route}/stop?extra=1`], ["POST", "/api/task-activity/sync?extra=1"], ["GET", "/api/task-activity/%73ync"], ["GET", route.replace("11111111", "%311111111")], ["GET", "/api/task-activity/sync/not-a-uuid"], ["GET", route.replaceAll("1", "g")], ["GET", "/api/task-activity/sync/" + "a".repeat(36)], ["GET", "/api/task-activity/sync/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA"]]) assert.equal((await f.request(f.event, path, {method})).status, 400, `${method} ${path}`);
+  assert.equal(calls.length, accepted);
+});
+
+test("task receipt absence exposes only exact current bounded GET404 proof and keeps Stop absence opaque", async () => {
+  const id = "11111111-1111-4111-8111-111111111111", route = `/api/task-activity/sync/${id}`, missing = {detail: "task_sync_not_found"};
+  const f = fixture(async () => response(missing, 404));
+  assert.deepEqual(await f.request(f.event, route), {ok: false, status: 404, error: "Local API request failed.", code: "task_sync_not_found"});
+  for (const [path, options] of [["/api/task-activity/sync", {}], ["/api/task-activity/sync", {method: "POST"}], [`${route}/stop`, {method: "POST", body: "{}"}], ["/api/tasks", {}]]) assert.equal((await f.request(f.event, path, options)).code, undefined);
+  for (const data of [{detail: "PRIVATE_RAW_SENTINEL"}, {...missing, private: "PRIVATE_RAW_SENTINEL"}, {detail: tokenA}, [missing], {detail: "runtime_command_not_found"}]) {
+    const other = fixture(async () => response(data, 404)); const result = await other.request(other.event, route); assert.equal(result.code, undefined); assert.ok(!JSON.stringify(result).includes("PRIVATE_RAW_SENTINEL")); assert.ok(!JSON.stringify(result).includes(tokenA));
+  }
+  for (const raw of ["not-json", " ".repeat(129) + JSON.stringify(missing)]) {const other = fixture(async () => response(null, 404, {text: async () => raw})); assert.equal((await other.request(other.event, route)).code, undefined);}
+  for (const status of [409, 422, 500]) {const other = fixture(async () => response(missing, status)); assert.equal((await other.request(other.event, route)).code, undefined);}
+  for (const invalidate of [f => f.session.token = tokenB, f => f.frame.url = "https://untrusted.invalid", f => f.state.running = false, f => f.state.apiBase = "http://127.0.0.1:8124"]) {
+    let changed; changed = fixture(async () => response(missing, 404, {text: async () => {invalidate(changed); return JSON.stringify(missing);}}));
+    assert.deepEqual(await changed.request(changed.event, route), {ok: false, status: 503, error: "Local service unavailable."});
+  }
+});
+
+test("admission rejection forwards only validated version/command conflict on exact start POST409", async () => {
+  for (const code of ["version_conflict", "command_conflict"]) {
+    const route = "/api/task-activity/sync", options = {method: "POST", body: "{}"};
+    const f = fixture(async () => response({detail: code}, 409));
+    assert.deepEqual(await f.request(f.event, route, options), {ok: false, status: 409, error: "Local API request failed.", code});
+    for (const [path, method] of [[route, "GET"], ["/api/tasks", "POST"], [route + "/11111111-1111-4111-8111-111111111111/stop", "POST"]]) assert.equal((await f.request(f.event, path, {method})).code, undefined);
+    for (const status of [400, 404, 422, 503]) {const other = fixture(async () => response({detail: code}, status)); assert.equal((await other.request(other.event, route, options)).code, undefined);}
+    const malformed = fixture(async () => response({detail: code, body: "PRIVATE_RAW_SENTINEL"}, 409)); assert.equal((await malformed.request(malformed.event, route, options)).code, undefined);
+    let changed; changed = fixture(async () => response({detail: code}, 409, {text: async () => {changed.session.token = tokenB; return JSON.stringify({detail: code});}}));
+    assert.deepEqual(await changed.request(changed.event, route, options), {ok: false, status: 503, error: "Local service unavailable."});
+  }
+});

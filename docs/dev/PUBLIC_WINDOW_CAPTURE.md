@@ -90,6 +90,68 @@ reported as `window_identity_unverified` (identity continuity could not be
 confirmed), requiring a new preview. Observed identity mismatches and
 destroy/unmap/reconfigure events retain their distinct failure diagnostics.
 
+### Source-list diagnostics
+
+The existing explicit source-picker open/refresh uses the same bounded X11
+`list` command and the same accepted-source identity schema. The helper now
+adds optional aggregate metadata to that response, passed through the existing
+`openbutler:get-capture-windows` IPC as `diagnostics`:
+
+```json
+{
+  "ok": true,
+  "sources": [],
+  "diagnostics": {
+    "rejected_counts": {
+      "not_viewable": 0,
+      "not_standard_window": 0,
+      "unsupported_format": 1,
+      "bordered_window": 0,
+      "invalid_size": 0,
+      "identity_unavailable": 0,
+      "unknown_error": 0
+    }
+  }
+}
+```
+
+This example is synthetic. Each bucket is an integer from 0 to 200; the sum of
+rejected counts plus accepted sources cannot exceed the existing 200-candidate
+limit. The provider and renderer accept only the exact fixed schema, copying
+allowlisted counts and discarding invalid optional diagnostics. Older helpers,
+including Windows, may omit this field; existing `listSources()` callers still
+receive the same array. No endpoint or accepted-source identity field is added.
+
+Each rejected candidate contributes once, for the first failed metadata guard:
+not viewable, override-redirect/nonstandard window, unsupported client depth,
+nonzero native border, or nonpositive/oversized dimensions. Known failures to
+verify bounds, identity or ownership share `identity_unavailable`; other already
+handled discovery failures become `unknown_error`. Unexpected helper failures
+still fail the entire refresh closed. Preview/bind errors retain the existing
+`opaque_visible_client_required` code. No guard, foreground exception, capture,
+format validation, consent, source selection or preview requirement is relaxed.
+
+Counts come only from the existing candidate checks. Discovery never binds,
+prepares or reads pixels. Rejected titles, XIDs, PIDs, classes, process paths,
+raw exception details and screenshots are not returned, logged or persisted.
+The UI keeps only the latest transient list snapshot and clears it on refresh
+or failure; there is no diagnostic history or telemetry. Mixed lists show why
+some candidates were omitted. An empty legacy list explicitly leaves the cause
+unknown instead of claiming no window exists. Counts cannot identify which
+application failed or prove a browser's exact failure cause. In particular, this
+change does not establish Chromium support or diagnose an actual browser as
+32-bit; runtime/browser acceptance remains a separate verification step.
+
+Synthetic diagnostic verification (no live display, capture or model calls):
+
+```sh
+DISPLAY= XDG_SESSION_TYPE= PYTHONDONTWRITEBYTECODE=1 python3 -B desktop/scripts/check-x11-public-window.py
+node desktop/scripts/check-source-discovery.cjs
+node desktop/scripts/check-local-session-main.cjs
+node frontend/scripts/check-public-window-dom.cjs
+npm --prefix frontend run build
+```
+
 The only image read is `XGetImage` from a pinned
 `XCompositeNameWindowPixmap` for the selected opaque, visible 24-bit client.
 There is no root drawable read, screen cropping, desktop thumbnail, alternate

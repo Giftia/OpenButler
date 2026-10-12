@@ -2,15 +2,17 @@ import {useEffect, useRef, useState} from "react";
 import {MaskEditor, type MaskedEditingCanvas} from "./MaskEditor";
 import {clampMask, sameMask, validImageBounds, type ImageBounds, type MaskRect} from "../lib/maskGeometry";
 import {createPrivacyPreviewGate, type PreviewTicket} from "../lib/privacyPreviewGate";
+import {publicWindowRejectedTotal, publicWindowRejectionHints, readPublicWindowSourceDiagnostics} from "../lib/publicWindowDiagnostics";
 import {publicCaptureFailure} from "../lib/publicCaptureFailure";
 import {pauseBuiltinCaptureApi} from "../lib/api";
-import type {CaptureCapabilities, CaptureObservationMode, PublicWindowCaptureConfig, PublicWindowSource} from "../lib/captureTypes";
+import type {CaptureCapabilities, CaptureObservationMode, PublicWindowCaptureConfig, PublicWindowSource, PublicWindowSourceDiagnostics} from "../lib/captureTypes";
 
 export function PublicWindowCaptureSetup({active, capabilities, onComplete, onStartingChange}: {
   active: boolean; capabilities: CaptureCapabilities | null; onComplete: () => void;
   onStartingChange: (starting: boolean) => void;
 }) {
   const [sources, setSources] = useState<PublicWindowSource[]>([]);
+  const [sourceDiagnostics, setSourceDiagnostics] = useState<PublicWindowSourceDiagnostics | null>(null);
   const [sourceId, setSourceId] = useState("");
   const [loading, setLoading] = useState(true);
   const [publicOnly, setPublicOnly] = useState(false);
@@ -32,6 +34,7 @@ export function PublicWindowCaptureSetup({active, capabilities, onComplete, onSt
   const listing = useRef(0);
   const mounted = useRef(false);
   const selected = sources.find((item) => item.id === sourceId);
+  const rejectedTotal = publicWindowRejectedTotal(sourceDiagnostics);
   const available = capabilities?.public_window?.supported === true;
 
   useEffect(() => {
@@ -48,13 +51,17 @@ export function PublicWindowCaptureSetup({active, capabilities, onComplete, onSt
   async function readSources() {
     if (operation.current === "start" || active) return;
     const request = ++listing.current;
-    invalidate(true); setLoading(true); setMessage("");
+    invalidate(true); setLoading(true); setMessage(""); setSourceDiagnostics(null);
     try {
       const result = await window.openbutlerDesktop?.getCaptureWindows?.();
       if (!mounted.current || request !== listing.current) return;
       if (!result?.ok) { setSources([]); setSourceId(""); setMessage("专用窗口列表暂不可用，请检查本机窗口采集能力后重试。"); return; }
       setSources(result.sources); setSourceId(""); setPublicOnly(false); setMasks([]);
-      if (!result.sources.length) setMessage("没有可选的独立窗口。请打开仅含公开测试内容的专用窗口，再刷新列表。");
+      const diagnostics = readPublicWindowSourceDiagnostics(result.diagnostics, result.sources.length);
+      setSourceDiagnostics(diagnostics);
+      if (!result.sources.length && !publicWindowRejectedTotal(diagnostics)) setMessage(diagnostics
+        ? "本次检查未找到可选的独立窗口，也未记录到被排除的窗口。请确认专用公开窗口已打开并可见，再刷新列表。"
+        : "没有可选的独立窗口；当前列表未提供可用的排除原因，无法确认是否已有窗口未通过检查。请确认专用公开窗口已打开并可见，再刷新列表。");
     } catch {
       if (mounted.current && request === listing.current) { setSources([]); setSourceId(""); setMessage("读取窗口列表失败；没有获取任何画面。"); }
     } finally { if (mounted.current && request === listing.current) setLoading(false); }
@@ -164,6 +171,13 @@ export function PublicWindowCaptureSetup({active, capabilities, onComplete, onSt
       {sources.map((source) => <option key={source.id} value={source.id}>{source.label} · PID {source.source_identity.owner_pid}</option>)}
     </select></label>
     <button className="secondary" disabled={disabled || !!busy || editing || loading} onClick={() => void readSources()}>刷新窗口列表</button>
+    {sourceDiagnostics && rejectedTotal > 0 && <div className="policy-note" role="status" aria-label="窗口列表检查提示">
+      <p>{sources.length ? `本次检查另有 ${rejectedTotal} 个窗口未通过采集条件，仍可选择上方已列出的窗口。`
+        : `本次检查有 ${rejectedTotal} 个窗口未通过采集条件，暂无可选窗口。`}</p>
+      <ul>{publicWindowRejectionHints.map(({key, label, hint}) => sourceDiagnostics.rejected_counts[key] > 0
+        ? <li key={key}>{label}：{sourceDiagnostics.rejected_counts[key]}。{hint}</li> : null)}</ul>
+      <small>仅为本次检查的分类数量，不能据此判断某个应用的具体原因。调整后请刷新列表。</small>
+    </div>}
     {selected && <div className="preview-target-identity" aria-label="已绑定窗口身份">
       <strong>{selected.source_identity.window_title}</strong>
       <span>XID {selected.source_identity.window_id} · PID {selected.source_identity.owner_pid}</span>

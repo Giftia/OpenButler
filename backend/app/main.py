@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+import re
 import sqlite3
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -25,6 +26,10 @@ from app.modules.agent_runtime.router import create_agent_runtime_router
 from app.modules.agent_runtime.supervisor import RuntimeSupervisor
 from app.modules.agent_runtime.planner_control import PlannerControl
 from app.modules.agent_runtime.conversation_service import ConversationService
+from app.modules.task_activity.service import TaskService
+from app.modules.task_activity.store import init_task_store
+from app.modules.task_activity.router import create_task_router
+from app.modules.task_activity.model_discovery import LocalModelDiscovery
 
 from app.modules.butler_core import init_butler_core_db
 from app.modules.butler_core.router import (
@@ -130,6 +135,8 @@ def init_db() -> None:
         init_butler_core_db(conn)
         init_privacy_audit(conn)
         init_capture_store(conn)
+        if task_activity is not None:
+            init_task_store(conn)
 
 
 def row_to_event(row: sqlite3.Row) -> dict[str, Any]:
@@ -394,9 +401,18 @@ app.include_router(pc_activity_router)
 app.include_router(butler_router)
 model_settings_router = create_model_settings_router(
     db, get_privacy_mode, set_privacy_mode, dispatch_lock=PRIVACY_DISPATCH_LOCK)
+# User tasks work without capture/model consent and without enabling goal execution.
+task_activity = None
+if (local_session_policy.mode == "local" and local_session_policy.preview_builtin
+        and local_session_policy.token is not None):
+    task_activity = TaskService(DB_PATH, model_provider=LocalModelDiscovery(
+        model_settings_router.gateway, model_settings_router.current_authorization,
+        authorization_guard=model_settings_router.authorization_guard))
+    app.include_router(create_task_router(task_activity))
 app.include_router(create_context_engine_router(
     db, get_privacy_mode, DATA_DIR,
-    model_settings_router.gateway, model_settings_router.current_authorization))
+    model_settings_router.gateway, model_settings_router.current_authorization,
+    observation_callback=task_activity.process_observation if task_activity else None))
 app.include_router(model_settings_router)
 
 # Product goal-loop runtime is separate from capture and development automation.
@@ -409,6 +425,8 @@ if (local_session_policy.mode == "local" and local_session_policy.preview_builti
         and local_session_policy.token is not None):
     agent_runtime_path = DATA_DIR / "agent_runtime.sqlite3"
     agent_runtime = PrivateRcRuntimeService(agent_runtime_path)
+    if task_activity is not None:
+        task_activity.runtime = agent_runtime
     # This gateway is text-only/local-only and has its own dispatch lock. It
     # never inherits the capture-model destination or credential consent.
     agent_planner_control = PlannerControl(agent_runtime, gateway_factory=lambda: Gateway(
@@ -443,6 +461,19 @@ def stop_agent_runtime() -> None:
 
 @app.middleware("http")
 async def ensure_vercel_demo_data(request, call_next):
+    # Native startup already initialized these tables. Durable operation GET
+    # must stay read-only, and admission/Stop must use their own bounded store
+    # waits rather than request-time schema/seed writes. Authenticate first via
+    # the unchanged outer LocalSessionMiddleware. Other/demo routes are intact.
+    sync_path = "/api/task-activity/sync"
+    sync_id = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+    native_sync = task_activity is not None and not request.url.query and (
+        request.url.path == sync_path and request.method in {"GET", "POST"}
+        or request.method == "GET" and re.fullmatch(sync_path + "/" + sync_id, request.url.path)
+        or request.method == "POST" and re.fullmatch(sync_path + "/" + sync_id + "/stop", request.url.path)
+    )
+    if native_sync:
+        return await call_next(request)
     if request.url.path == "/health" or request.url.path.startswith("/api/"):
         init_db()
         seed_events_if_empty()
