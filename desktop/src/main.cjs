@@ -1164,8 +1164,8 @@ handleDesktopRequest("openbutler:get-capture-capabilities", async () => ({
 }));
 
 handleDesktopRequest("openbutler:get-capture-windows", async () => {
-  try { return {ok: true, sources: await windowProvider().listSources()}; }
-  catch (error) { return {ok: false, sources: [], error: error.message || "window_source_unavailable"}; }
+  try { return {ok: true, ...await windowProvider().listSourcesResult()}; }
+  catch { return {ok: false, sources: [], error: "window_source_unavailable"}; }
 });
 
 handleDesktopRequest("openbutler:get-masked-capture-preview", async (_event, config) => {

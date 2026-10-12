@@ -32,15 +32,15 @@ const identity = {window_id:"x11:123",owner_pid:456,owner_process_start:"7788",o
 const sources = [{id:"x11:123",label:identity.window_title,source_identity:identity},{id:"x11:124",label:"Second public window",source_identity:{...identity,window_id:"x11:124",window_title:"Second public window"}}];
 const capabilities = {public_window:{supported:true,platform:"linux-x11",lock_state:"unknown",lock_protection_supported:false},full_desktop:{supported:false,reason:"lock_state_unknown"}};
 const okay = (mode="vision") => ({ok:true,previewDataUrl:png,maskedRegions:0,source_revision:"test-revision",lock_state:"unknown",observation_mode:mode,...(mode === "masked_ocr_text" ? {post_mask_ocr_complete:true,post_mask_ocr_text:"SAFE PUBLIC TEXT",post_mask_ocr_image_digest:"a".repeat(64)} : {})});
-const deferred = () => { let resolve; const promise = new Promise((yes)=>{resolve=yes;}); return {promise,resolve}; };
+const deferred = () => { let resolve, reject; const promise = new Promise((yes,no)=>{resolve=yes;reject=no;}); return {promise,resolve,reject}; };
 const flush = () => new Promise((done)=>setImmediate(done));
 let root, previews, starts, windows, displayCalls, modelCalls, pauses, completes, responder, startResponder;
-async function setup(props={}) {
+async function setup(props={}, listResponder=async()=>({ok:true,sources})) {
   if(root) await act(async()=>root.unmount());
   previews=[]; starts=[]; windows=0; displayCalls=0; modelCalls=0; pauses=0; completes=0; pauseApiCalls=0;
   responder=async(config)=>okay(config.observation_mode); startResponder=async()=>({ok:true});
   window.openbutlerDesktop={
-    getCaptureWindows:async()=>{windows++;return {ok:true,sources};},
+    getCaptureWindows:async()=>{windows++;return listResponder(windows);},
     getCaptureDisplays:async()=>{displayCalls++;return[];},
     getMaskedCapturePreview:async(config)=>{previews.push(config);return responder(config);},
     startBuiltinCapture:async(config)=>{starts.push(config);return startResponder(config);},
@@ -66,7 +66,101 @@ async function imageLoad() {
 async function preview() { await click("检查公开窗口隐私预览");await imageLoad(); }
 async function approve() { await tick("确认公开窗口最新预览");assert.equal(input("确认公开窗口最新预览").checked,true); }
 const checks=[];const check=(name)=>checks.push(name);
+const rejectionCounts = (overrides={}) => ({not_viewable:0,not_standard_window:0,unsupported_format:0,bordered_window:0,invalid_size:0,identity_unavailable:0,unknown_error:0,...overrides});
+const diagnostics = (overrides={}) => ({rejected_counts:rejectionCounts(overrides)});
+const listResult = (counts={}, accepted=sources) => ({ok:true,sources:accepted,diagnostics:diagnostics(counts)});
+const sourceHints = () => document.querySelector('[aria-label="窗口列表检查提示"]');
+function noCaptureOrConsent() {
+  assert.equal(previews.length,0);assert.equal(starts.length,0);assert.equal(displayCalls,0);assert.equal(modelCalls,0);assert.equal(pauses,0);
+  assert.equal(input("选择专用公开窗口").value,"");assert.equal(input("确认窗口仅包含公开内容").checked,false);
+  assert.equal(input("确认公开窗口最新预览").checked,false);assert.equal(previewButton().disabled,true);assert.equal(start().disabled,true);
+}
+async function checkSourceDiagnostics() {
+  await setup({},async()=>({ok:true,sources:[]}));
+  assert.equal(sourceHints(),null);assert.match(document.body.textContent,/未提供可用的排除原因/);assert.match(document.body.textContent,/无法确认是否已有窗口未通过检查/);
+  noCaptureOrConsent();assert.equal(windows,2);
+  check("legacy empty responses keep rejection reasons explicitly unknown and enumerate metadata only once per StrictMode effect");
+
+  const all={not_viewable:1,not_standard_window:2,unsupported_format:3,bordered_window:4,invalid_size:5,identity_unavailable:6,unknown_error:7};
+  await setup({},async()=>listResult(all,[]));
+  assert.match(sourceHints().textContent,/28 个窗口未通过采集条件，暂无可选窗口/);
+  for(const text of ["当前不可见：1","非标准独立窗口：2","画面格式不受支持：3","24 位窗口","带有不支持的原生边框：4","窗口尺寸无效或超限：5","窗口身份无法验证：6","窗口检查未完成：7","不能据此判断某个应用的具体原因"])assert.ok(sourceHints().textContent.includes(text),text);
+  assert.doesNotMatch(document.body.textContent,/未提供可用的排除原因|请打开仅含公开测试内容/);noCaptureOrConsent();assert.equal(windows,2);
+  check("proven all-rejected lists show bounded category counts and actionable fixed hints without claiming a specific application's cause");
+
+  await setup({},async()=>listResult({not_viewable:1,unsupported_format:3}));
+  assert.match(sourceHints().textContent,/另有 4 个窗口未通过采集条件/);assert.equal(sourceHints().querySelectorAll("li").length,2);
+  assert.deepEqual([...input("选择专用公开窗口").options].slice(1).map((option)=>({value:option.value,text:option.text})),sources.map((source)=>({value:source.id,text:`${source.label} · PID ${source.source_identity.owner_pid}`})));
+  noCaptureOrConsent();await choose();assert.match(sourceHints().textContent,/另有 4 个窗口/);assert.equal(input("确认公开窗口最新预览").disabled,true);
+  await preview();await approve();await click("开始公开窗口自动记录");
+  assert.deepEqual(starts[0],{capture_scope:"dedicated_public_window",display_id:identity.window_id,source_identity:identity,excluded_apps:["password","1password","keepass","bitwarden","密码"],masks:[],interval_seconds:10,session_duration_seconds:600,observation_mode:"vision",confirmed:true});
+  assert.equal(previews.length,1);assert.equal(starts.length,1);assert.equal(windows,2);assert.equal(displayCalls,0);assert.equal(modelCalls,0);
+  check("mixed lists retain exact accepted options and the existing selection, preview and consent contract; diagnostics never enter capture config");
+
+  await setup({},async()=>listResult({},[]));assert.equal(sourceHints(),null);assert.match(document.body.textContent,/未记录到被排除的窗口/);assert.doesNotMatch(document.body.textContent,/未提供可用的排除原因/);noCaptureOrConsent();
+  await setup({},async()=>listResult({}));assert.equal(sourceHints(),null);noCaptureOrConsent();
+  check("valid zero counts are distinct from legacy unknown reasons and do not invent rejections");
+  await setup({},async()=>listResult({unknown_error:200},[]));assert.match(sourceHints().textContent,/200 个窗口/);noCaptureOrConsent();
+  await setup({},async()=>listResult({unknown_error:198}));assert.match(sourceHints().textContent,/198 个窗口/);noCaptureOrConsent();
+  check("safe boundary totals up to 200 candidates include the unchanged accepted list");
+
+  const missing=rejectionCounts();delete missing.identity_unavailable;
+  const inherited=Object.create({not_viewable:1});Object.assign(inherited,rejectionCounts());delete inherited.not_viewable;
+  const countGetter=rejectionCounts();Object.defineProperty(countGetter,"not_viewable",{get(){throw new Error("PRIVATE_GETTER");},enumerable:true});
+  const diagnosticsGetter={};Object.defineProperty(diagnosticsGetter,"rejected_counts",{get(){throw new Error("PRIVATE_GETTER");},enumerable:true});
+  const invalid=[undefined,null,"PRIVATE_REJECTED_TITLE",[],{}, {rejected_counts:[]},{rejected_counts:null},
+    {rejected_counts:missing},{rejected_counts:inherited},{rejected_counts:countGetter},diagnosticsGetter,
+    {...diagnostics({not_viewable:1}),window_title:"PRIVATE_REJECTED_TITLE"},
+    {...diagnostics({not_viewable:1}),sources:[{id:"PRIVATE_REJECTED_ID",process:"PRIVATE_PROCESS",pixels:"PRIVATE_PIXELS"}]},
+    {rejected_counts:{...rejectionCounts({not_viewable:1}),PRIVATE_REJECTED_TITLE:1}},
+    {rejected_counts:{...rejectionCounts(),constructor:1}},
+    {rejected_counts:JSON.parse(JSON.stringify(rejectionCounts()).replace('"not_viewable":0','"__proto__":{},"not_viewable":0'))},
+    {rejected_counts:{...rejectionCounts(),[Symbol("PRIVATE_REJECTED_TITLE")]:1}},
+    ...[-1,201,0.5,NaN,Infinity,Number.MAX_SAFE_INTEGER,1n,"PRIVATE_REJECTED_TITLE",true,null,{},[]].map((value)=>diagnostics({not_viewable:value})),
+    diagnostics({not_viewable:150,invalid_size:51})];
+  for(const value of invalid) {
+    await setup({},async()=>({ok:true,sources:[],diagnostics:value}));assert.equal(sourceHints(),null);assert.match(document.body.textContent,/未提供可用的排除原因/);
+    assert.doesNotMatch(document.body.textContent,/PRIVATE_|__proto__|constructor/);noCaptureOrConsent();
+  }
+  await setup({},async()=>listResult({not_viewable:199}));assert.equal(sourceHints(),null);assert.equal(input("选择专用公开窗口").options.length,3);noCaptureOrConsent();
+  check("malformed, inherited, accessor, unknown, PII-bearing and over-budget diagnostics are dropped entirely without hiding accepted sources or exposing details");
+
+  await setup({},async()=>listResult({unsupported_format:3}));await choose();await preview();await approve();
+  const refresh=deferred();window.openbutlerDesktop.getCaptureWindows=()=>{windows++;return refresh.promise;};await click("刷新窗口列表");
+  assert.equal(sourceHints(),null);assert.equal(input("确认公开窗口最新预览").checked,false);assert.equal(document.querySelector(".preview-mask-surface img"),null);assert.equal(start().disabled,true);assert.equal(pauses,1);assert.equal(previews.length,1);assert.equal(starts.length,0);
+  await act(async()=>{refresh.resolve({ok:true,sources});await flush();});assert.equal(sourceHints(),null);assert.equal(input("选择专用公开窗口").value,"");assert.equal(input("确认窗口仅包含公开内容").checked,false);assert.equal(previews.length,1);assert.equal(starts.length,0);assert.equal(windows,3);
+  check("refresh immediately clears diagnostic snapshots and preserves existing preview invalidation, lease cancellation and fresh-consent requirements");
+
+  for(const rejects of [false,true]) {
+    await setup({},async()=>listResult({identity_unavailable:2}));
+    window.openbutlerDesktop.getCaptureWindows=async()=>{windows++;if(rejects)throw new Error("PRIVATE_RAW_LIST_ERROR");return {ok:false,error:"PRIVATE_RAW_LIST_ERROR",diagnostics:diagnostics({unknown_error:5})};};
+    await click("刷新窗口列表");assert.equal(sourceHints(),null);assert.doesNotMatch(document.body.textContent,/PRIVATE_RAW_LIST_ERROR|2 个窗口|5 个窗口/);assert.match(document.body.textContent,rejects?/读取窗口列表失败/:/专用窗口列表暂不可用/);noCaptureOrConsent();
+  }
+  check("failed or rejected refresh clears old diagnostics and never displays diagnostic or raw error data from failures");
+
+  const older=deferred(),newer=deferred();await setup({},(call)=>call===1?older.promise:newer.promise);
+  assert.equal(sourceHints(),null);assert.equal(input("选择专用公开窗口").disabled,true);
+  await act(async()=>{newer.resolve(listResult({not_viewable:2}));await flush();});assert.match(sourceHints().textContent,/另有 2 个窗口/);
+  await act(async()=>{older.resolve(listResult({unsupported_format:7},[]));await flush();});assert.match(sourceHints().textContent,/另有 2 个窗口/);assert.doesNotMatch(sourceHints().textContent,/7|画面格式/);assert.equal(input("选择专用公开窗口").options.length,3);noCaptureOrConsent();assert.equal(windows,2);
+  check("late stale enumeration responses cannot replace newer source lists or diagnostic counts");
+
+  await setup({},async()=>listResult({not_viewable:1}));const olderRefresh=deferred(),newerRefresh=deferred();let refreshCalls=0;
+  window.openbutlerDesktop.getCaptureWindows=()=>{windows++;return ++refreshCalls===1?olderRefresh.promise:newerRefresh.promise;};
+  await act(async()=>{button("刷新窗口列表").click();button("刷新窗口列表").click();await flush();});
+  assert.equal(refreshCalls,2);assert.equal(sourceHints(),null);
+  await act(async()=>{newerRefresh.resolve({ok:false,error:"PRIVATE_NEW_ERROR"});await flush();});
+  await act(async()=>{olderRefresh.resolve(listResult({unsupported_format:9}));await flush();});
+  assert.equal(sourceHints(),null);assert.equal(input("选择专用公开窗口").options.length,1);assert.match(document.body.textContent,/专用窗口列表暂不可用/);assert.doesNotMatch(document.body.textContent,/PRIVATE_NEW_ERROR|9 个窗口/);noCaptureOrConsent();assert.equal(windows,4);
+  check("repeated refresh responses remain fenced when the newest request fails; older counts and sources cannot reappear");
+
+  const staleFailure=deferred();await setup({},(call)=>call===1?staleFailure.promise:Promise.resolve(listResult({invalid_size:3})));
+  await act(async()=>{staleFailure.reject(new Error("PRIVATE_STALE_ERROR"));await flush();});assert.match(sourceHints().textContent,/另有 3 个窗口/);assert.doesNotMatch(document.body.textContent,/读取窗口列表失败|PRIVATE_STALE_ERROR/);noCaptureOrConsent();
+  const dismissed=deferred();await setup({},()=>dismissed.promise);await setup({},async()=>({ok:true,sources}));
+  await act(async()=>{dismissed.resolve(listResult({bordered_window:6},[]));await flush();});assert.equal(sourceHints(),null);assert.equal(input("选择专用公开窗口").options.length,3);noCaptureOrConsent();
+  check("stale errors and dismissed picker responses cannot leak diagnostic state into a newer or reopened picker");
+}
 (async()=>{
+  await checkSourceDiagnostics();
   await setup();assert.equal(previews.length,0);assert.equal(starts.length,0);assert.equal(displayCalls,0);assert.equal(modelCalls,0);assert.ok(windows>0);assert.equal(start().disabled,true);assert.match(document.body.textContent,/锁屏状态未知/);assert.match(document.body.textContent,/规则可能遗漏敏感信息/);
   check("mount reads window metadata only; no screen capture, model invocation or automatic start; capability limits are explicit");
   await change("选择专用公开窗口","x11:123");assert.equal(previewButton().disabled,true);assert.match(document.body.textContent,/XID x11:123 · PID 456/);await tick("确认窗口仅包含公开内容");assert.equal(previewButton().disabled,false);

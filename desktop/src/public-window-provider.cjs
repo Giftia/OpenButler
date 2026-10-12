@@ -7,6 +7,23 @@ const FORMAT_KEYS = ['depth', 'bits_per_pixel', 'byte_order', 'format', 'xoffset
   'red_mask', 'green_mask', 'blue_mask', 'visual_visual_id', 'visual_visual_class',
   'visual_red_mask', 'visual_green_mask', 'visual_blue_mask', 'visual_depth'];
 
+const DISCOVERY_REASONS = ['not_viewable', 'not_standard_window', 'unsupported_format',
+  'bordered_window', 'invalid_size', 'identity_unavailable', 'unknown_error'];
+
+function checkedDiscoveryDiagnostics(value, acceptedCount) {
+  // Optional metadata from newer helpers. Ignore malformed/unknown fields rather
+  // than forwarding native text, changing accepted sources or inventing counts.
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || Object.keys(value).length !== 1 || !Object.hasOwn(value, 'rejected_counts')) return undefined;
+  const counts = value.rejected_counts;
+  if (!counts || typeof counts !== 'object' || Array.isArray(counts)
+    || Object.keys(counts).length !== DISCOVERY_REASONS.length
+    || !DISCOVERY_REASONS.every(key => Object.hasOwn(counts, key)
+      && Number.isSafeInteger(counts[key]) && counts[key] >= 0 && counts[key] <= 200)
+    || DISCOVERY_REASONS.reduce((sum, key) => sum + counts[key], acceptedCount) > 200) return undefined;
+  return {rejected_counts: Object.fromEntries(DISCOVERY_REASONS.map(key => [key, counts[key]]))};
+}
+
 function checkedIdentity(value) {
   if (!value || !/^(?:x11:[1-9][0-9]{0,10}|hwnd:[1-9][0-9]{0,19})$/.test(value.window_id)
     || !Number.isSafeInteger(value.owner_pid) || value.owner_pid < 1
@@ -126,11 +143,14 @@ class PublicWindowProvider {
     return job;
   }
 
-  async listSources() {
+  async listSourcesResult() {
     const result = await this.request({action: 'list'});
-    return result.sources.map(checkedIdentity).map(identity => ({id: identity.window_id,
+    const sources = result.sources.map(checkedIdentity).map(identity => ({id: identity.window_id,
       label: identity.window_title, source_identity: identity}));
+    const diagnostics = checkedDiscoveryDiagnostics(result.diagnostics, sources.length);
+    return diagnostics ? {sources, diagnostics} : {sources};
   }
+  async listSources() { return (await this.listSourcesResult()).sources; }
   bind(identity) { return this.request({action: 'bind', source_identity: checkedIdentity(identity)}); }
   prepareSource() { return this.request({action: 'prepare'}); }
   inspect() { return this.request({action: 'inspect'}); }

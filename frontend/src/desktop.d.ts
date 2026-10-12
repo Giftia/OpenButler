@@ -1,5 +1,5 @@
 import type {ModelCatalogBridge} from "./lib/modelCatalog";
-import type {CaptureCapabilities, DesktopCaptureConfig, PublicWindowSource} from "./lib/captureTypes";
+import type {CaptureCapabilities, DesktopCaptureConfig, PublicWindowSource, PublicWindowSourceDiagnostics} from "./lib/captureTypes";
 import type {TaskRequestCode} from "./lib/taskActivityApi";
 export {};
 
@@ -55,7 +55,7 @@ declare global {
       quitApp: () => Promise<{ok: boolean}>;
       getAcceptancePack: () => Promise<Record<string, any> | null>;
       saveAcceptanceFeedback: (feedback: Record<string, unknown>) => Promise<{ok: boolean; savedAt?: string; message?: string}>;
-      getCaptureWindows?: () => Promise<{ok: true; sources: PublicWindowSource[]} | {ok: false; error: string}>;
+      getCaptureWindows?: () => Promise<{ok: true; sources: PublicWindowSource[]; diagnostics?: PublicWindowSourceDiagnostics} | {ok: false; error: string}>;
       getCaptureCapabilities?: () => Promise<CaptureCapabilities>;
       getCaptureDisplays?: () => Promise<Array<{id: string; label: string}>>;
       getMaskedCapturePreview?: (config: DesktopCaptureConfig) => Promise<

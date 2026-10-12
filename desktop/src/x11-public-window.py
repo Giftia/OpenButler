@@ -24,6 +24,28 @@ U = C.c_ulong
 I = C.c_int
 P = C.c_void_p
 
+# Discovery exposes aggregate metadata only; never candidate identities or errors.
+DISCOVERY_REASONS = ('not_viewable', 'not_standard_window', 'unsupported_format',
+                     'bordered_window', 'invalid_size', 'identity_unavailable', 'unknown_error')
+
+
+class DiscoveryRejection(ValueError):
+    def __init__(self, reason):
+        # Keep the existing preview/bind failure code and all rejection behavior.
+        super().__init__('opaque_visible_client_required')
+        self.reason = reason
+
+
+def discovery_rejection_reason(error):
+    if isinstance(error, DiscoveryRejection) and error.reason in DISCOVERY_REASONS:
+        return error.reason
+    if isinstance(error, ValueError) and error.args in (
+            ('client_window_required',), ('window_source_unavailable',),
+            ('window_bounds_unavailable',), ('window_identity_unavailable',),
+            ('window_owner_unavailable',)):
+        return 'identity_unavailable'
+    return 'unknown_error'
+
 
 class Attributes(C.Structure):
     _fields_ = [(n, t) for n, t in [
@@ -170,7 +192,12 @@ class X11WindowSource:
                 or (require_opaque and (attr.depth != 24 or attr.border_width != 0)) \
                 or attr.width < 1 or attr.height < 1 \
                 or attr.width * attr.height > 16_000_000:
-            raise ValueError('opaque_visible_client_required')
+            reason = ('not_viewable' if attr.map_state != 2 else
+                      'not_standard_window' if attr.override_redirect else
+                      'unsupported_format' if require_opaque and attr.depth != 24 else
+                      'bordered_window' if require_opaque and attr.border_width != 0 else
+                      'invalid_size')
+            raise DiscoveryRejection(reason)
         x, y, child = I(), I(), U()
         if not self.x.XTranslateCoordinates(self.d, window, self.root, 0, 0,
                                             C.byref(x), C.byref(y), C.byref(child)):
@@ -424,12 +451,16 @@ class X11WindowSource:
         action = request.get('action')
         if action == 'list':
             sources = []
+            rejected = dict.fromkeys(DISCOVERY_REASONS, 0)
             for window in self.clients():
                 try:
                     sources.append(self.identity(window))
-                except (ValueError, OSError, UnicodeError):
-                    pass
-            return {'sources': sources, 'lock_state': 'unknown'}, None
+                except (ValueError, OSError, UnicodeError) as error:
+                    rejected[discovery_rejection_reason(error)] += 1
+            # clients() already limits this refresh to 200 candidates. Do not
+            # retain counts, log failures, inspect more sources or acquire pixels.
+            return {'sources': sources, 'lock_state': 'unknown',
+                    'diagnostics': {'rejected_counts': rejected}}, None
         if action == 'bind':
             return self.bind(request['source_identity']), None
         if action == 'inspect':

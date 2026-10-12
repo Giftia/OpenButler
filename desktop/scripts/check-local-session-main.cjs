@@ -1167,3 +1167,34 @@ test("revocation cancels save continuations that are still awaiting pause or rec
     assert.equal(h.getSessionRoutes(), null);
   }
 });
+
+test("window discovery IPC carries optional aggregate metadata without capture, persistence or new requests", async () => {
+  const h = mainHarness(); await h.createWindow();
+  const window = h.getWindow();
+  const event = {sender: window.webContents, senderFrame: window.webContents.mainFrame};
+  const diagnostic = {rejected_counts: {not_viewable: 1, not_standard_window: 0, unsupported_format: 2,
+    bordered_window: 0, invalid_size: 0, identity_unavailable: 0, unknown_error: 0}};
+  const beforeRequests = h.requests.length, beforeWrites = h.writes.length, beforeLogs = h.logs.length;
+  let calls = 0;
+  h.setWindowProvider({listSourcesResult: async () => { calls++; return {sources: [], diagnostics: diagnostic}; }});
+  const result = await h.handlers.get('openbutler:get-capture-windows')(event);
+  assert.equal(result.ok, true);
+  assert.equal(result.sources.length, 0);
+  assert.deepEqual(result.diagnostics, diagnostic);
+  assert.equal(calls, 1);
+  assert.equal(h.requests.length, beforeRequests);
+  assert.equal(h.writes.length, beforeWrites);
+  assert.equal(h.logs.length, beforeLogs);
+  assert.deepEqual(Array.from(h.getControllers()), [null, null]);
+  h.setWindowProvider({listSourcesResult: async () => ({sources: []})});
+  const legacy = await h.handlers.get('openbutler:get-capture-windows')(event);
+  assert.equal(legacy.ok, true);
+  assert.equal(Object.hasOwn(legacy, 'diagnostics'), false);
+  h.setWindowProvider({listSourcesResult: async () => { throw new Error('PRIVATE_TITLE_PATH_X11_ID'); }});
+  const failed = await h.handlers.get('openbutler:get-capture-windows')(event);
+  assert.equal(failed.ok, false);
+  assert.equal(failed.error, 'window_source_unavailable');
+  assert.equal(JSON.stringify(failed).includes('PRIVATE_'), false);
+  assert.equal(h.logs.length, beforeLogs);
+  h.stopBackend();
+});
